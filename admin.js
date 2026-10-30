@@ -1,0 +1,13 @@
+const $=id=>document.getElementById(id);
+const defaults={appName:"ونس AI",assistantName:"ونس",eyebrow:"موجودة علشانك",welcomeTitle:"أهلًا بيك، أنا ونس",welcomeText:"اتكلم معايا أو افتح الكاميرا وورّيني حاجة تحب تعرف عنها.",greeting:"أهلًا! أنا ونس AI 💜 دي نسخة تجريبية؛ جرب الكتابة أو الصوت والكاميرا.",voiceButton:"اتكلم معايا",cameraButton:"افتح الكاميرا",voiceRate:.96,voicePitch:1.12,theme:"purple",enableVoice:true,enableCamera:true,voiceLocale:"ar-EG"};
+let config={...defaults};const keys=Object.keys(defaults);
+function load(){try{config={...defaults,...JSON.parse(localStorage.getItem("wensAISettings")||"{}")}}catch{config={...defaults}}keys.forEach(k=>{const el=$(k);if(el) {if(el.type==="checkbox")el.checked=!!config[k];else el.value=config[k]??defaults[k]}});updateRanges()}
+function readForm(){keys.forEach(k=>{const el=$(k);if(el)config[k]=el.type==="checkbox"?el.checked:(el.type==="range"?Number(el.value):el.value)})}
+function updateRanges(){$("rateOut").value=Number($("voiceRate").value).toFixed(2);$("pitchOut").value=Number($("voicePitch").value).toFixed(2)}
+document.querySelectorAll(".nav-btn").forEach(btn=>btn.addEventListener("click",()=>{document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b===btn));document.querySelectorAll(".tab-page").forEach(p=>p.classList.toggle("active",p.id==="tab-"+btn.dataset.tab))}));
+["voiceRate","voicePitch"].forEach(id=>$(id).addEventListener("input",updateRanges));
+$("saveBtn").addEventListener("click",()=>{readForm();localStorage.setItem("wensAISettings",JSON.stringify(config));$("saveStatus").textContent="تم حفظ التعديلات على هذا الجهاز ✓";$("saveStatus").style.color="#9be7c1"});
+$("exportBtn").addEventListener("click",()=>{readForm();const blob=new Blob([JSON.stringify(config,null,2)],{type:"application/json"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="wens-ai-settings.json";a.click();URL.revokeObjectURL(a.href);$("backupStatus").textContent="تم تجهيز ملف الإعدادات للتنزيل."});
+$("importFile").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{const data=JSON.parse(await f.text());config={...defaults,...data};localStorage.setItem("wensAISettings",JSON.stringify(config));load();$("backupStatus").textContent="تم استرجاع الإعدادات. افتح التطبيق لمراجعتها."}catch{$("backupStatus").textContent="الملف غير صالح؛ اختَر ملف إعدادات JSON صحيح."}e.target.value=""});
+$("resetBtn").addEventListener("click",()=>{if(confirm("ترجع كل إعدادات التطبيق للقيم الافتراضية؟")){config={...defaults};localStorage.setItem("wensAISettings",JSON.stringify(config));load();$("backupStatus").textContent="تمت استعادة الإعدادات الافتراضية."}});
+load();

@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111124"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css">
+<title>ونس AI</title></head><body>
+<header class="topbar"><a class="brand" href="index.html"><span class="logo">و</span><span><b id="brandName">ونس AI</b><small>رفيقة يومك الذكية</small></span></a><a class="admin-shortcut" href="admin.html">⚙ لوحة الإدارة</a></header>
+<main class="app"><section class="hero"><div class="orb"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="smile"></span></div><div class="hair"></div></div>
+<p class="eyebrow" id="eyebrowText">موجودة علشانك</p><h1 id="welcomeTitle">أهلًا بيك، أنا ونس 💜</h1><p id="welcomeText" class="hero-text">اتكلم معايا أو افتح الكاميرا وورّيني حاجة تحب تعرف عنها.</p>
+<div class="actions"><button id="voiceBtn" class="btn primary">🎙️ <span id="voiceButtonText">اتكلم معايا</span></button><button id="cameraBtn" class="btn secondary">📷 <span id="cameraButtonText">افتح الكاميرا</span></button></div><p id="voiceStatus" class="status-line" aria-live="polite"></p></section>
+<section id="cameraPanel" class="panel" hidden><div class="section-head"><h2>الكاميرا</h2><button id="closeCameraBtn" class="text-btn">إغلاق ✕</button></div><video id="cameraVideo" autoplay playsinline></video><canvas id="cameraCanvas" hidden></canvas><img id="snapshot" alt="الصورة الملتقطة" hidden><p id="cameraStatus" class="status-line">بانتظار تشغيل الكاميرا.</p><div class="actions"><button id="captureBtn" class="btn primary">التقاط صورة</button><button id="stopCameraBtn" class="btn secondary">إيقاف الكاميرا</button></div></section>
+<section class="panel"><div class="section-head"><div><h2>الدردشة</h2><p>مساحتك للكلام والسؤال</p></div><button id="clearBtn" class="text-btn">مسح المحادثة</button></div>
+<div id="messages" class="messages" aria-live="polite"><div class="message assistant"><div class="mini-avatar">و</div><div class="bubble" id="initialGreeting">أهلًا بيك! أنا ونس 💜 احكيلي يومك أو اسألني عن أي حاجة، أنا معاكي.</div></div></div>
+<form id="chatForm" class="chat-form"><input id="messageInput" placeholder="اكتب رسالتك هنا..." autocomplete="off" aria-label="رسالتك"><button class="send-btn" type="submit">إرسال</button></form><p class="disclaimer">محادثتك تُرسل إلى خدمة الذكاء الاصطناعي عند تفعيل الخادم. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.</p></section></main><footer>ونس AI • نموذج أولي قابل للتطوير</footer><script src="app.js"></script></body></html>

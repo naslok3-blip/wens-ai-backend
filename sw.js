@@ -1,0 +1,1 @@
+const CACHE='wens-ai-v2';const ASSETS=['./','./index.html','./admin.html','./style.css','./admin.css','./app.js','./admin.js','./manifest.json'];self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));
