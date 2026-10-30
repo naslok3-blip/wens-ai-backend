@@ -58,8 +58,10 @@ export default {
       });
       const result = await upstream.json();
       if (!upstream.ok) {
-        const message = result?.error?.message || "حدث خطأ من مزود الذكاء الاصطناعي.";
-        return json({ error: `خدمة الذكاء الاصطناعي رفضت الطلب: ${message}` }, upstream.status === 429 ? 429 : 502);
+        // Keep provider diagnostics out of public responses.
+        if (upstream.status === 429) return json({ error: "الطلبات كتير دلوقتي؛ استنى شوية وجرب تاني." }, 429);
+        if (upstream.status === 401 || upstream.status === 403) return json({ error: "إعدادات الاتصال بخدمة الذكاء الاصطناعي محتاجة مراجعة من الإدارة." }, 502);
+        return json({ error: "حصلت مشكلة في خدمة الذكاء الاصطناعي. حاول تاني بعد شوية." }, 502);
       }
       const reply = result?.choices?.[0]?.message?.content?.trim();
       if (!reply) return json({ error: "لم يصل رد نصي من خدمة الذكاء الاصطناعي." }, 502);
