@@ -6,8 +6,10 @@ function applySettings(){const s=settings();document.title=s.appName;$("brandNam
 const messages=$("messages"),input=$("messageInput"),hero=document.querySelector(".hero");
 function addMessage(text,who="assistant"){const row=document.createElement("div");row.className="message "+who;if(who==="assistant"){const a=document.createElement("div");a.className="mini-avatar";a.textContent="و";row.appendChild(a)}const b=document.createElement("div");b.className="bubble";b.textContent=text;row.appendChild(b);messages.appendChild(row);messages.scrollTop=messages.scrollHeight}
 const HISTORY_KEY="wensAIChatHistory";
-function getHistory(){try{return JSON.parse(localStorage.getItem(HISTORY_KEY)||"[]").slice(-16)}catch{return []}}
-function saveTurn(role,content){const h=getHistory();h.push({role,content});localStorage.setItem(HISTORY_KEY,JSON.stringify(h.slice(-16)))}
+function getHistory(){try{const value=JSON.parse(localStorage.getItem(HISTORY_KEY)||"[]");return Array.isArray(value)?value.filter(item=>item&&["user","assistant"].includes(item.role)&&typeof item.content==="string").slice(-16):[]}catch{return []}}
+function saveTurn(role,content){const h=getHistory();h.push({role,content});try{localStorage.setItem(HISTORY_KEY,JSON.stringify(h.slice(-16)))}catch{addMessage("مساحة حفظ المحادثة ممتلئة؛ امسح المحادثة القديمة من زر المسح.")}}
+for(const item of getHistory())addMessage(item.content,item.role);
+window.addEventListener("storage",event=>{if(event.key==="wensAISettings")applySettings()});
 async function askWens(text){const history=getHistory();const response=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:text,history})});let data={};try{data=await response.json()}catch{}if(!response.ok)throw new Error(data.error||"تعذّر الاتصال بخدمة ونس.");if(!data.reply)throw new Error("وصل رد غير مكتمل من الخادم.");return data.reply}
 function setBusy(b){const btn=document.querySelector(".send-btn");btn.disabled=b;btn.textContent=b?"ونس بتفكر…":"إرسال";input.disabled=b}
 $("chatForm").addEventListener("submit",async e=>{e.preventDefault();const t=input.value.trim();if(!t)return;addMessage(t,"user");input.value="";saveTurn("user",t);setBusy(true);try{const r=await askWens(t);addMessage(r);saveTurn("assistant",r);speak(r)}catch(err){addMessage("معلش، مش قادرة أوصل لعقلي دلوقتي. "+err.message+" 💜");}finally{setBusy(false);input.focus()}});
