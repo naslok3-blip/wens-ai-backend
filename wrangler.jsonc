@@ -1,4 +1,3 @@
-
 {
   "name": "wens-ai-backend-b142",
   "main": "worker.js",
@@ -6,5 +5,8 @@
   "assets": {
     "directory": ".",
     "binding": "ASSETS"
+  },
+  "secrets": {
+    "required": ["OPENAI_API_KEY"]
   }
 }
