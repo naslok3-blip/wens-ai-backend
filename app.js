@@ -108,7 +108,6 @@ function addMessage(text, who = "assistant") {
   $("messages").scrollTop = $("messages").scrollHeight;
 }
 function setBusy(busy) {
-  $("sendBtn")?.toggleAttribute("disabled", busy);
   document.querySelector(".send-btn").disabled = busy;
   $("messageInput").disabled = busy;
   document.querySelector(".send-btn").textContent = busy ? "ونس بتفكر…" : "إرسال";
