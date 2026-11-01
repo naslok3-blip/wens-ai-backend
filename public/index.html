@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0b16"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css">
+<title>ونس AI</title>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html"><span class="logo">و</span><span><b id="brandName">ونس AI</b><small>رفيقة يومك الذكية</small></span></a>
+  <div class="top-actions"><a class="admin-shortcut" href="admin.html">⚙ الإعدادات</a><button id="logoutBtn" class="admin-shortcut" hidden>خروج</button></div>
+</header>
+<main class="app">
+<section id="authPanel" class="panel auth-panel">
+  <div class="auth-mark">و</div><p class="eyebrow">مساحتك الخاصة</p><h1 id="authTitle">أهلًا بيك في ونس</h1>
+  <p class="hero-text">سجّل دخولك علشان محادثاتك تتحفظ بأمان وتقدر تكمل من أي جهاز.</p>
+  <form id="authForm" class="auth-form">
+    <label id="nameField" hidden>الاسم<input id="nameInput" maxlength="60" autocomplete="name" placeholder="اسمك"></label>
+    <label>البريد الإلكتروني<input id="emailInput" type="email" maxlength="190" autocomplete="email" required placeholder="name@example.com"></label>
+    <label>كلمة المرور<input id="passwordInput" type="password" minlength="8" maxlength="128" autocomplete="current-password" required placeholder="8 أحرف على الأقل"></label>
+    <button id="authSubmit" class="btn primary" type="submit">تسجيل الدخول</button>
+  </form>
+  <button id="authToggle" class="text-btn auth-toggle" type="button">إنشاء حساب جديد</button>
+  <p id="authStatus" class="status-line" role="status"></p><p id="systemStatus" class="system-status" role="status">جاري فحص اتصال الخدمات...</p>
+  <p class="disclaimer">كلمة المرور تُخزّن مشفّرة تجزئيًا في قاعدة البيانات، ولا تُعرض داخل التطبيق. لا تستخدم كلمة مرور حسابك في مواقع أخرى.</p>
+</section>
+
+<div id="appRoot" hidden>
+<section class="hero">
+  <div class="orb"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="smile"></span></div><div class="hair"></div></div>
+  <p class="eyebrow" id="eyebrowText">موجودة علشانك</p><h1 id="welcomeTitle">أهلًا بيك، أنا ونس 💜</h1>
+  <p id="welcomeText" class="hero-text">اتكلم معايا أو افتح مكالمة فيديو مع شخص تحبه.</p>
+  <div class="actions"><button id="voiceBtn" class="btn primary">🎙️ <span id="voiceButtonText">اتكلم معايا</span></button><button id="cameraBtn" class="btn secondary">📹 مكالمة فيديو</button></div>
+  <p id="voiceStatus" class="status-line" aria-live="polite"></p>
+</section>
+
+<section id="callPanel" class="panel" hidden>
+  <div class="section-head"><div><h2>مكالمة فيديو بأفاتار</h2><p>أنشئ غرفة وشارك كودها مع الطرف الآخر.</p></div><button id="closeCallBtn" class="text-btn">إغلاق ✕</button></div>
+  <div class="call-controls">
+    <label>كود الغرفة<input id="roomInput" maxlength="64" placeholder="اكتب كود الغرفة أو أنشئ واحدًا"></label>
+    <div class="actions"><button id="createCallBtn" class="btn primary">إنشاء مكالمة</button><button id="joinCallBtn" class="btn secondary">انضمام</button></div>
+    <button id="copyRoomBtn" class="text-btn" disabled>نسخ كود الدعوة</button>
+  </div>
+  <p id="callStatus" class="status-line" role="status"></p>
+  <div id="videoStage" class="video-stage" hidden>
+    <div class="avatar-chip" id="avatarChip"><span>و</span><small>أفاتار ونس</small></div>
+    <div id="remoteVideos" class="video-grid"></div>
+    <div id="localVideoBox" class="local-video-box"><video id="localVideo" autoplay playsinline muted></video><small>أنت</small></div>
+    <div class="actions"><button id="muteBtn" class="btn secondary">كتم الميكروفون</button><button id="cameraToggleBtn" class="btn secondary">إيقاف الكاميرا</button><button id="endCallBtn" class="btn danger">إنهاء المكالمة</button></div>
+  </div>
+  <p class="disclaimer">يتطلب إعداد LiveKit على الخادم. الأفاتار الحالي شخصية مرئية متحركة بصريًا؛ مزامنة الشفاه أو توليد شخصية بشرية واقعية تحتاج مزود أفاتار منفصل.</p>
+</section>
+
+<section class="panel">
+  <div class="section-head"><div><h2>الدردشة مع ونس</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div><button id="clearBtn" class="text-btn">مسح العرض</button></div>
+  <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><div class="mini-avatar">و</div><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
+  <form id="chatForm" class="chat-form"><input id="messageInput" placeholder="اكتب رسالتك هنا..." autocomplete="off" aria-label="رسالتك"><button class="send-btn" type="submit">إرسال</button></form>
+  <p class="disclaimer">رسائلك تُرسل إلى OpenAI لمعالجتها وتُحفظ في قاعدة بيانات الحساب. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.</p>
+</section>
+</div>
+</main>
+<footer>ونس AI • نسخة تطويرية</footer>
+<script src="app.js"></script>
+</body></html>
