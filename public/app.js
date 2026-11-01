@@ -186,6 +186,10 @@ function speak(text) {
   utterance.pitch = Math.min(1.5, Math.max(0.7, Number(appSettings.voicePitch) || 1.12));
   const voices = speechSynthesis.getVoices();
   utterance.voice = voices.find(v => v.lang.toLowerCase().startsWith("ar-eg")) || voices.find(v => v.lang.toLowerCase().startsWith("ar")) || null;
+  utterance.onstart = () => { document.querySelector(".orb")?.classList.add("talking"); document.querySelector(".face")?.classList.add("talking"); };
+  const stopAvatarSpeech = () => { document.querySelector(".orb")?.classList.remove("talking"); document.querySelector(".face")?.classList.remove("talking"); };
+  utterance.onend = stopAvatarSpeech;
+  utterance.onerror = stopAvatarSpeech;
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
 }
