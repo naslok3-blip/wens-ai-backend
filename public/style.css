@@ -33,3 +33,6 @@
 
 .system-status{margin:14px 0 0;padding:10px 12px;border-radius:12px;background:#ffffff08;border:1px solid #ffffff15;color:#ffcf8f;font-size:11px;line-height:1.8}
 .system-status.all-ready{color:#9be7c1;border-color:#4bba8a55;background:#35a87812}
+
+/* Speech-driven avatar mouth motion (visual approximation, not photoreal lip sync). */
+.face.talking .smile{height:11px;width:13px;top:51px;border:2px solid #a34e68;border-top:0;border-radius:0 0 55% 55%;animation:mouthTalk .16s infinite alternate}.orb.talking{animation:avatarSpeak .55s infinite alternate}.face.talking{animation:faceSpeak .55s infinite alternate}@keyframes mouthTalk{from{transform:scaleY(.45)}to{transform:scaleY(1.25)}}@keyframes avatarSpeak{to{filter:brightness(1.12);box-shadow:0 0 0 9px #a28bff14,0 0 65px #a28bff65}}@keyframes faceSpeak{to{transform:translateY(1px)}}
