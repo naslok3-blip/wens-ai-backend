@@ -6,7 +6,7 @@
     "directory": "./public",
     "binding": "ASSETS"
   },
-  "secrets": {
-    "required": ["OPENAI_API_KEY"]
+  "ai": {
+    "binding": "AI"
   }
 }
