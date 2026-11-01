@@ -125,18 +125,26 @@ async function liveKitToken(env, user, room) {
 }
 async function handleChat(request, env, user) {
   if (!env.OPENAI_API_KEY) return json({ error: "خدمة الذكاء الاصطناعي غير مفعّلة على الخادم." }, 503);
-  const db = requireDb(env);
+  const db = env.DB || null;
   let body;
   try { body = await request.json(); } catch { return json({ error: "بيانات الرسالة غير صالحة." }, 400); }
   const message = typeof body.message === "string" ? body.message.trim() : "";
   if (!message) return json({ error: "اكتب رسالتك الأول." }, 400);
   if (message.length > 6000) return json({ error: "الرسالة طويلة جدًا؛ اختصرها قليلًا." }, 400);
   const now = Math.floor(Date.now() / 1000);
-  await db.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
-    .bind(crypto.randomUUID(), user.id, "user", message, now).run();
-  const recent = await db.prepare("SELECT role,content FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 16")
-    .bind(user.id).all();
-  const messages = [{ role: "system", content: SYSTEM_PROMPT }, ...(recent.results || []).reverse().map(x => ({ role: x.role, content: x.content }))];
+  if (db && user) {
+    await db.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
+      .bind(crypto.randomUUID(), user.id, "user", message, now).run();
+  }
+  const recent = db && user
+    ? await db.prepare("SELECT role,content FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 16")
+        .bind(user.id).all()
+    : { results: [] };
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...(recent.results || []).reverse().map(x => ({ role: x.role, content: x.content })),
+    { role: "user", content: message }
+  ];
   try {
     const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -151,8 +159,10 @@ async function handleChat(request, env, user) {
     }
     const reply = result?.choices?.[0]?.message?.content?.trim();
     if (!reply) return json({ error: "لم يصل رد نصي من خدمة الذكاء الاصطناعي." }, 502);
-    await db.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
-      .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+    if (db && user) {
+      await db.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
+        .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+    }
     return json({ reply });
   } catch {
     return json({ error: "تعذّر الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى." }, 502);
@@ -177,14 +187,15 @@ export default {
     try {
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path);
       if (path === "/api/chat/history" && request.method === "GET") {
+        if (!env.DB) return json({ messages: [], persistence: false });
         const user = await currentUser(request, env);
         if (!user) return json({ error: "سجّل الدخول الأول." }, 401);
         const rows = await requireDb(env).prepare("SELECT role,content,created_at FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 60").bind(user.id).all();
-        return json({ messages: (rows.results || []).reverse() });
+        return json({ messages: (rows.results || []).reverse(), persistence: true });
       }
       if (path === "/api/chat" && request.method === "POST") {
-        const user = await currentUser(request, env);
-        if (!user) return json({ error: "سجّل الدخول الأول لاستخدام ونس." }, 401);
+        const user = env.DB ? await currentUser(request, env) : null;
+        if (env.DB && !user) return json({ error: "سجّل الدخول الأول لاستخدام ونس." }, 401);
         return await handleChat(request, env, user);
       }
       if (path === "/api/call/token" && request.method === "POST") {
