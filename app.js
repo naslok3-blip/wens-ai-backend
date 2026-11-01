@@ -141,9 +141,12 @@ function addMessage(text, who = "assistant") {
   const row = document.createElement("div");
   row.className = "message " + who;
   if (who === "assistant") {
-    const avatar = document.createElement("div");
+    const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
-    avatar.textContent = "و";
+    avatar.src = "avatar.jpg";
+    avatar.alt = "ونس";
+    avatar.width = 30;
+    avatar.height = 30;
     row.appendChild(avatar);
   }
   const bubble = document.createElement("div");
@@ -181,6 +184,10 @@ $("clearBtn").addEventListener("click", () => {
   addMessage("تم مسح عرض المحادثة من الشاشة. سجل الرسائل المحفوظ في الحساب لم يُحذف.");
 });
 function speak(text) {
+  if (window.WensNative && typeof window.WensNative.speak === "function") {
+    window.WensNative.speak(String(text));
+    return;
+  }
   if (!("speechSynthesis" in window)) return;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = appSettings.voiceLocale;
