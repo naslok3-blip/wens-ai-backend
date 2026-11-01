@@ -20,15 +20,15 @@ Cloudflare Workers Assets يخدم المجلد `public/` فقط طبقًا لإ
 
 لوحة `/admin.html` محمية بتسجيل دخول يتحقق منه الخادم عبر Secret، وتُفتح من التطبيق بالضغط على شعار ونس خمس مرات متتالية خلال 3 ثوانٍ (أو Ctrl+Shift+A على لوحة مفاتيح). جلسة المدير Cookie آمنة ومؤقتة. تخصيص الهوية والصوت ورسائل البداية يُحفظ محليًا على الجهاز الحالي؛ أما حالة الخدمات واختبار Workers AI فتُقرأ من الخادم. اللوحة لا تكشف المفاتيح ولا تدير أسرار الخادم.
 
-## إعداد قاعدة البيانات D1 (مرة واحدة)
+## إعداد قاعدة البيانات D1 (لنسخة جديدة من المشروع)
 
-أنشئ قاعدة D1 باسم `wens-ai-db` من Cloudflare Dashboard أو باستخدام Wrangler:
+قاعدة الإنتاج لهذا المشروع أُنشئت بالفعل باسم `wens-ai-db` وربطها موجود في `wrangler.jsonc`. عند إنشاء نسخة مستقلة من المستودع في حساب Cloudflare آخر، أنشئ قاعدة D1 جديدة باسم مناسب:
 
 ```bash
 npx wrangler d1 create wens-ai-db
 ```
 
-خذ `database_id` الذي يرجع من Cloudflare، ثم أضف الربط التالي إلى `wrangler.jsonc` مع استبدال القيمة بالـ ID الحقيقي:
+خذ `database_id` الذي يرجع من Cloudflare، ثم استبدل ربط `DB` في `wrangler.jsonc` بالمعرّف الجديد:
 
 ```jsonc
 "d1_databases": [
@@ -51,7 +51,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 
 ## أسرار الخدمات
 
-أضف القيم من Cloudflare Worker > Settings > Variables and Secrets > Secrets، ولا تضعها في ملفات المستودع:
+لا يحتاج مسار المحادثة إلى `OPENAI_API_KEY`؛ فهو يستخدم Cloudflare Workers AI عبر binding باسم `AI`. أضف فقط الأسرار التي تحتاجها الميزات الاختيارية من Cloudflare Worker > Settings > Variables and Secrets > Secrets، ولا تضعها في ملفات المستودع:
 
 - `WENS_ADMIN_PIN`: رقم مدير من 6 إلى 12 رقمًا.
 - `WENS_ADMIN_SESSION_SECRET`: سر عشوائي قوي لا يقل عن 32 حرفًا لتوقيع جلسات المدير؛ لا تستخدم الرقم السري نفسه.
@@ -59,11 +59,10 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 - `LIVEKIT_API_SECRET`: السر المقابل لمفتاح LiveKit.
 - `LIVEKIT_URL`: عنوان LiveKit الآمن، غالبًا يبدأ بـ `wss://`.
 
-بعد ربط D1 والأسرار، انشر Worker ثم افتح:
-
-- `GET /api/health` — يعرض `features.openai` و`features.database` و`features.videoAvatar`.
+في النسخة الحالية تم ربط Workers AI باسم `AI` وقاعدة D1 باسم `DB` في `wrangler.jsonc`، كما طُبّق migration الأول على قاعدة الإنتاج. لا تنشئ قاعدة ثانية لنفس المشروع. افحص `GET /api/health`؛ يعرض `features.workersAI` و`features.database` و`features.videoAvatar`، كما يعرض `features.openai` فقط لتوضيح وجود مسار احتياطي قديم.
 - `POST /api/admin/login` و`GET /api/admin/session` و`POST /api/admin/logout` — جلسة لوحة المدير.
 - `GET /api/admin/status` — فحص حالة الخدمات بعد التحقق من المدير.
+- `POST /api/admin/test-ai` — اختبار نموذج Workers AI، ويستهلك جزءًا صغيرًا من الحصة المجانية.
 - `POST /api/admin/test-ai` — اختبار اتصال صغير بـ Cloudflare Workers AI بعد التحقق من المدير.
 - `POST /api/auth/register` — إنشاء حساب.
 - `POST /api/auth/login` — تسجيل الدخول.
@@ -75,7 +74,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 
 ## الفيديو والأفاتار
 
-مكالمات الفيديو تستخدم LiveKit WebRTC، وتحتاج إعداد مشروع LiveKit وإدخال بياناته كأسرار. يطلب التطبيق أذونات الكاميرا والميكروفون من أندرويد. الأفاتار الحالي رسم افتراضي داخل `public/avatar.svg`، ويتحرك تمثيليًا مع نشاط المتحدث؛ **ليس صورة إنسان حقيقية ولا شخصية واقعية متزامنة الشفاه**. مزامنة الشفاه/أفاتار مولّد لحظيًا تتطلب تكامل خدمة avatar مستقلة وبيانات اعتمادها.
+مكالمات الفيديو غير مفعّلة في الإنتاج حتى الآن؛ تستخدم LiveKit WebRTC وتحتاج مشروع LiveKit مستقلًا وإدخال بياناته كأسرار: يطلب التطبيق أذونات الكاميرا والميكروفون من أندرويد. الأفاتار الحالي رسم افتراضي داخل `public/avatar.svg`، ويتحرك تمثيليًا مع نشاط المتحدث؛ **ليس صورة إنسان حقيقية ولا شخصية واقعية متزامنة الشفاه**. مزامنة الشفاه/أفاتار مولّد لحظيًا تتطلب تكامل خدمة avatar مستقلة وبيانات اعتمادها.
 
 ## بناء APK أندرويد
 
@@ -85,7 +84,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 
 ## فحوص ما قبل النشر
 
-1. تأكد أن `/api/health` يعرض الميزات المطلوبة بقيمة `true`.
+1. تأكد أن `/api/health` يعرض `workersAI: true` و`database: true`. الفيديو سيظل `false` حتى إعداد LiveKit.
 2. أنشئ حسابًا تجريبيًا، سجّل الخروج ثم الدخول، وافتح المحادثة من متصفح آخر للتأكد من حفظها.
 3. جرّب مكالمة من جهازين مختلفين باستخدام نفس كود الغرفة.
 4. اختبر رفض أذونات الكاميرا والميكروفون والتعامل مع انقطاع الشبكة.
