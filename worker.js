@@ -142,9 +142,9 @@ async function handleChat(request, env, user) {
     : { results: [] };
   const messages = [
     { role: "system", content: SYSTEM_PROMPT },
-    ...(recent.results || []).reverse().map(x => ({ role: x.role, content: x.content })),
-    { role: "user", content: message }
+    ...(recent.results || []).reverse().map(x => ({ role: x.role, content: x.content }))
   ];
+  if (!db || !user) messages.push({ role: "user", content: message });
   try {
     const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
