@@ -42,15 +42,15 @@
     <section class="service-panel">
       <div class="section-head"><div><h2>حالة الخادم والخدمات</h2><p id="checkedAt">لم يتم الفحص بعد</p></div></div>
       <div class="service-grid">
-        <article class="service-card"><span class="service-icon">✧</span><b>الذكاء الاصطناعي</b><strong id="openaiState" class="state-pending">جارٍ الفحص</strong><small id="modelName">النموذج: —</small></article>
+        <article class="service-card"><span class="service-icon">✧</span><b>الذكاء الاصطناعي</b><strong id="workersAiState" class="state-pending">جارٍ الفحص</strong><small id="modelName">النموذج: —</small></article>
         <article class="service-card"><span class="service-icon">▤</span><b>قاعدة البيانات</b><strong id="databaseState" class="state-pending">جارٍ الفحص</strong><small id="databaseDetail">اتصال D1</small></article>
         <article class="service-card"><span class="service-icon">▣</span><b>مكالمات الفيديو</b><strong id="videoState" class="state-pending">جارٍ الفحص</strong><small>إعدادات LiveKit</small></article>
       </div>
       <div class="service-actions">
-        <button id="testOpenAiBtn" class="btn primary">اختبار اتصال OpenAI الآن</button>
+        <button id="testWorkersAiBtn" class="btn primary">اختبار Cloudflare AI الآن</button>
         <p id="serviceStatus" class="status-line" role="status" aria-live="polite"></p>
       </div>
-      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. اختبار OpenAI يرسل طلبًا صغيرًا وقد يستهلك قدرًا ضئيلًا من رصيد API.</p>
+      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. اختبار النموذج يستهلك جزءًا صغيرًا من الحصة المجانية اليومية لـ Workers AI. بعد نفاد الحصة تتوقف الطلبات حتى موعد التجديد اليومي.</p>
     </section>
 
     <div class="admin-grid">
@@ -66,7 +66,7 @@
         <section class="tab-page active" id="tab-overview">
           <h2>نظرة عامة</h2>
           <p class="muted">تظهر إعدادات الخادم الحقيقية في بطاقات الحالة أعلى الصفحة. إعدادات الشكل التالية تُحفظ على هذا الجهاز فقط.</p>
-          <div class="notice">مفاتيح OpenAI وLiveKit ورقم مدير اللوحة لا تُدار من هذه الصفحة ولا تُحفظ في المتصفح. أضفها كـ Secrets في Cloudflare Worker.</div>
+          <div class="notice">Workers AI لا يحتاج مفتاح OpenAI. بيانات LiveKit وأسرار المدير تظل في Cloudflare Secrets ولا تُحفظ في المتصفح.</div>
           <div class="stat-grid"><div class="stat"><b>محمية</b><span>جلسة مدير مؤقتة</span></div><div class="stat"><b>HTTPS</b><span>اتصال مشفر</span></div><div class="stat"><b>محلي</b><span>تخصيص الواجهة</span></div></div>
           <a class="btn secondary link-btn" href="index.html">فتح التطبيق</a>
         </section>
