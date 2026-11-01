@@ -181,6 +181,10 @@ $("clearBtn").addEventListener("click", () => {
   addMessage("تم مسح عرض المحادثة من الشاشة. سجل الرسائل المحفوظ في الحساب لم يُحذف.");
 });
 function speak(text) {
+  if (window.WensNative && typeof window.WensNative.speak === "function") {
+    window.WensNative.speak(String(text));
+    return;
+  }
   if (!("speechSynthesis" in window)) return;
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = appSettings.voiceLocale;
