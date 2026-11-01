@@ -208,7 +208,11 @@ async function adminRoute(request, env, path) {
   }
   if (path === "/api/admin/session" && request.method === "GET") {
     if (!adminConfigurationReady(env)) {
-      return json({ configured: false, authenticated: false }, 503);
+      return json({
+        configured: false,
+        authenticated: false,
+        error: "إعداد حماية المدير ناقص: أضف WENS_ADMIN_PIN (6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي لا يقل عن 32 حرفًا) في Secrets لنفس Worker."
+      }, 503);
     }
     const authenticated = await validAdminSession(request, env);
     return json({ configured: true, authenticated });
@@ -221,10 +225,17 @@ async function adminRoute(request, env, path) {
   }
   if (path === "/api/admin/status" && request.method === "GET") {
     let databaseConnected = false;
+    let databaseSchemaReady = false;
     if (env.DB) {
       try {
         const probe = await env.DB.prepare("SELECT 1 AS ok").first();
         databaseConnected = Number(probe?.ok) === 1;
+        if (databaseConnected) {
+          const schema = await env.DB.prepare(
+            "SELECT COUNT(*) AS total FROM sqlite_master WHERE type='table' AND name IN ('users','sessions','messages')"
+          ).first();
+          databaseSchemaReady = Number(schema?.total) === 3;
+        }
       } catch {}
     }
     return json({
@@ -235,6 +246,7 @@ async function adminRoute(request, env, path) {
         openai: Boolean(env.OPENAI_API_KEY),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
+        databaseSchemaReady,
         videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
       }
     });
