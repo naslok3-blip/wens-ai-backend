@@ -28,6 +28,9 @@ jobs:
           cmp app.js public/app.js
           cmp style.css public/style.css
           cmp manifest.json public/manifest.json
+          cmp admin.html public/admin.html
+          cmp admin.js public/admin.js
+          cmp admin.css public/admin.css
       - name: Verify production Worker, Workers AI, D1 and static assets
         run: |
           set -euo pipefail
