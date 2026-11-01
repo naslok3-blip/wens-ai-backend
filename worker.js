@@ -292,7 +292,9 @@ async function adminRoute(request, env, path) {
 }
 
 async function handleChat(request, env, user) {
-  if (!env.OPENAI_API_KEY) return json({ error: "خدمة الذكاء الاصطناعي غير مفعّلة على الخادم." }, 503);
+  if (!env.AI && !env.OPENAI_API_KEY) {
+    return json({ error: "خدمة الذكاء الاصطناعي غير مفعّلة على الخادم." }, 503);
+  }
   const db = env.DB || null;
   let body;
   try { body = await request.json(); } catch { return json({ error: "بيانات الرسالة غير صالحة." }, 400); }
@@ -314,35 +316,50 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": "Bearer " + env.OPENAI_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: env.OPENAI_MODEL || "gpt-4o-mini", messages, temperature: 0.7, max_tokens: 800 })
-    });
-    const result = await upstream.json();
-    if (!upstream.ok) {
-      const upstreamMessage = String(result?.error?.message || "").slice(0, 220);
-      const upstreamCode = String(result?.error?.code || "");
-      if (upstream.status === 429 && (upstreamCode === "insufficient_quota" || /quota|billing/i.test(upstreamMessage))) {
-        return json({ error: "مفتاح OpenAI وصل لحد الرصيد أو حدود الاستخدام. راجع Billing وحدود المشروع في OpenAI." }, 429);
+    let reply = "";
+    if (env.AI) {
+      const model = env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct";
+      const result = await env.AI.run(model, {
+        messages,
+        temperature: 0.7,
+        max_tokens: 500
+      });
+      reply = typeof result?.response === "string" ? result.response.trim() : "";
+    } else {
+      const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + env.OPENAI_API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: env.OPENAI_MODEL || "gpt-4o-mini", messages, temperature: 0.7, max_tokens: 800 })
+      });
+      const result = await upstream.json();
+      if (!upstream.ok) {
+        const upstreamMessage = String(result?.error?.message || "").slice(0, 220);
+        const upstreamCode = String(result?.error?.code || "");
+        if (upstream.status === 429 && (upstreamCode === "insufficient_quota" || /quota|billing/i.test(upstreamMessage))) {
+          return json({ error: "مفتاح OpenAI وصل لحد الرصيد أو حدود الاستخدام. راجع Billing وحدود المشروع في OpenAI." }, 429);
+        }
+        if (upstream.status === 429) return json({ error: "طلبات كتير على OpenAI حاليًا؛ انتظر قليلًا وجرب تاني." }, 429);
+        if (upstream.status === 401 || upstream.status === 403) return json({ error: "مفتاح OpenAI غير صحيح أو ليس لديه صلاحية لهذا المشروع." }, 502);
+        if (upstream.status === 404) return json({ error: "نموذج الذكاء الاصطناعي غير موجود أو غير متاح لهذا المفتاح." }, 502);
+        return json({ error: "خطأ من خدمة OpenAI (" + upstream.status + "): " + (upstreamMessage || "تعذّر تنفيذ الطلب.") }, 502);
       }
-      if (upstream.status === 429) return json({ error: "طلبات كتير على OpenAI حاليًا؛ انتظر قليلًا وجرب تاني." }, 429);
-      if (upstream.status === 401 || upstream.status === 403) return json({ error: "مفتاح OpenAI غير صحيح أو ليس لديه صلاحية لهذا المشروع. تأكد أنه Secret باسم OPENAI_API_KEY على نفس Worker المستخدم في التطبيق." }, 502);
-      if (upstream.status === 404) return json({ error: "نموذج الذكاء الاصطناعي غير موجود أو غير متاح لهذا المفتاح. راجع OPENAI_MODEL في إعدادات Worker." }, 502);
-      if (upstream.status === 400) return json({ error: "OpenAI رفض صيغة الطلب: " + (upstreamMessage || "بيانات الطلب غير مقبولة.") }, 502);
-      return json({ error: "خطأ من خدمة OpenAI (" + upstream.status + "): " + (upstreamMessage || "تعذّر تنفيذ الطلب.") }, 502);
+      reply = result?.choices?.[0]?.message?.content?.trim() || "";
     }
-    const reply = result?.choices?.[0]?.message?.content?.trim();
-    if (!reply) return json({ error: "لم يصل رد نصي من خدمة الذكاء الاصطناعي." }, 502);
+    if (!reply) return json({ error: "لم يصل رد نصي من نموذج الذكاء الاصطناعي." }, 502);
     if (db && user) {
       await db.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
         .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
     }
     return json({ reply });
-  } catch {
-    return json({ error: "تعذّر الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى." }, 502);
+  } catch (error) {
+    const message = String(error?.message || "");
+    if (/daily free allocation|neurons|quota/i.test(message)) {
+      return json({ error: "وصلنا للحد المجاني اليومي للذكاء الاصطناعي على Cloudflare. جرّب بعد تجديد الحصة اليومية." }, 429);
+    }
+    return json({ error: "تعذّر تشغيل نموذج الذكاء الاصطناعي حاليًا. حاول مرة أخرى بعد قليل." }, 502);
   }
 }
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -351,18 +368,22 @@ export default {
       // Report binding presence without ever exposing the secret value.
       const openAiKeyBindingPresent = typeof env.OPENAI_API_KEY === "string";
       const openAiKeyValuePresent = openAiKeyBindingPresent && env.OPENAI_API_KEY.trim().length > 0;
+      const workersAiBindingPresent = Boolean(env.AI);
       return json({
         ok: true,
         service: "wens-ai",
-        configured: openAiKeyValuePresent,
+        configured: workersAiBindingPresent || openAiKeyValuePresent,
         features: {
           openai: openAiKeyValuePresent,
+          workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
           videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
         },
         diagnostics: {
           openAiKeyBindingPresent,
-          openAiKeyValuePresent
+          openAiKeyValuePresent,
+          workersAiBindingPresent,
+          model: workersAiBindingPresent ? (env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct") : null
         }
       });
     }
