@@ -166,6 +166,7 @@ export default {
       return json({
         ok: true,
         service: "wens-ai",
+        configured: Boolean(env.OPENAI_API_KEY),
         features: {
           openai: Boolean(env.OPENAI_API_KEY),
           database: Boolean(env.DB),
