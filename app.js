@@ -369,12 +369,12 @@ async function loadSystemStatus() {
     const data = await response.json();
     const f = data.features || {};
     const labels = [
-      "OpenAI " + (f.openai ? "جاهز" : "غير مربوط"),
+      "Cloudflare AI " + (f.workersAI ? "جاهز" : "غير مربوط"),
       "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة"),
       "الفيديو " + (f.videoAvatar ? "جاهز" : "بانتظار LiveKit")
     ];
     $("systemStatus").textContent = labels.join(" · ");
-    $("systemStatus").classList.toggle("all-ready", !!(f.openai && f.database && f.videoAvatar));
+    $("systemStatus").classList.toggle("all-ready", !!(f.workersAI && f.database));
     return data;
   } catch {
     $("systemStatus").textContent = "تعذّر فحص حالة الخادم.";
