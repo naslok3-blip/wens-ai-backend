@@ -1,14 +1,86 @@
-# ونس AI
+# ونس AI — مشروع تطوير أندرويد وويب
 
-مشروع Cloudflare Worker مع واجهة الويب كـ Workers Assets.
+ونس تطبيق مساعد ذكي بواجهة عربية، حسابات مستخدمين، سجل محادثات محفوظ، ومكالمات فيديو عبر LiveKit.
+
+## الحالة التقنية
+
+| الجزء | حالة الكود | ما يلزم لتشغيله فعليًا |
+|---|---|---|
+| تطبيق أندرويد APK | مشروع Android موجود + GitHub Actions للبناء | نجاح مهمة Android APK لتنزيل ملف APK |
+| تسجيل الدخول | تسجيل/دخول/خروج وجلسة Cookie آمنة | ربط D1 وتطبيق migration |
+| قاعدة البيانات | مخطط D1 للمستخدمين والجلسات والرسائل | إنشاء D1 وربطه باسم DB |
+| مكالمات الفيديو | واجهة WebRTC + إصدار LiveKit JWT من الخادم | LiveKit URL وAPI key وAPI secret |
+| ذكاء OpenAI | Chat Completions + حفظ الرسائل | Secret باسم OPENAI_API_KEY صالح ومربوط بالـ Worker الصحيح |
+
+لا تعتبر الميزة متاحة لمجرد وجود كودها. افحص `GET /api/health` بعد النشر؛ سيعرض حالة OpenAI وقاعدة البيانات والفيديو كلٌّ على حدة.
+
+## إعداد قاعدة البيانات D1 (مرة واحدة)
+
+أنشئ قاعدة D1 باسم `wens-ai-db` من Cloudflare Dashboard أو باستخدام Wrangler:
+
+```bash
+npx wrangler d1 create wens-ai-db
+```
+
+خذ `database_id` الذي يرجع من Cloudflare، ثم أضف الربط التالي إلى `wrangler.jsonc` مع استبدال القيمة بالـ ID الحقيقي:
+
+```jsonc
+"d1_databases": [
+  {
+    "binding": "DB",
+    "database_name": "wens-ai-db",
+    "database_id": "ضع-DATABASE-ID-الحقيقي-هنا",
+    "migrations_dir": "migrations"
+  }
+]
+```
+
+طبّق الجداول على قاعدة الإنتاج:
+
+```bash
+npx wrangler d1 migrations apply wens-ai-db --remote
+```
+
+**لا تنشر إعداد D1 وفيه قيمة placeholder.** لا ترفع أي بيانات مستخدمين أو كلمات مرور إلى GitHub.
+
+## أسرار الخدمات
+
+أضف القيم من Cloudflare Worker > Settings > Variables and Secrets > Secrets، ولا تضعها في ملفات المستودع:
+
+- `OPENAI_API_KEY`: مفتاح OpenAI صالح ومسموح له باستخدام API.
+- `LIVEKIT_API_KEY`: مفتاح مشروع LiveKit.
+- `LIVEKIT_API_SECRET`: السر المقابل لمفتاح LiveKit.
+- `LIVEKIT_URL`: عنوان LiveKit الآمن، غالبًا يبدأ بـ `wss://`.
+
+بعد ربط D1 والأسرار، انشر Worker ثم افتح:
+
+- `GET /api/health` — يعرض `features.openai` و`features.database` و`features.videoAvatar`.
+- `POST /api/auth/register` — إنشاء حساب.
+- `POST /api/auth/login` — تسجيل الدخول.
+- `GET /api/auth/me` — فحص الجلسة.
+- `POST /api/auth/logout` — إنهاء الجلسة.
+- `GET /api/chat/history` — تحميل سجل الحساب.
+- `POST /api/chat` — إرسال رسالة للمساعد.
+- `POST /api/call/token` — إصدار رمز غرفة LiveKit للمستخدم المسجل.
+
+## الفيديو والأفاتار
+
+مكالمات الفيديو تستخدم LiveKit WebRTC، وتحتاج إعداد مشروع LiveKit وإدخال بياناته كأسرار. يطلب التطبيق أذونات الكاميرا والميكروفون من أندرويد. الأفاتار الحالي عنصر بصري يتحرك مع نشاط المتحدث؛ **ليس شخصية واقعية متزامنة الشفاه**. مزامنة الشفاه/أفاتار مولّد لحظيًا تتطلب تكامل خدمة avatar مستقلة وبيانات اعتمادها.
+
+## بناء APK أندرويد
+
+يوجد مشروع أندرويد داخل `android/` وسير عمل GitHub Actions داخل `.github/workflows/android-apk.yml`. عند دفع تحديثات في مجلد `android/` يبدأ بناء APK تلقائيًا، ويمكن تشغيله يدويًا من تبويب Actions.
+
+بعد نجاح المهمة نزّل Artifact باسم `wens-android-apk`، ثم استخرج `app-debug.apk` وثبّته للاختبار. هذا Debug APK للتجربة الداخلية وليس إصدار متجر موقّعًا بمفتاح نشر نهائي.
+
+## فحوص ما قبل النشر
+
+1. تأكد أن `/api/health` يعرض الميزات المطلوبة بقيمة `true`.
+2. أنشئ حسابًا تجريبيًا، سجّل الخروج ثم الدخول، وافتح المحادثة من متصفح آخر للتأكد من حفظها.
+3. جرّب مكالمة من جهازين مختلفين باستخدام نفس كود الغرفة.
+4. اختبر رفض أذونات الكاميرا والميكروفون والتعامل مع انقطاع الشبكة.
+5. لا تنشر نسخة عامة قبل سياسة خصوصية، شروط استخدام، حماية إساءة الاستخدام، ومراجعة إعدادات الاحتفاظ بالرسائل.
 
 ## النشر
-- اربط هذا المستودع بـ Cloudflare Workers Builds.
-- أمر النشر: `npx wrangler deploy`
-- لا تضع مفتاح OpenAI داخل الملفات أو GitHub.
-- أضف `OPENAI_API_KEY` من إعدادات Worker > Settings > Variables and Secrets كـ Secret.
-- المتغير الاختياري `OPENAI_MODEL` افتراضيًا `gpt-4o-mini`.
 
-## فحص الخدمة
-- `GET /api/health`
-- `POST /api/chat` مع JSON يحتوي `message` و`history` اختيارية.
+إذا كان المستودع مربوطًا بـ Cloudflare Workers Builds، استخدم أمر النشر `npx wrangler deploy`. لا تضع أي مفتاح API داخل الواجهة أو داخل Git.
