@@ -9,6 +9,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.webkit.PermissionRequest
+import android.webkit.JavascriptInterface
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -19,12 +22,22 @@ import android.widget.Toast
 class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var pendingRequest: PermissionRequest? = null
+    private var textToSpeech: TextToSpeech? = null
     private val appHost = "wens-ai-backend-b142.naqashy1.workers.dev"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(13, 12, 24)
         window.navigationBarColor = Color.rgb(13, 12, 24)
+
+        textToSpeech = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val result = textToSpeech?.setLanguage(Locale("ar", "EG")) ?: TextToSpeech.ERROR
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    textToSpeech?.language = Locale("ar")
+                }
+            }
+        }
 
         webView = WebView(this)
         webView.settings.apply {
@@ -38,6 +51,17 @@ class MainActivity : Activity() {
             setSupportMultipleWindows(false)
             if (Build.VERSION.SDK_INT >= 26) safeBrowsingEnabled = true
         }
+        webView.addJavascriptInterface(object {
+            @JavascriptInterface fun speak(message: String) {
+                runOnUiThread {
+                    textToSpeech?.speak(message.take(4000), TextToSpeech.QUEUE_FLUSH, null, "wens-ai-reply")
+                }
+            }
+            @JavascriptInterface fun stop() {
+                runOnUiThread { textToSpeech?.stop() }
+            }
+        }, "WensNative")
+
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val uri = request.url
@@ -116,6 +140,9 @@ class MainActivity : Activity() {
             webView.loadUrl("about:blank")
             webView.destroy()
         }
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
         super.onDestroy()
     }
 }
