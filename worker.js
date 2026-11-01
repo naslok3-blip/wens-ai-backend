@@ -211,9 +211,7 @@ async function adminRoute(request, env, path) {
       return json({ configured: false, authenticated: false }, 503);
     }
     const authenticated = await validAdminSession(request, env);
-    return authenticated
-      ? json({ configured: true, authenticated: true })
-      : json({ configured: true, authenticated: false }, 401);
+    return json({ configured: true, authenticated });
   }
   if (!adminConfigurationReady(env)) {
     return json({ error: "إعدادات حماية لوحة التحكم غير مكتملة على الخادم." }, 503);
