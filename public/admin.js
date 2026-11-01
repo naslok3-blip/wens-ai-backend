@@ -81,7 +81,7 @@ async function refreshStatus() {
   try {
     const data = await request("/api/admin/status");
     const f = data.features || {};
-    setState("openaiState", f.openai ? "المفتاح مربوط" : "المفتاح غير مربوط", !!f.openai);
+    setState("workersAiState", f.workersAI ? "متصل ويعمل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج تطبيق الجداول", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
     setState("videoState", f.videoAvatar ? "الإعداد مكتمل" : "بانتظار الإعداد", !!f.videoAvatar);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
@@ -128,16 +128,16 @@ $("adminLogoutBtn").addEventListener("click", async () => {
   gateMessage("تم تسجيل خروج المدير.");
 });
 $("refreshStatusBtn").addEventListener("click", refreshStatus);
-$("testOpenAiBtn").addEventListener("click", async () => {
+$("testWorkersAiBtn").addEventListener("click", async () => {
   $("testOpenAiBtn").disabled = true;
-  serviceMessage("جاري إرسال طلب اختبار صغير إلى OpenAI...");
+  serviceMessage("جاري اختبار Cloudflare Workers AI...");
   try {
-    const result = await request("/api/admin/test-openai", {}, "POST");
+    const result = await request("/api/admin/test-ai", {}, "POST");
     serviceMessage("اختبار ناجح ✓ رد الخدمة: " + result.reply);
-    setState("openaiState", "يعمل بنجاح", true);
+    setState("workersAiState", "يعمل بنجاح", true);
   } catch (error) {
     serviceMessage(error.message, true);
-    setState("openaiState", "فشل الاختبار", false);
+    setState("workersAiState", "فشل الاختبار", false);
   } finally {
     $("testOpenAiBtn").disabled = false;
   }
