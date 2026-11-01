@@ -1,0 +1,36 @@
+name: Wens Quality Checks
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check worker.js
+          node --check app.js
+          node --check admin.js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate D1 migration
+        run: |
+          python - <<'PY'
+          import sqlite3
+          db = sqlite3.connect(':memory:')
+          db.executescript(open('migrations/0001_initial.sql', encoding='utf-8').read())
+          expected = {'users', 'sessions', 'messages'}
+          actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+          assert expected.issubset(actual), f"Missing tables: {expected - actual}"
+          print("D1 schema validated:", ', '.join(sorted(expected)))
+          PY
