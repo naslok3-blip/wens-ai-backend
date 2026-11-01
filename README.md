@@ -59,7 +59,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 - `LIVEKIT_API_SECRET`: السر المقابل لمفتاح LiveKit.
 - `LIVEKIT_URL`: عنوان LiveKit الآمن، غالبًا يبدأ بـ `wss://`.
 
-في النسخة الحالية تم ربط Workers AI باسم `AI` وقاعدة D1 باسم `DB` في `wrangler.jsonc`، كما طُبّق migration الأول على قاعدة الإنتاج. لا تنشئ قاعدة ثانية لنفس المشروع. افحص `GET /api/health`؛ يعرض `features.workersAI` و`features.database` و`features.videoAvatar`، كما يعرض `features.openai` فقط لتوضيح وجود مسار احتياطي قديم.
+في النسخة الحالية تم ربط Workers AI باسم `AI` وقاعدة D1 باسم `DB` في `wrangler.jsonc`، كما طُبّق migration الأول على قاعدة الإنتاج. لا تنشئ قاعدة ثانية لنفس المشروع. افحص `GET /api/health`؛ يعرض `features.workersAI` و`features.database` و`features.videoAvatar`. مسار المحادثة يستخدم Workers AI فقط ولا يستدعي OpenAI.
 - `POST /api/admin/login` و`GET /api/admin/session` و`POST /api/admin/logout` — جلسة لوحة المدير.
 - `GET /api/admin/status` — فحص حالة الخدمات بعد التحقق من المدير.
 - `POST /api/admin/test-ai` — اختبار نموذج Workers AI، ويستهلك جزءًا صغيرًا من الحصة المجانية.
