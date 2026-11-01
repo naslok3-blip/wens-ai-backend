@@ -153,9 +153,16 @@ async function handleChat(request, env, user) {
     });
     const result = await upstream.json();
     if (!upstream.ok) {
-      if (upstream.status === 429) return json({ error: "طلبات كتير دلوقتي؛ استنى شوية وجرب تاني." }, 429);
-      if (upstream.status === 401 || upstream.status === 403) return json({ error: "مفتاح OpenAI مرفوض أو غير مربوط بالمشروع الصحيح." }, 502);
-      return json({ error: "خدمة الذكاء الاصطناعي رجّعت خطأ. راجع إعدادات OpenAI." }, 502);
+      const upstreamMessage = String(result?.error?.message || "").slice(0, 220);
+      const upstreamCode = String(result?.error?.code || "");
+      if (upstream.status === 429 && (upstreamCode === "insufficient_quota" || /quota|billing/i.test(upstreamMessage))) {
+        return json({ error: "مفتاح OpenAI وصل لحد الرصيد أو حدود الاستخدام. راجع Billing وحدود المشروع في OpenAI." }, 429);
+      }
+      if (upstream.status === 429) return json({ error: "طلبات كتير على OpenAI حاليًا؛ انتظر قليلًا وجرب تاني." }, 429);
+      if (upstream.status === 401 || upstream.status === 403) return json({ error: "مفتاح OpenAI غير صحيح أو ليس لديه صلاحية لهذا المشروع. تأكد أنه Secret باسم OPENAI_API_KEY على نفس Worker المستخدم في التطبيق." }, 502);
+      if (upstream.status === 404) return json({ error: "نموذج الذكاء الاصطناعي غير موجود أو غير متاح لهذا المفتاح. راجع OPENAI_MODEL في إعدادات Worker." }, 502);
+      if (upstream.status === 400) return json({ error: "OpenAI رفض صيغة الطلب: " + (upstreamMessage || "بيانات الطلب غير مقبولة.") }, 502);
+      return json({ error: "خطأ من خدمة OpenAI (" + upstream.status + "): " + (upstreamMessage || "تعذّر تنفيذ الطلب.") }, 502);
     }
     const reply = result?.choices?.[0]?.message?.content?.trim();
     if (!reply) return json({ error: "لم يصل رد نصي من خدمة الذكاء الاصطناعي." }, 502);
