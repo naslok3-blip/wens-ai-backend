@@ -40,7 +40,7 @@ jobs:
           features = data.get('features', {})
           print('Worker host:', os.environ['HOST'])
           print('Service healthy:', data.get('ok'))
-          print('OpenAI key configured:', features.get('openai', data.get('configured', False)))
+          print('Cloudflare Workers AI configured:', features.get('workersAI', False))
           print('Database configured:', features.get('database', False))
           print('Video service configured:', features.get('videoAvatar', False))
           PY
