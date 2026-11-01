@@ -5,4 +5,4 @@
 ## البناء
 افتح مجلد android في Android Studio مع JDK 17 وAndroid SDK 35، أو استخدم GitHub Actions من تبويب Actions لبناء APK تجريبي.
 
-مفتاح OpenAI لا يوضع في التطبيق. يلزم إعداد OPENAI_API_KEY كـ Secret داخل Cloudflare Worker حتى تعمل الدردشة.
+لا يحتاج التطبيق مفتاح OpenAI. الدردشة تعمل عبر Cloudflare Workers AI المرتبط بالـWorker، وتستخدم الحصة المجانية اليومية المتاحة للحساب. لا تضع مفاتيح API داخل APK.
