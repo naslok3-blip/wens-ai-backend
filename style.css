@@ -30,3 +30,6 @@
 @keyframes avatarTalk{to{transform:scale(1.12);filter:brightness(1.2)}}
 .btn.danger{background:#9d3452;color:#fff}
 @media(max-width:480px){.top-actions{gap:5px}.top-actions .admin-shortcut{font-size:11px;padding:8px}.auth-panel{margin:22px auto}.video-grid{grid-template-columns:1fr}.local-video-box{width:58%}}
+
+.system-status{margin:14px 0 0;padding:10px 12px;border-radius:12px;background:#ffffff08;border:1px solid #ffffff15;color:#ffcf8f;font-size:11px;line-height:1.8}
+.system-status.all-ready{color:#9be7c1;border-color:#4bba8a55;background:#35a87812}
