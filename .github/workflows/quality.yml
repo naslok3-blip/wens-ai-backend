@@ -28,6 +28,22 @@ jobs:
           cmp app.js public/app.js
           cmp style.css public/style.css
           cmp manifest.json public/manifest.json
+      - name: Check deployed Wens Worker configuration
+        continue-on-error: true
+        run: |
+          if ! curl --connect-timeout 10 --max-time 20 -fsS "https://wens-ai-backend-b142.naqashy1.workers.dev/api/health" -o /tmp/wens-health.json; then
+            echo "Live Worker health endpoint could not be reached from this runner."
+            exit 0
+          fi
+          python - <<'PY'
+          import json
+          data = json.load(open('/tmp/wens-health.json', encoding='utf-8'))
+          features = data.get('features', {})
+          print('Worker:', data.get('service'), 'healthy:', data.get('ok'))
+          print('OpenAI key configured:', features.get('openai', data.get('configured', False)))
+          print('Database configured:', features.get('database', False))
+          print('Video service configured:', features.get('videoAvatar', False))
+          PY
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
