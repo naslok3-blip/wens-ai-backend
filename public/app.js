@@ -7,6 +7,50 @@ let localTracks = [];
 let liveKitModule = null;
 let micEnabled = true;
 let cameraEnabled = true;
+const appSettings = loadLocalSettings();
+
+function loadLocalSettings() {
+  const defaults = {
+    appName: "ونس AI", assistantName: "ونس", eyebrow: "موجودة علشانك",
+    welcomeTitle: "أهلًا بيك، أنا ونس 💜",
+    welcomeText: "اتكلم معايا أو افتح مكالمة فيديو مع شخص تحبه.",
+    greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
+    voiceButton: "اتكلم معايا", cameraButton: "📹 مكالمة فيديو",
+    voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
+    enableVoice: true, enableCamera: true, voiceLocale: "ar-EG"
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return defaults;
+    return {
+      ...defaults,
+      ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
+        key in defaults && typeof value === typeof defaults[key]
+      ))
+    };
+  } catch { return defaults; }
+}
+
+function applyLocalSettings() {
+  document.title = appSettings.appName;
+  $("brandName").textContent = appSettings.appName;
+  $("eyebrowText").textContent = appSettings.eyebrow;
+  $("welcomeTitle").textContent = appSettings.welcomeTitle;
+  $("welcomeText").textContent = appSettings.welcomeText;
+  $("voiceButtonText").textContent = appSettings.voiceButton;
+  $("cameraBtn").textContent = appSettings.cameraButton;
+  $("voiceBtn").hidden = !appSettings.enableVoice;
+  $("cameraBtn").hidden = !appSettings.enableCamera;
+  const themes = {
+    purple: ["#b49aff", "#ffacd6"],
+    blue: ["#83baff", "#8ce8ef"],
+    green: ["#8cddb4", "#c5ed9a"],
+    rose: ["#ff9fc1", "#ffc4a6"]
+  };
+  const colors = themes[appSettings.theme] || themes.purple;
+  document.documentElement.style.setProperty("--purple", colors[0]);
+  document.documentElement.style.setProperty("--pink", colors[1]);
+}
 
 async function api(path, body, method = "POST") {
   const response = await fetch(path, {
@@ -86,7 +130,7 @@ async function loadChatHistory() {
   try {
     const data = await api("/api/chat/history", undefined, "GET");
     for (const item of data.messages || []) addMessage(item.content, item.role);
-    if (!(data.messages || []).length) addMessage("أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.");
+    if (!(data.messages || []).length) addMessage(appSettings.greeting);
   } catch (error) {
     addMessage("تعذّر تحميل المحادثة: " + error.message);
   }
@@ -137,9 +181,9 @@ $("clearBtn").addEventListener("click", () => {
 function speak(text) {
   if (!("speechSynthesis" in window)) return;
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "ar-EG";
-  utterance.rate = 0.96;
-  utterance.pitch = 1.12;
+  utterance.lang = appSettings.voiceLocale;
+  utterance.rate = Math.min(1.35, Math.max(0.65, Number(appSettings.voiceRate) || 0.96));
+  utterance.pitch = Math.min(1.5, Math.max(0.7, Number(appSettings.voicePitch) || 1.12));
   const voices = speechSynthesis.getVoices();
   utterance.voice = voices.find(v => v.lang.toLowerCase().startsWith("ar-eg")) || voices.find(v => v.lang.toLowerCase().startsWith("ar")) || null;
   speechSynthesis.cancel();
@@ -153,7 +197,7 @@ $("voiceBtn").addEventListener("click", () => {
   }
   if (recognition) { recognition.stop(); return; }
   recognition = new SpeechRecognition();
-  recognition.lang = "ar-EG";
+  recognition.lang = appSettings.voiceLocale;
   recognition.interimResults = false;
   recognition.onstart = () => { $("voiceStatus").textContent = "سامعاك... اتكلم دلوقتي 🎙️"; $("voiceBtn").classList.add("listening"); };
   recognition.onresult = event => { $("messageInput").value = event.results[0][0].transcript; $("chatForm").requestSubmit(); };
@@ -303,6 +347,7 @@ async function loadSystemStatus() {
   }
 }
 async function boot() {
+  applyLocalSettings();
   updateAuthMode();
   loadSystemStatus();
   try {
