@@ -241,15 +241,36 @@ async function adminRoute(request, env, path) {
     return json({
       ok: true,
       checkedAt: new Date().toISOString(),
-      model: env.OPENAI_MODEL || "gpt-4o-mini",
+      model: env.WENS_AI_MODEL || (env.AI ? "@cf/meta/llama-3.2-1b-instruct" : (env.OPENAI_MODEL || "غير محدد")),
       features: {
-        openai: Boolean(env.OPENAI_API_KEY),
+        workersAI: Boolean(env.AI),
+        openaiFallback: Boolean(env.OPENAI_API_KEY),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
         databaseSchemaReady,
         videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
       }
     });
+  }
+  if (path === "/api/admin/test-ai" && request.method === "POST") {
+    if (!env.AI) return json({ error: "ربط Cloudflare Workers AI غير موجود على هذا الخادم." }, 503);
+    try {
+      const model = env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct";
+      const result = await env.AI.run(model, {
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: "اكتبي كلمة واحدة فقط: جاهزة" }
+        ],
+        temperature: 0,
+        max_tokens: 12
+      });
+      const reply = typeof result?.response === "string" ? result.response.trim() : "";
+      return reply
+        ? json({ ok: true, model, reply })
+        : json({ error: "تم الاتصال بالنموذج لكنه لم يرجع نصًا." }, 502);
+    } catch {
+      return json({ error: "تعذّر تشغيل نموذج Cloudflare Workers AI. راجع الحصة اليومية وحالة النموذج." }, 502);
+    }
   }
   if (path === "/api/admin/test-openai" && request.method === "POST") {
     if (!env.OPENAI_API_KEY) return json({ error: "مفتاح OPENAI_API_KEY غير مربوط بهذا الخادم." }, 503);
