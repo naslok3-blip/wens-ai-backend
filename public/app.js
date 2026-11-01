@@ -82,7 +82,9 @@ function showApp(user) {
   $("authPanel").hidden = true;
   $("appRoot").hidden = false;
   $("logoutBtn").hidden = false;
-  $("accountLabel").textContent = "مسجّل الدخول: " + user.name;
+  $("accountLabel").textContent = user.id === "guest"
+    ? "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات"
+    : "مسجّل الدخول: " + user.name;
   loadChatHistory();
 }
 function updateAuthMode() {
@@ -346,14 +348,20 @@ async function loadSystemStatus() {
     ];
     $("systemStatus").textContent = labels.join(" · ");
     $("systemStatus").classList.toggle("all-ready", !!(f.openai && f.database && f.videoAvatar));
+    return data;
   } catch {
     $("systemStatus").textContent = "تعذّر فحص حالة الخادم.";
+    return null;
   }
 }
 async function boot() {
   applyLocalSettings();
   updateAuthMode();
-  loadSystemStatus();
+  const health = await loadSystemStatus();
+  if (health && health.ok && health.features && !health.features.database) {
+    showApp({ id: "guest", name: "زائر" });
+    return;
+  }
   try {
     const data = await api("/api/auth/me", undefined, "GET");
     showApp(data.user);
