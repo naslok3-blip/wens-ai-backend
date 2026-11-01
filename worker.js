@@ -348,14 +348,21 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     if (request.method === "GET" && path === "/api/health") {
+      // Report binding presence without ever exposing the secret value.
+      const openAiKeyBindingPresent = typeof env.OPENAI_API_KEY === "string";
+      const openAiKeyValuePresent = openAiKeyBindingPresent && env.OPENAI_API_KEY.trim().length > 0;
       return json({
         ok: true,
         service: "wens-ai",
-        configured: Boolean(env.OPENAI_API_KEY),
+        configured: openAiKeyValuePresent,
         features: {
-          openai: Boolean(env.OPENAI_API_KEY),
+          openai: openAiKeyValuePresent,
           database: Boolean(env.DB),
           videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
+        },
+        diagnostics: {
+          openAiKeyBindingPresent,
+          openAiKeyValuePresent
         }
       });
     }
