@@ -3,7 +3,7 @@
   "main": "worker.js",
   "compatibility_date": "2026-10-30",
   "assets": {
-    "directory": ".",
+    "directory": "./public",
     "binding": "ASSETS"
   },
   "secrets": {
