@@ -20,6 +20,14 @@ jobs:
           node --check worker.js
           node --check app.js
           node --check admin.js
+          node --check public/app.js
+          node --check public/admin.js
+      - name: Verify published assets are in sync
+        run: |
+          cmp index.html public/index.html
+          cmp app.js public/app.js
+          cmp style.css public/style.css
+          cmp manifest.json public/manifest.json
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
