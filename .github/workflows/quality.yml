@@ -48,6 +48,17 @@ jobs:
               echo "$host: health endpoint unavailable"
             fi
           done
+          echo "Checking deployed app and profile image"
+          if curl --connect-timeout 10 --max-time 20 -fsS "https://wens-ai-backend-b142.naqashy1.workers.dev/" -o /tmp/wens-index.html; then
+            if grep -q 'hero-portrait' /tmp/wens-index.html; then echo "Deployed app contains Wens portrait layout"; else echo "Deployed app is still an older version"; fi
+          else
+            echo "App homepage could not be downloaded"
+          fi
+          if curl --connect-timeout 10 --max-time 20 -fsS "https://wens-ai-backend-b142.naqashy1.workers.dev/avatar.jpg" -o /tmp/wens-avatar.jpg; then
+            echo "Profile image is deployed; bytes: $(wc -c < /tmp/wens-avatar.jpg)"
+          else
+            echo "Profile image is not deployed to the live Worker yet"
+          fi
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
