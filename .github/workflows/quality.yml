@@ -28,37 +28,41 @@ jobs:
           cmp app.js public/app.js
           cmp style.css public/style.css
           cmp manifest.json public/manifest.json
-      - name: Diagnose all deployed Wens Workers
-        continue-on-error: true
+      - name: Verify production Worker, Workers AI, D1 and static assets
         run: |
-          for host in wens-ai-backend-b142 wens-aii wens-ai; do
-            echo "Checking $host.naqashy1.workers.dev"
-            if curl --connect-timeout 10 --max-time 20 -fsS "https://$host.naqashy1.workers.dev/api/health" -o /tmp/wens-health.json; then
-              HOST="$host" python - <<'PY'
-          import json, os
+          set -euo pipefail
+          BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
+          echo "Checking production health and required bindings"
+          curl --fail --silent --show-error --retry 3 --retry-delay 2 --connect-timeout 10 --max-time 30 "$BASE/api/health" -o /tmp/wens-health.json
+          python - <<'PY'
+          import json
           data = json.load(open('/tmp/wens-health.json', encoding='utf-8'))
           features = data.get('features', {})
-          print('Worker host:', os.environ['HOST'])
-          print('Service healthy:', data.get('ok'))
-          print('Cloudflare Workers AI configured:', features.get('workersAI', False))
-          print('Database configured:', features.get('database', False))
-          print('Video service configured:', features.get('videoAvatar', False))
+          assert data.get('ok') is True, f"Worker health failed: {data}"
+          assert features.get('workersAI') is True, f"Workers AI binding missing: {features}"
+          assert features.get('database') is True, f"D1 binding missing: {features}"
+          assert data.get('configured') is True, "No AI service is configured"
+          print("Production health: OK")
+          print("Cloudflare Workers AI binding: OK")
+          print("D1 binding: OK")
+          print("LiveKit:", "configured" if features.get('videoAvatar') else "not configured (optional)")
           PY
-            else
-              echo "$host: health endpoint unavailable"
-            fi
-          done
-          echo "Checking deployed app and profile image"
-          if curl --connect-timeout 10 --max-time 20 -fsS "https://wens-ai-backend-b142.naqashy1.workers.dev/" -o /tmp/wens-index.html; then
-            if grep -q 'hero-portrait' /tmp/wens-index.html; then echo "Deployed app contains Wens portrait layout"; else echo "Deployed app is still an older version"; fi
-          else
-            echo "App homepage could not be downloaded"
-          fi
-          if curl --connect-timeout 10 --max-time 20 -fsS "https://wens-ai-backend-b142.naqashy1.workers.dev/avatar.jpg" -o /tmp/wens-avatar.jpg; then
-            echo "Profile image is deployed; bytes: $(wc -c < /tmp/wens-avatar.jpg)"
-          else
-            echo "Profile image is not deployed to the live Worker yet"
-          fi
+          echo "Checking D1-backed authentication route without creating a user"
+          AUTH_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 -o /tmp/wens-auth-probe.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' -X POST \
+            --data '{"email":"quality-probe@invalid.example","password":"not-a-real-account"}' \
+            "$BASE/api/auth/login")
+          test "$AUTH_STATUS" = "401"
+          echo "D1-backed login query: OK (unknown probe account rejected)"
+          echo "Checking deployed HTML, JavaScript, CSS and avatar assets"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/" -o /tmp/wens-index.html
+          grep -q 'id="chatForm"' /tmp/wens-index.html
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
+          grep -q 'Cloudflare AI' /tmp/wens-app.js
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/style.css" -o /tmp/wens-style.css
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.svg" -o /tmp/wens-avatar.svg
+          grep -q '<svg' /tmp/wens-avatar.svg
+          echo "Production web assets: OK"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
