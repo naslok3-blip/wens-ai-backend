@@ -8,5 +8,13 @@
   },
   "ai": {
     "binding": "AI"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wens-ai-db",
+      "database_id": "a58c68d5-19a5-494f-a65e-4531a624fc34",
+      "migrations_dir": "migrations"
+    }
+  ]
 }
