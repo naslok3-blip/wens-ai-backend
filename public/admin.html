@@ -1,13 +1,114 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111124"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="admin.css"><title>لوحة إدارة ونس AI</title></head><body>
-<header class="topbar"><a class="brand" href="index.html"><span class="logo">و</span><span><b>ونس AI</b><small>مركز الإدارة</small></span></a><a class="admin-shortcut" href="index.html">← التطبيق</a></header>
-<main class="admin-wrap"><section class="admin-heading"><p class="eyebrow">CONTROL CENTER</p><h1>لوحة إدارة ونس AI</h1><p>عدّل شكل التطبيق ورسائل الترحيب وإعدادات الصوت من موبايلك.</p></section>
-<div class="admin-grid"><nav class="admin-nav"><button class="nav-btn active" data-tab="overview">▦ نظرة عامة</button><button class="nav-btn" data-tab="identity">◈ هوية التطبيق</button><button class="nav-btn" data-tab="assistant">✧ إعدادات المساعدة</button><button class="nav-btn" data-tab="features">⚙ الميزات</button><button class="nav-btn" data-tab="content">☷ رسائل البداية</button><button class="nav-btn" data-tab="backup">⇩ حفظ واسترجاع</button></nav>
-<div class="admin-content">
-<section class="tab-page active" id="tab-overview"><h2>أهلًا بيك في لوحة التحكم</h2><p class="muted">دي لوحة إعدادات محلية للنموذج الأولي. التعديلات بتتخزن في نفس المتصفح على نفس الجهاز.</p><div class="stat-grid"><div class="stat"><b>6</b><span>أقسام إدارية</span></div><div class="stat"><b>📱</b><span>متوافق مع الموبايل</span></div><div class="stat"><b>محلي</b><span>حفظ على الجهاز</span></div></div><div class="notice">مهم: اللوحة دي مش محمية بحساب مدير، ومش مناسبة لإدارة مستخدمين حقيقيين أو مفاتيح API. ده محتاج خادم وتسجيل دخول آمن.</div><a class="btn primary link-btn" href="index.html">فتح التطبيق</a></section>
-<section class="tab-page" id="tab-identity"><h2>هوية التطبيق</h2><div class="field"><label>اسم التطبيق</label><input id="appName" maxlength="45" value="ونس AI"></div><div class="field"><label>اسم الشخصية</label><input id="assistantName" maxlength="35" value="ونس"></div><div class="field"><label>لون التصميم</label><select id="theme"><option value="purple">بنفسجي ووردي</option><option value="blue">أزرق وسماوي</option><option value="green">أخضر هادئ</option><option value="rose">وردي دافئ</option></select></div></section>
-<section class="tab-page" id="tab-assistant"><h2>إعدادات المساعدة</h2><div class="field"><label>لغة الصوت والتعرّف</label><select id="voiceLocale"><option value="ar-EG">العربية - مصر</option><option value="ar-SA">العربية - السعودية</option><option value="en-US">English - US</option></select></div><div class="field"><label>سرعة الصوت: <output id="rateOut">0.96</output></label><input id="voiceRate" type="range" min="0.65" max="1.35" step="0.05" value="0.96"></div><div class="field"><label>حدة الصوت: <output id="pitchOut">1.12</output></label><input id="voicePitch" type="range" min="0.7" max="1.5" step="0.05" value="1.12"></div><p class="muted">الصوت الأنثوي المتاح يعتمد على الأصوات المثبتة في جهازك والمتصفح؛ هذا الإعداد لا ينشئ صوتًا جديدًا.</p></section>
-<section class="tab-page" id="tab-features"><h2>الميزات</h2><label class="toggle-row"><span><b>المحادثة الصوتية</b><small>إظهار زر الميكروفون</small></span><input id="enableVoice" type="checkbox" checked></label><label class="toggle-row"><span><b>الكاميرا</b><small>السماح بعرض زر الكاميرا</small></span><input id="enableCamera" type="checkbox" checked></label><div class="notice">إيقاف الزر يخفي الميزة من الواجهة، لكنه لا يغني عن صلاحيات المتصفح أو توصيل خدمات الذكاء الاصطناعي.</div></section>
-<section class="tab-page" id="tab-content"><h2>رسائل البداية</h2><div class="field"><label>عبارة قصيرة أعلى الشاشة</label><input id="eyebrow" maxlength="80"></div><div class="field"><label>عنوان الترحيب</label><input id="welcomeTitle" maxlength="100"></div><div class="field"><label>الوصف الرئيسي</label><textarea id="welcomeText" rows="3" maxlength="240"></textarea></div><div class="field"><label>رسالة أول محادثة</label><textarea id="greeting" rows="3" maxlength="350"></textarea></div><div class="field"><label>نص زر الصوت</label><input id="voiceButton" maxlength="45"></div><div class="field"><label>نص زر الكاميرا</label><input id="cameraButton" maxlength="45"></div></section>
-<section class="tab-page" id="tab-backup"><h2>حفظ واسترجاع الإعدادات</h2><p class="muted">نزّل نسخة من إعداداتك أو استرجع ملف JSON محفوظ سابقًا.</p><div class="actions left-actions"><button id="exportBtn" class="btn primary">تنزيل نسخة إعدادات</button><label class="btn secondary file-label">استرجاع ملف<input id="importFile" type="file" accept="application/json,.json" hidden></label><button id="resetBtn" class="btn secondary">إرجاع الافتراضي</button></div><p id="backupStatus" class="status-line"></p></section>
-<div class="save-bar"><span id="saveStatus" class="muted">التعديلات غير محفوظة حتى تضغط حفظ.</span><button id="saveBtn" class="btn primary">حفظ التعديلات</button></div>
-</div></div></main><script src="admin.js"></script></body></html>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111124">
+<meta name="robots" content="noindex,nofollow">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="admin.css">
+<title>مركز إدارة ونس AI</title>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="index.html"><span class="logo">و</span><span><b>ونس AI</b><small>مركز الإدارة المحمي</small></span></a>
+  <div class="top-actions"><a class="admin-shortcut" href="index.html">العودة للتطبيق</a></div>
+</header>
+<main class="admin-wrap">
+  <section id="adminGate" class="panel admin-gate">
+    <div class="auth-mark">و</div>
+    <p class="eyebrow">PRIVATE CONTROL CENTER</p>
+    <h1>دخول المدير</h1>
+    <p class="muted">لوحة التحكم خاصة بصاحب التطبيق. أدخل الرقم السري للمتابعة.</p>
+    <form id="adminLoginForm" class="admin-login-form">
+      <label for="adminPin">الرقم السري</label>
+      <input id="adminPin" type="password" inputmode="numeric" autocomplete="current-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12" placeholder="من 6 إلى 12 رقمًا" required>
+      <button id="adminLoginBtn" class="btn primary" type="submit">فتح لوحة التحكم</button>
+    </form>
+    <p id="adminGateStatus" class="status-line" role="status" aria-live="polite"></p>
+    <p class="disclaimer">التحقق يتم على الخادم، ولا يتم حفظ الرقم السري في الهاتف أو المتصفح.</p>
+  </section>
+
+  <div id="adminApp" hidden>
+    <section class="admin-heading">
+      <p class="eyebrow">PRIVATE CONTROL CENTER</p>
+      <h1>لوحة إدارة ونس AI</h1>
+      <p>متابعة الخدمات وتخصيص تجربة التطبيق من مكان واحد.</p>
+      <div class="admin-heading-actions">
+        <button id="refreshStatusBtn" class="btn secondary">تحديث حالة الخدمات</button>
+        <button id="adminLogoutBtn" class="btn danger">تسجيل خروج المدير</button>
+      </div>
+    </section>
+    <section class="service-panel">
+      <div class="section-head"><div><h2>حالة الخادم والخدمات</h2><p id="checkedAt">لم يتم الفحص بعد</p></div></div>
+      <div class="service-grid">
+        <article class="service-card"><span class="service-icon">✧</span><b>الذكاء الاصطناعي</b><strong id="openaiState" class="state-pending">جارٍ الفحص</strong><small id="modelName">النموذج: —</small></article>
+        <article class="service-card"><span class="service-icon">▤</span><b>قاعدة البيانات</b><strong id="databaseState" class="state-pending">جارٍ الفحص</strong><small id="databaseDetail">اتصال D1</small></article>
+        <article class="service-card"><span class="service-icon">▣</span><b>مكالمات الفيديو</b><strong id="videoState" class="state-pending">جارٍ الفحص</strong><small>إعدادات LiveKit</small></article>
+      </div>
+      <div class="service-actions">
+        <button id="testOpenAiBtn" class="btn primary">اختبار اتصال OpenAI الآن</button>
+        <p id="serviceStatus" class="status-line" role="status" aria-live="polite"></p>
+      </div>
+      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. اختبار OpenAI يرسل طلبًا صغيرًا وقد يستهلك قدرًا ضئيلًا من رصيد API.</p>
+    </section>
+
+    <div class="admin-grid">
+      <nav class="admin-nav" aria-label="أقسام لوحة الإدارة">
+        <button class="nav-btn active" data-tab="overview">▦ نظرة عامة</button>
+        <button class="nav-btn" data-tab="identity">◈ هوية التطبيق</button>
+        <button class="nav-btn" data-tab="assistant">✧ الصوت والمساعدة</button>
+        <button class="nav-btn" data-tab="features">⚙ الميزات</button>
+        <button class="nav-btn" data-tab="content">☷ رسائل البداية</button>
+        <button class="nav-btn" data-tab="backup">⇩ النسخ والاسترجاع</button>
+      </nav>
+      <div class="admin-content">
+        <section class="tab-page active" id="tab-overview">
+          <h2>نظرة عامة</h2>
+          <p class="muted">تظهر إعدادات الخادم الحقيقية في بطاقات الحالة أعلى الصفحة. إعدادات الشكل التالية تُحفظ على هذا الجهاز فقط.</p>
+          <div class="notice">مفاتيح OpenAI وLiveKit ورقم مدير اللوحة لا تُدار من هذه الصفحة ولا تُحفظ في المتصفح. أضفها كـ Secrets في Cloudflare Worker.</div>
+          <div class="stat-grid"><div class="stat"><b>محمية</b><span>جلسة مدير مؤقتة</span></div><div class="stat"><b>HTTPS</b><span>اتصال مشفر</span></div><div class="stat"><b>محلي</b><span>تخصيص الواجهة</span></div></div>
+          <a class="btn secondary link-btn" href="index.html">فتح التطبيق</a>
+        </section>
+        <section class="tab-page" id="tab-identity">
+          <h2>هوية التطبيق</h2>
+          <div class="field"><label for="appName">اسم التطبيق</label><input id="appName" maxlength="45" value="ونس AI"></div>
+          <div class="field"><label for="assistantName">اسم الشخصية</label><input id="assistantName" maxlength="35" value="ونس"></div>
+          <div class="field"><label for="theme">لون التصميم</label><select id="theme"><option value="purple">بنفسجي ووردي</option><option value="blue">أزرق وسماوي</option><option value="green">أخضر هادئ</option><option value="rose">وردي دافئ</option></select></div>
+        </section>
+        <section class="tab-page" id="tab-assistant">
+          <h2>الصوت والمساعدة</h2>
+          <div class="field"><label for="voiceLocale">لغة الصوت والتعرّف</label><select id="voiceLocale"><option value="ar-EG">العربية - مصر</option><option value="ar-SA">العربية - السعودية</option><option value="en-US">English - US</option></select></div>
+          <div class="field"><label for="voiceRate">سرعة الصوت: <output id="rateOut">0.96</output></label><input id="voiceRate" type="range" min="0.65" max="1.35" step="0.05" value="0.96"></div>
+          <div class="field"><label for="voicePitch">حدة الصوت: <output id="pitchOut">1.12</output></label><input id="voicePitch" type="range" min="0.7" max="1.5" step="0.05" value="1.12"></div>
+          <p class="muted">الصوت المتاح يعتمد على الأصوات المثبتة في الجهاز. هذه الإعدادات تضبط صوت النظام ولا تنشئ صوتًا بشريًا جديدًا.</p>
+        </section>
+        <section class="tab-page" id="tab-features">
+          <h2>الميزات</h2>
+          <label class="toggle-row"><span><b>المحادثة الصوتية</b><small>إظهار زر الميكروفون</small></span><input id="enableVoice" type="checkbox" checked></label>
+          <label class="toggle-row"><span><b>مكالمات الفيديو</b><small>إظهار زر الكاميرا</small></span><input id="enableCamera" type="checkbox" checked></label>
+          <div class="notice">إخفاء الزر لا يفعّل الخدمة من تلقاء نفسه؛ يلزم إعداد الخدمة وأذونات الجهاز.</div>
+        </section>
+        <section class="tab-page" id="tab-content">
+          <h2>رسائل البداية</h2>
+          <div class="field"><label for="eyebrow">عبارة قصيرة أعلى الشاشة</label><input id="eyebrow" maxlength="80"></div>
+          <div class="field"><label for="welcomeTitle">عنوان الترحيب</label><input id="welcomeTitle" maxlength="100"></div>
+          <div class="field"><label for="welcomeText">الوصف الرئيسي</label><textarea id="welcomeText" rows="3" maxlength="240"></textarea></div>
+          <div class="field"><label for="greeting">رسالة أول محادثة</label><textarea id="greeting" rows="3" maxlength="350"></textarea></div>
+          <div class="field"><label for="voiceButton">نص زر الصوت</label><input id="voiceButton" maxlength="45"></div>
+          <div class="field"><label for="cameraButton">نص زر الكاميرا</label><input id="cameraButton" maxlength="45"></div>
+        </section>
+        <section class="tab-page" id="tab-backup">
+          <h2>النسخ والاسترجاع</h2>
+          <p class="muted">احفظ نسخة JSON من تخصيص الواجهة أو استرجع نسخة سابقة.</p>
+          <div class="actions left-actions"><button id="exportBtn" class="btn primary">تنزيل نسخة إعدادات</button><label class="btn secondary file-label">استرجاع ملف<input id="importFile" type="file" accept="application/json,.json" hidden></label><button id="resetBtn" class="btn secondary">إرجاع الافتراضي</button></div>
+          <p id="backupStatus" class="status-line"></p>
+        </section>
+        <div class="save-bar"><span id="saveStatus" class="muted">التعديلات غير محفوظة حتى تضغط حفظ.</span><button id="saveBtn" class="btn primary">حفظ التعديلات</button></div>
+      </div>
+    </div>
+  </div>
+</main>
+<script src="admin.js"></script>
+</body>
+</html>
