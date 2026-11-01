@@ -175,6 +175,12 @@ export default {
     }
     try {
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path);
+      if (path === "/api/chat/history" && request.method === "GET") {
+        const user = await currentUser(request, env);
+        if (!user) return json({ error: "سجّل الدخول الأول." }, 401);
+        const rows = await requireDb(env).prepare("SELECT role,content,created_at FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 60").bind(user.id).all();
+        return json({ messages: (rows.results || []).reverse() });
+      }
       if (path === "/api/chat" && request.method === "POST") {
         const user = await currentUser(request, env);
         if (!user) return json({ error: "سجّل الدخول الأول لاستخدام ونس." }, 401);
