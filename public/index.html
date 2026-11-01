@@ -27,7 +27,7 @@
 
 <div id="appRoot" hidden>
 <section class="hero">
-  <div class="orb"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="smile"></span></div><div class="hair"></div></div>
+  <img class="hero-portrait" src="avatar.jpg" alt="الصورة الشخصية لونس" width="192" height="192">
   <p class="eyebrow" id="eyebrowText">موجودة علشانك</p><h1 id="welcomeTitle">أهلًا بيك، أنا ونس 💜</h1>
   <p id="welcomeText" class="hero-text">اتكلم معايا أو افتح مكالمة فيديو مع شخص تحبه.</p>
   <div class="actions"><button id="voiceBtn" class="btn primary">🎙️ <span id="voiceButtonText">اتكلم معايا</span></button><button id="cameraBtn" class="btn secondary">📹 مكالمة فيديو</button></div>
@@ -35,7 +35,7 @@
 </section>
 
 <section id="callPanel" class="panel" hidden>
-  <div class="section-head"><div><h2>مكالمة فيديو بأفاتار</h2><p>أنشئ غرفة وشارك كودها مع الطرف الآخر.</p></div><button id="closeCallBtn" class="text-btn">إغلاق ✕</button></div>
+  <div class="section-head"><div><h2>مكالمة فيديو</h2><p>أنشئ غرفة وشارك كودها مع الطرف الآخر.</p></div><button id="closeCallBtn" class="text-btn">إغلاق ✕</button></div>
   <div class="call-controls">
     <label>كود الغرفة<input id="roomInput" maxlength="64" placeholder="اكتب كود الغرفة أو أنشئ واحدًا"></label>
     <div class="actions"><button id="createCallBtn" class="btn primary">إنشاء مكالمة</button><button id="joinCallBtn" class="btn secondary">انضمام</button></div>
@@ -43,12 +43,12 @@
   </div>
   <p id="callStatus" class="status-line" role="status"></p>
   <div id="videoStage" class="video-stage" hidden>
-    <div class="avatar-chip" id="avatarChip"><span>و</span><small>أفاتار ونس</small></div>
+    <div class="avatar-chip" id="avatarChip"><img src="avatar.jpg" alt="" width="42" height="42"><small>ونس معاك</small></div>
     <div id="remoteVideos" class="video-grid"></div>
     <div id="localVideoBox" class="local-video-box"><video id="localVideo" autoplay playsinline muted></video><small>أنت</small></div>
     <div class="actions"><button id="muteBtn" class="btn secondary">كتم الميكروفون</button><button id="cameraToggleBtn" class="btn secondary">إيقاف الكاميرا</button><button id="endCallBtn" class="btn danger">إنهاء المكالمة</button></div>
   </div>
-  <p class="disclaimer">يتطلب إعداد LiveKit على الخادم. الأفاتار الحالي شخصية مرئية متحركة بصريًا؛ مزامنة الشفاه أو توليد شخصية بشرية واقعية تحتاج مزود أفاتار منفصل.</p>
+  <p class="disclaimer">المحادثة الصوتية تستخدم صوت الجهاز. مكالمات الفيديو تحتاج إعداد خدمة LiveKit.</p>
 </section>
 
 <section class="panel">
