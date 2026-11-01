@@ -287,8 +287,25 @@ async function endCall(showMessage = true) {
   $("avatarChip").classList.remove("speaking");
   if (showMessage) setCallMessage("تم إنهاء المكالمة.");
 }
+async function loadSystemStatus() {
+  try {
+    const response = await fetch("/api/health", { cache: "no-store" });
+    const data = await response.json();
+    const f = data.features || {};
+    const labels = [
+      "OpenAI " + (f.openai ? "جاهز" : "غير مربوط"),
+      "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة"),
+      "الفيديو " + (f.videoAvatar ? "جاهز" : "بانتظار LiveKit")
+    ];
+    $("systemStatus").textContent = labels.join(" · ");
+    $("systemStatus").classList.toggle("all-ready", !!(f.openai && f.database && f.videoAvatar));
+  } catch {
+    $("systemStatus").textContent = "تعذّر فحص حالة الخادم.";
+  }
+}
 async function boot() {
   updateAuthMode();
+  loadSystemStatus();
   try {
     const data = await api("/api/auth/me", undefined, "GET");
     showApp(data.user);
