@@ -36,3 +36,6 @@
 
 /* Speech-driven avatar mouth motion (visual approximation, not photoreal lip sync). */
 .face.talking .smile{height:11px;width:13px;top:51px;border:2px solid #a34e68;border-top:0;border-radius:0 0 55% 55%;animation:mouthTalk .16s infinite alternate}.orb.talking{animation:avatarSpeak .55s infinite alternate}.face.talking{animation:faceSpeak .55s infinite alternate}@keyframes mouthTalk{from{transform:scaleY(.45)}to{transform:scaleY(1.25)}}@keyframes avatarSpeak{to{filter:brightness(1.12);box-shadow:0 0 0 9px #a28bff14,0 0 65px #a28bff65}}@keyframes faceSpeak{to{transform:translateY(1px)}}
+
+/* Photoreal Wens profile */
+.hero-portrait{display:block;width:clamp(142px,32vw,192px);height:clamp(142px,32vw,192px);object-fit:cover;object-position:center 34%;border-radius:50%;margin:0 auto 20px;border:3px solid #d4baff;box-shadow:0 0 0 9px #a28bff14,0 16px 55px #a28bff40;background:#20172e}.mini-avatar{overflow:hidden;object-fit:cover;border:1px solid #ffffff28}.avatar-chip img{width:42px;height:42px;object-fit:cover;object-position:center 34%;border-radius:50%;border:2px solid #c9b4ff;box-shadow:0 0 0 4px #b49aff20}.avatar-chip.speaking img{animation:avatarTalk .45s infinite alternate;box-shadow:0 0 0 7px #b49aff20}
