@@ -19,7 +19,7 @@ import android.widget.Toast
 class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var pendingRequest: PermissionRequest? = null
-    private val appHost = "wens-aii.naqashy1.workers.dev"
+    private val appHost = "wens-ai-backend-b142.naqashy1.workers.dev"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
