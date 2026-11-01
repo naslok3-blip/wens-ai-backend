@@ -10,15 +10,15 @@
 | تسجيل الدخول | تسجيل/دخول/خروج وجلسة Cookie آمنة | ربط D1 وتطبيق migration |
 | قاعدة البيانات | مخطط D1 للمستخدمين والجلسات والرسائل | إنشاء D1 وربطه باسم DB |
 | مكالمات الفيديو | واجهة WebRTC + إصدار LiveKit JWT من الخادم | LiveKit URL وAPI key وAPI secret |
-| ذكاء OpenAI | Chat Completions + حفظ الرسائل | Secret باسم OPENAI_API_KEY صالح ومربوط بالـ Worker الصحيح |
+| الذكاء الاصطناعي | Cloudflare Workers AI عبر binding باسم AI | حصة مجانية يومية وحدود النموذج |
 
-لا تعتبر الميزة متاحة لمجرد وجود كودها. افحص `GET /api/health` بعد النشر؛ سيعرض حالة OpenAI وقاعدة البيانات والفيديو كلٌّ على حدة.
+لا تعتبر الميزة متاحة لمجرد وجود كودها. افحص `GET /api/health` بعد النشر؛ سيعرض حالة Workers AI وقاعدة البيانات والفيديو كلٌّ على حدة.
 
 ## ملفات الواجهة المنشورة
 
 Cloudflare Workers Assets يخدم المجلد `public/` فقط طبقًا لإعداد `wrangler.jsonc`. لذلك يجب أن تكون كل صفحات وملفات الواجهة العامة داخل هذا المجلد. صفحة الإعدادات `/admin.html` وملفاتها موجودة داخله أيضًا. عند تعديل `index.html` أو `app.js` أو `style.css` في جذر المشروع، حدّث النسخة المقابلة في `public/`؛ فحص الجودة يقارن النسختين.
 
-لوحة `/admin.html` محمية بتسجيل دخول يتحقق منه الخادم عبر Secret، وتُفتح من التطبيق بالضغط على شعار ونس خمس مرات متتالية خلال 3 ثوانٍ (أو Ctrl+Shift+A على لوحة مفاتيح). جلسة المدير Cookie آمنة ومؤقتة. تخصيص الهوية والصوت ورسائل البداية يُحفظ محليًا على الجهاز الحالي؛ أما حالة الخدمات واختبار OpenAI فتُقرأ من الخادم. اللوحة لا تكشف المفاتيح ولا تدير أسرار الخادم.
+لوحة `/admin.html` محمية بتسجيل دخول يتحقق منه الخادم عبر Secret، وتُفتح من التطبيق بالضغط على شعار ونس خمس مرات متتالية خلال 3 ثوانٍ (أو Ctrl+Shift+A على لوحة مفاتيح). جلسة المدير Cookie آمنة ومؤقتة. تخصيص الهوية والصوت ورسائل البداية يُحفظ محليًا على الجهاز الحالي؛ أما حالة الخدمات واختبار Workers AI فتُقرأ من الخادم. اللوحة لا تكشف المفاتيح ولا تدير أسرار الخادم.
 
 ## إعداد قاعدة البيانات D1 (مرة واحدة)
 
@@ -53,7 +53,6 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 
 أضف القيم من Cloudflare Worker > Settings > Variables and Secrets > Secrets، ولا تضعها في ملفات المستودع:
 
-- `OPENAI_API_KEY`: مفتاح OpenAI صالح ومسموح له باستخدام API.
 - `WENS_ADMIN_PIN`: رقم مدير من 6 إلى 12 رقمًا.
 - `WENS_ADMIN_SESSION_SECRET`: سر عشوائي قوي لا يقل عن 32 حرفًا لتوقيع جلسات المدير؛ لا تستخدم الرقم السري نفسه.
 - `LIVEKIT_API_KEY`: مفتاح مشروع LiveKit.
@@ -65,7 +64,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 - `GET /api/health` — يعرض `features.openai` و`features.database` و`features.videoAvatar`.
 - `POST /api/admin/login` و`GET /api/admin/session` و`POST /api/admin/logout` — جلسة لوحة المدير.
 - `GET /api/admin/status` — فحص حالة الخدمات بعد التحقق من المدير.
-- `POST /api/admin/test-openai` — اختبار اتصال صغير بخدمة OpenAI بعد التحقق من المدير.
+- `POST /api/admin/test-ai` — اختبار اتصال صغير بـ Cloudflare Workers AI بعد التحقق من المدير.
 - `POST /api/auth/register` — إنشاء حساب.
 - `POST /api/auth/login` — تسجيل الدخول.
 - `GET /api/auth/me` — فحص الجلسة.
