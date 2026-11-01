@@ -123,6 +123,164 @@ async function liveKitToken(env, user, room) {
   const signature = await crypto.subtle.sign("HMAC", key, enc.encode(unsigned));
   return unsigned + "." + b64url(new Uint8Array(signature));
 }
+
+const ADMIN_COOKIE = "wens_admin";
+const ADMIN_SESSION_SECONDS = 4 * 60 * 60;
+const adminLoginAttempts = new Map();
+
+function adminCookie(token, maxAge = ADMIN_SESSION_SECONDS) {
+  return ADMIN_COOKIE + "=" + encodeURIComponent(token) +
+    "; Path=/api/admin; HttpOnly; Secure; SameSite=Strict; Max-Age=" + maxAge;
+}
+function adminAttemptAllowed(ip) {
+  const now = Date.now();
+  const item = adminLoginAttempts.get(ip);
+  if (!item || now - item.startedAt > 15 * 60 * 1000) {
+    adminLoginAttempts.set(ip, { startedAt: now, count: 0 });
+    return true;
+  }
+  return item.count < 5;
+}
+function recordAdminAttempt(ip) {
+  const item = adminLoginAttempts.get(ip) || { startedAt: Date.now(), count: 0 };
+  item.count += 1;
+  adminLoginAttempts.set(ip, item);
+}
+async function makeAdminSession(env) {
+  const expiresAt = Math.floor(Date.now() / 1000) + ADMIN_SESSION_SECONDS;
+  const nonce = b64url(crypto.getRandomValues(new Uint8Array(24)));
+  const payload = b64url(enc.encode(JSON.stringify({ exp: expiresAt, nonce })));
+  const key = await crypto.subtle.importKey(
+    "raw", enc.encode(env.WENS_ADMIN_SESSION_SECRET),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
+  return payload + "." + b64url(new Uint8Array(signature));
+}
+async function validAdminSession(request, env) {
+  if (!env.WENS_ADMIN_SESSION_SECRET) return false;
+  const raw = cookieValue(request.headers.get("Cookie"), ADMIN_COOKIE);
+  const parts = raw.split(".");
+  if (parts.length !== 2) return false;
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw", enc.encode(env.WENS_ADMIN_SESSION_SECRET),
+      { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
+    );
+    const valid = await crypto.subtle.verify(
+      "HMAC", key, fromB64url(parts[1]), enc.encode(parts[0])
+    );
+    if (!valid) return false;
+    const payload = JSON.parse(new TextDecoder().decode(fromB64url(parts[0])));
+    return Number.isInteger(payload.exp) && payload.exp > Math.floor(Date.now() / 1000) &&
+      typeof payload.nonce === "string" && payload.nonce.length >= 20;
+  } catch {
+    return false;
+  }
+}
+function adminConfigurationReady(env) {
+  return /^\d{6,12}$/.test(String(env.WENS_ADMIN_PIN || "")) &&
+    String(env.WENS_ADMIN_SESSION_SECRET || "").length >= 32;
+}
+async function adminRoute(request, env, path) {
+  if (path === "/api/admin/logout" && request.method === "POST") {
+    return json({ ok: true }, 200, { "Set-Cookie": adminCookie("", 0) });
+  }
+  if (path === "/api/admin/login" && request.method === "POST") {
+    if (!adminConfigurationReady(env)) {
+      return json({
+        error: "حماية لوحة التحكم لم تُضبط بعد. أضف WENS_ADMIN_PIN (من 6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي طويل لا يقل عن 32 حرفًا) إلى Secrets في نفس Worker."
+      }, 503);
+    }
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    if (!adminAttemptAllowed(ip)) {
+      return json({ error: "محاولات كثيرة. انتظر 15 دقيقة ثم جرّب مرة أخرى." }, 429);
+    }
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "الرقم السري غير صالح." }, 400); }
+    const pin = typeof body.pin === "string" ? body.pin : "";
+    if (!same(pin, String(env.WENS_ADMIN_PIN))) {
+      recordAdminAttempt(ip);
+      return json({ error: "الرقم السري غير صحيح." }, 401);
+    }
+    adminLoginAttempts.delete(ip);
+    return json({ ok: true }, 200, { "Set-Cookie": adminCookie(await makeAdminSession(env)) });
+  }
+  if (path === "/api/admin/session" && request.method === "GET") {
+    if (!adminConfigurationReady(env)) {
+      return json({ configured: false, authenticated: false }, 503);
+    }
+    const authenticated = await validAdminSession(request, env);
+    return authenticated
+      ? json({ configured: true, authenticated: true })
+      : json({ configured: true, authenticated: false }, 401);
+  }
+  if (!adminConfigurationReady(env)) {
+    return json({ error: "إعدادات حماية لوحة التحكم غير مكتملة على الخادم." }, 503);
+  }
+  if (!(await validAdminSession(request, env))) {
+    return json({ error: "انتهت جلسة المدير. سجّل الدخول مرة أخرى." }, 401);
+  }
+  if (path === "/api/admin/status" && request.method === "GET") {
+    let databaseConnected = false;
+    if (env.DB) {
+      try {
+        const probe = await env.DB.prepare("SELECT 1 AS ok").first();
+        databaseConnected = Number(probe?.ok) === 1;
+      } catch {}
+    }
+    return json({
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      model: env.OPENAI_MODEL || "gpt-4o-mini",
+      features: {
+        openai: Boolean(env.OPENAI_API_KEY),
+        databaseConfigured: Boolean(env.DB),
+        databaseConnected,
+        videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
+      }
+    });
+  }
+  if (path === "/api/admin/test-openai" && request.method === "POST") {
+    if (!env.OPENAI_API_KEY) return json({ error: "مفتاح OPENAI_API_KEY غير مربوط بهذا الخادم." }, 503);
+    try {
+      const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + env.OPENAI_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: env.OPENAI_MODEL || "gpt-4o-mini",
+          messages: [{ role: "user", content: "اكتب كلمة واحدة فقط: جاهز" }],
+          max_tokens: 12,
+          temperature: 0
+        })
+      });
+      const result = await upstream.json();
+      if (!upstream.ok) {
+        if (upstream.status === 401 || upstream.status === 403) {
+          return json({ error: "OpenAI رفض المفتاح أو صلاحياته. راجع Secret باسم OPENAI_API_KEY." }, 502);
+        }
+        if (upstream.status === 429) {
+          return json({ error: "وصلت الخدمة لحد الاستخدام أو الرصيد أو معدل الطلبات." }, 429);
+        }
+        if (upstream.status === 404) {
+          return json({ error: "النموذج المحدد غير متاح لهذا المفتاح. راجع OPENAI_MODEL." }, 502);
+        }
+        return json({ error: "فشل اختبار OpenAI (HTTP " + upstream.status + ")." }, 502);
+      }
+      const reply = result?.choices?.[0]?.message?.content?.trim();
+      return reply
+        ? json({ ok: true, reply })
+        : json({ error: "اتصل OpenAI لكن لم يرجع نصًا للاختبار." }, 502);
+    } catch {
+      return json({ error: "تعذّر الاتصال بخدمة OpenAI من الخادم." }, 502);
+    }
+  }
+  return json({ error: "مسار إدارة غير موجود." }, 404);
+}
+
 async function handleChat(request, env, user) {
   if (!env.OPENAI_API_KEY) return json({ error: "خدمة الذكاء الاصطناعي غير مفعّلة على الخادم." }, 503);
   const db = env.DB || null;
@@ -192,6 +350,7 @@ export default {
       });
     }
     try {
+      if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path);
       if (path === "/api/chat/history" && request.method === "GET") {
         if (!env.DB) return json({ messages: [], persistence: false });
