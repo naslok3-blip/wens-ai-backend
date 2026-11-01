@@ -1,0 +1,10 @@
+{
+  "name": "ونس AI",
+  "short_name": "ونس AI",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#101020",
+  "theme_color": "#111124",
+  "lang": "ar",
+  "dir": "rtl"
+}
