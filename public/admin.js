@@ -82,10 +82,10 @@ async function refreshStatus() {
     const data = await request("/api/admin/status");
     const f = data.features || {};
     setState("openaiState", f.openai ? "المفتاح مربوط" : "المفتاح غير مربوط", !!f.openai);
-    setState("databaseState", f.databaseConfigured ? (f.databaseConnected ? "متصلة" : "موجودة لكن فشل الاتصال") : "غير مربوطة", !!(f.databaseConfigured && f.databaseConnected));
+    setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج تطبيق الجداول", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
     setState("videoState", f.videoAvatar ? "الإعداد مكتمل" : "بانتظار الإعداد", !!f.videoAvatar);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
-    $("databaseDetail").textContent = f.databaseConfigured ? "فحص اتصال قاعدة البيانات" : "لم يتم ربط D1 بعد";
+    $("databaseDetail").textContent = !f.databaseConfigured ? "لم يتم ربط D1 بعد" : !f.databaseConnected ? "تعذّر الاتصال بقاعدة البيانات" : f.databaseSchemaReady ? "الجداول الأساسية الثلاثة موجودة" : "طبّق migration 0001_initial.sql";
     $("checkedAt").textContent = "آخر فحص: " + new Date(data.checkedAt).toLocaleString("ar-EG");
     serviceMessage("تم فحص إعدادات الخدمات على الخادم. لا يتم عرض أي مفاتيح سرية.");
   } catch (error) {
@@ -190,10 +190,10 @@ $("resetBtn").addEventListener("click", () => {
     if (session.authenticated) showDashboard();
     else gateMessage("أدخل الرقم السري للمتابعة.");
   } catch (error) {
-    gateMessage(error.message.includes("Failed to fetch")
-      ? "تعذّر الاتصال بالخادم. تأكد من اتصال الإنترنت."
-      : error.message.includes("غير مكتملة")
-        ? error.message
-        : "لوحة المدير غير مهيأة. أضف أسرار الحماية إلى إعدادات Worker.", true);
+    gateMessage(error.message === "تعذّر تنفيذ الطلب."
+      ? "لوحة المدير غير مهيأة. أضف WENS_ADMIN_PIN وWENS_ADMIN_SESSION_SECRET إلى Secrets في Worker."
+      : error.message.includes("Failed to fetch")
+        ? "تعذّر الاتصال بالخادم. تأكد من اتصال الإنترنت."
+        : error.message, true);
   }
 })();
