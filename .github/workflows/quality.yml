@@ -141,6 +141,32 @@ jobs:
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.svg" -o /tmp/wens-avatar.svg
           grep -q '<svg' /tmp/wens-avatar.svg
           echo "Production web assets: OK"
+      - name: Verify owner-only admin and shared settings API
+        run: |
+          set -euo pipefail
+          BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
+          SESSION_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 -o /tmp/wens-admin-session.json -w '%{http_code}' "$BASE/api/admin/session")
+          test "$SESSION_STATUS" = "200"
+          node -e 'const d=require("/tmp/wens-admin-session.json"); if(d.configured!==true || d.authenticated!==false) process.exit(1); console.log("Unauthenticated admin session: correctly denied")'
+          SETTINGS_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 -o /tmp/wens-admin-settings.json -w '%{http_code}' "$BASE/api/admin/settings")
+          test "$SETTINGS_STATUS" = "401"
+          echo "Owner-only settings API: unauthenticated request rejected"
+          LOGIN_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 -o /tmp/wens-admin-login.json -w '%{http_code}' -H 'Content-Type: application/json' -X POST --data '{"email":"quality-probe@invalid.example","password":"not-a-real-password"}' "$BASE/api/admin/login")
+          test "$LOGIN_STATUS" = "401"
+          echo "Admin login rejects non-owner account"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/api/settings" -o /tmp/wens-settings.json
+          node -e 'const d=require("/tmp/wens-settings.json"); if(!d.settings || typeof d.settings.appName!=="string" || typeof d.settings.enableVoice!=="boolean") process.exit(1); console.log("Shared application settings endpoint: OK")'
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.html" -o /tmp/wens-admin.html
+          grep -q 'id="adminEmail"' /tmp/wens-admin.html
+          grep -q 'id="adminPassword"' /tmp/wens-admin.html
+          ! grep -q 'adminPin' /tmp/wens-admin.html
+          ! grep -q 'مكالمة فيديو' /tmp/wens-admin.html
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.js" -o /tmp/wens-admin.js
+          grep -q '/api/admin/settings' /tmp/wens-admin.js
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
+          grep -q 'loadServerSettings' /tmp/wens-app.js
+          ! grep -Eiq 'cameraBtn|callPanel|livekit|/api/call/token' /tmp/wens-app.js
+          echo "Updated admin/app pages and video-call removal: OK"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -150,7 +176,8 @@ jobs:
           import sqlite3
           db = sqlite3.connect(':memory:')
           db.executescript(open('migrations/0001_initial.sql', encoding='utf-8').read())
-          expected = {'users', 'sessions', 'messages'}
+          db.executescript(open('migrations/0002_admin_settings.sql', encoding='utf-8').read())
+          expected = {'users', 'sessions', 'messages', 'app_settings'}
           actual = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
           assert expected.issubset(actual), f"Missing tables: {expected - actual}"
           print("D1 schema validated:", ', '.join(sorted(expected)))
