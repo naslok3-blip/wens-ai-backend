@@ -78,7 +78,8 @@ function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثن
   return json({
     error: message,
     code: "AUTH_" + phase.toUpperCase() + "_FAILED",
-    requestId
+    requestId,
+    diagnostic: { phase, errorType: String(error?.name || "Error").slice(0, 80) }
   }, 500);
 }
 
