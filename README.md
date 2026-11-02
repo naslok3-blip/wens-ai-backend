@@ -49,32 +49,17 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 
 **لا تنشر إعداد D1 وفيه قيمة placeholder.** لا ترفع أي بيانات مستخدمين أو كلمات مرور إلى GitHub.
 
-## أسرار الخدمات
+## إعدادات الإدارة
 
-لا يحتاج مسار المحادثة إلى `OPENAI_API_KEY`؛ فهو يستخدم Cloudflare Workers AI عبر binding باسم `AI`. أضف أسرار المدير من Cloudflare Worker > Settings > Runtime > Variables and secrets، واختر نوع `Secret` ثم اضغط `Deploy`. **لا تضفها في Settings > Builds > Variables and secrets**؛ فهذه متغيرات وقت البناء فقط، ولا تصل إلى `env` أثناء تشغيل Worker. لا تضع الأسرار في ملفات المستودع:
+لا تحتاج لوحة الإدارة إلى أسرار إضافية. صلاحية المدير مرتبطة بحساب المالك الموجود مسبقًا في قاعدة D1، وتُنشأ له جلسة مؤقتة مدتها أربع ساعات بعد التحقق من كلمة المرور. لا تضع كلمات المرور في ملفات المستودع.
 
-- `WENS_ADMIN_PIN`: رقم مدير من 6 إلى 12 رقمًا.
-- `WENS_ADMIN_SESSION_SECRET`: سر عشوائي قوي لا يقل عن 32 حرفًا لتوقيع جلسات المدير؛ لا تستخدم الرقم السري نفسه.
-- `LIVEKIT_API_KEY`: مفتاح مشروع LiveKit.
-- `LIVEKIT_API_SECRET`: السر المقابل لمفتاح LiveKit.
-- `LIVEKIT_URL`: عنوان LiveKit الآمن، غالبًا يبدأ بـ `wss://`.
-
-في النسخة الحالية تم ربط Workers AI باسم `AI` وقاعدة D1 باسم `DB` في `wrangler.jsonc`، كما طُبّق migration الأول على قاعدة الإنتاج. لا تنشئ قاعدة ثانية لنفس المشروع. افحص `GET /api/health`؛ يعرض `features.workersAI` و`features.database` و`features.videoAvatar` و`features.adminProtectionConfigured` (مؤشر boolean فقط دون كشف قيم الأسرار). مسار المحادثة يستخدم Workers AI فقط ولا يستدعي OpenAI.
-- `POST /api/admin/login` و`GET /api/admin/session` و`POST /api/admin/logout` — جلسة لوحة المدير.
-- `GET /api/admin/status` — فحص حالة الخدمات بعد التحقق من المدير.
-- `POST /api/admin/test-ai` — اختبار نموذج Workers AI، ويستهلك جزءًا صغيرًا من الحصة المجانية.
-- `POST /api/admin/test-ai` — اختبار اتصال صغير بـ Cloudflare Workers AI بعد التحقق من المدير.
-- `POST /api/auth/register` — إنشاء حساب.
-- `POST /api/auth/login` — تسجيل الدخول.
-- `GET /api/auth/me` — فحص الجلسة.
-- `POST /api/auth/logout` — إنهاء الجلسة.
-- `GET /api/chat/history` — تحميل سجل الحساب.
-- `POST /api/chat` — إرسال رسالة للمساعد.
-- `POST /api/call/token` — إصدار رمز غرفة LiveKit للمستخدم المسجل.
-
-## الفيديو والأفاتار
-
-مكالمات الفيديو غير مفعّلة في الإنتاج حتى الآن؛ تستخدم LiveKit WebRTC وتحتاج مشروع LiveKit مستقلًا وإدخال بياناته كأسرار: يطلب التطبيق أذونات الكاميرا والميكروفون من أندرويد. الأفاتار الحالي رسم افتراضي داخل `public/avatar.svg`، ويتحرك تمثيليًا مع نشاط المتحدث؛ **ليس صورة إنسان حقيقية ولا شخصية واقعية متزامنة الشفاه**. مزامنة الشفاه/أفاتار مولّد لحظيًا تتطلب تكامل خدمة avatar مستقلة وبيانات اعتمادها.
+- `GET /api/admin/session` — فحص جلسة المدير.
+- `POST /api/admin/login` — تسجيل دخول المالك بالبريد وكلمة مرور حساب ونس.
+- `POST /api/admin/logout` — إنهاء جلسة المدير.
+- `GET /api/admin/status` — حالة Workers AI وقاعدة البيانات.
+- `POST /api/admin/test-ai` — اختبار نموذج Workers AI.
+- `GET /api/settings` — تحميل إعدادات التطبيق العامة من D1.
+- `GET /api/admin/settings` و`PUT /api/admin/settings` — قراءة وحفظ الإعدادات المركزية بعد التحقق من حساب المالك.
 
 ## بناء APK أندرويد
 

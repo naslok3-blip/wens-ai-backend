@@ -22,22 +22,17 @@ const $ = id => document.getElementById(id);
 let authMode = "login";
 let currentUser = null;
 let recognition = null;
-let activeRoom = null;
-let localTracks = [];
-let liveKitModule = null;
-let micEnabled = true;
-let cameraEnabled = true;
 const appSettings = loadLocalSettings();
 
 function loadLocalSettings() {
   const defaults = {
     appName: "ونس AI", assistantName: "ونس", eyebrow: "موجودة علشانك",
     welcomeTitle: "أهلًا بيك، أنا ونس 💜",
-    welcomeText: "اتكلم معايا أو افتح مكالمة فيديو مع شخص تحبه.",
+    welcomeText: "اتكلم معايا واسألني اللي في بالك.",
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
-    voiceButton: "اتكلم معايا", cameraButton: "📹 مكالمة فيديو",
+    voiceButton: "اتكلم معايا",
     voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-    enableVoice: true, enableCamera: true, voiceLocale: "ar-EG"
+    enableVoice: true, voiceLocale: "ar-EG"
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -58,9 +53,7 @@ function applyLocalSettings() {
   $("welcomeTitle").textContent = appSettings.welcomeTitle;
   $("welcomeText").textContent = appSettings.welcomeText;
   $("voiceButtonText").textContent = appSettings.voiceButton;
-  $("cameraBtn").textContent = appSettings.cameraButton;
   $("voiceBtn").hidden = !appSettings.enableVoice;
-  $("cameraBtn").hidden = !appSettings.enableCamera;
   const themes = {
     purple: ["#b49aff", "#ffacd6"],
     blue: ["#83baff", "#8ce8ef"],
@@ -87,10 +80,6 @@ async function api(path, body, method = "POST") {
 function setAuthMessage(message, error = false) {
   $("authStatus").textContent = message || "";
   $("authStatus").style.color = error ? "#ff9fba" : "#9be7c1";
-}
-function setCallMessage(message, error = false) {
-  $("callStatus").textContent = message || "";
-  $("callStatus").style.color = error ? "#ff9fba" : "#9be7c1";
 }
 function showAuth() {
   $("authPanel").hidden = false;
@@ -140,7 +129,6 @@ $("authForm").addEventListener("submit", async event => {
   }
 });
 $("logoutBtn").addEventListener("click", async () => {
-  await endCall(false);
   try { await api("/api/auth/logout", {}); } catch {}
   currentUser = null;
   $("messages").replaceChildren();
@@ -239,130 +227,6 @@ $("voiceBtn").addEventListener("click", () => {
   recognition.start();
 });
 
-$("cameraBtn").addEventListener("click", () => {
-  $("callPanel").hidden = false;
-  $("callPanel").scrollIntoView({ behavior: "smooth", block: "start" });
-});
-$("closeCallBtn").addEventListener("click", async () => {
-  await endCall(false);
-  $("callPanel").hidden = true;
-});
-function makeRoomCode() {
-  const bytes = crypto.getRandomValues(new Uint8Array(4));
-  return "wens-" + Array.from(bytes, b => (b % 36).toString(36)).join("");
-}
-$("createCallBtn").addEventListener("click", async () => {
-  const room = makeRoomCode();
-  $("roomInput").value = room;
-  await connectCall(room);
-});
-$("joinCallBtn").addEventListener("click", async () => {
-  await connectCall($("roomInput").value.trim());
-});
-$("copyRoomBtn").addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText($("roomInput").value.trim());
-    setCallMessage("تم نسخ كود الغرفة. ابعته للطرف الآخر علشان ينضم.");
-  } catch { setCallMessage("انسخ كود الغرفة يدويًا: " + $("roomInput").value, true); }
-});
-async function connectCall(roomName) {
-  if (!roomName) { setCallMessage("اكتب كود الغرفة أولًا.", true); return; }
-  $("createCallBtn").disabled = $("joinCallBtn").disabled = true;
-  setCallMessage("جاري تجهيز غرفة الاتصال...");
-  try {
-    const tokenData = await api("/api/call/token", { room: roomName });
-    if (!liveKitModule) liveKitModule = await import("https://cdn.jsdelivr.net/npm/livekit-client@2/+esm");
-    const { Room, RoomEvent, createLocalTracks } = liveKitModule;
-    activeRoom = new Room({ adaptiveStream: true, dynacast: true });
-    activeRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => attachRemoteTrack(track, participant));
-    activeRoom.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => detachRemoteTrack(track, participant));
-    activeRoom.on(RoomEvent.ParticipantDisconnected, participant => removeParticipant(participant));
-    activeRoom.on(RoomEvent.ActiveSpeakersChanged, speakers => {
-      $("avatarChip").classList.toggle("speaking", speakers.some(p => p.identity !== activeRoom.localParticipant.identity));
-    });
-    activeRoom.on(RoomEvent.Disconnected, () => setCallMessage("انتهت المكالمة."));
-    await activeRoom.connect(tokenData.url, tokenData.token);
-    localTracks = await createLocalTracks({ audio: true, video: { facingMode: "user" } });
-    for (const track of localTracks) {
-      await activeRoom.localParticipant.publishTrack(track);
-      if (track.kind === "video") {
-        $("localVideo").srcObject = new MediaStream([track.mediaStreamTrack]);
-      }
-    }
-    $("videoStage").hidden = false;
-    $("copyRoomBtn").disabled = false;
-    setCallMessage("أنت داخل الغرفة " + roomName + ". شارك الكود مع الشخص الآخر.");
-  } catch (error) {
-    await endCall(false);
-    setCallMessage(error.message || "تعذّر بدء المكالمة. راجع إعدادات خدمة الفيديو.", true);
-  } finally {
-    $("createCallBtn").disabled = $("joinCallBtn").disabled = false;
-  }
-}
-function attachRemoteTrack(track, participant) {
-  const id = "participant-" + participant.identity.replace(/[^a-zA-Z0-9_-]/g, "");
-  let tile = document.getElementById(id);
-  if (!tile) {
-    tile = document.createElement("div");
-    tile.className = "remote-tile";
-    tile.id = id;
-    const label = document.createElement("span");
-    label.className = "remote-label";
-    label.textContent = participant.name || "مشارك";
-    tile.appendChild(label);
-    $("remoteVideos").appendChild(tile);
-  }
-  const element = track.attach();
-  element.autoplay = true;
-  element.playsInline = true;
-  if (track.kind === "video") element.className = "remote-video";
-  tile.appendChild(element);
-}
-function detachRemoteTrack(track, participant) {
-  track.detach().forEach(element => element.remove());
-  if (participant) {
-    const id = "participant-" + participant.identity.replace(/[^a-zA-Z0-9_-]/g, "");
-    const tile = document.getElementById(id);
-    if (tile && tile.querySelectorAll("video,audio").length === 0) tile.remove();
-  }
-}
-function removeParticipant(participant) {
-  const id = "participant-" + participant.identity.replace(/[^a-zA-Z0-9_-]/g, "");
-  document.getElementById(id)?.remove();
-}
-$("muteBtn").addEventListener("click", async () => {
-  if (!activeRoom) return;
-  micEnabled = !micEnabled;
-  await activeRoom.localParticipant.setMicrophoneEnabled(micEnabled);
-  $("muteBtn").textContent = micEnabled ? "كتم الميكروفون" : "تشغيل الميكروفون";
-});
-$("cameraToggleBtn").addEventListener("click", async () => {
-  if (!activeRoom) return;
-  cameraEnabled = !cameraEnabled;
-  await activeRoom.localParticipant.setCameraEnabled(cameraEnabled);
-  $("cameraToggleBtn").textContent = cameraEnabled ? "إيقاف الكاميرا" : "تشغيل الكاميرا";
-});
-$("endCallBtn").addEventListener("click", () => endCall(true));
-async function endCall(showMessage = true) {
-  try {
-    if (activeRoom) await activeRoom.disconnect();
-  } catch {}
-  activeRoom = null;
-  for (const track of localTracks) {
-    try { track.stop(); track.detach(); } catch {}
-  }
-  localTracks = [];
-  $("localVideo").srcObject = null;
-  $("remoteVideos").replaceChildren();
-  $("videoStage").hidden = true;
-  $("copyRoomBtn").disabled = true;
-  micEnabled = true;
-  cameraEnabled = true;
-  $("muteBtn").textContent = "كتم الميكروفون";
-  $("cameraToggleBtn").textContent = "إيقاف الكاميرا";
-  $("avatarChip").classList.remove("speaking");
-  if (showMessage) setCallMessage("تم إنهاء المكالمة.");
-}
 async function loadSystemStatus() {
   try {
     const response = await fetch("/api/health", { cache: "no-store" });
@@ -370,8 +234,7 @@ async function loadSystemStatus() {
     const f = data.features || {};
     const labels = [
       "Cloudflare AI " + (f.workersAI ? "جاهز" : "غير مربوط"),
-      "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة"),
-      "الفيديو " + (f.videoAvatar ? "جاهز" : "بانتظار LiveKit")
+      "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة")
     ];
     $("systemStatus").textContent = labels.join(" · ");
     $("systemStatus").classList.toggle("all-ready", !!(f.workersAI && f.database));
@@ -381,8 +244,16 @@ async function loadSystemStatus() {
     return null;
   }
 }
+async function loadServerSettings() {
+  try {
+    const data = await api("/api/settings", undefined, "GET");
+    if (data.settings && typeof data.settings === "object") Object.assign(appSettings, data.settings);
+  } catch {}
+  applyLocalSettings();
+}
 async function boot() {
   applyLocalSettings();
+  await loadServerSettings();
   updateAuthMode();
   const health = await loadSystemStatus();
   if (health && health.ok && health.features && !health.features.database) {
