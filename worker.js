@@ -253,8 +253,9 @@ async function adminRoute(request, env, path) {
     }
     let body;
     try { body = await request.json(); } catch { return json({ error: "الرقم السري غير صالح." }, 400); }
+    const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
     const pin = typeof body.pin === "string" ? body.pin : "";
-    if (!same(pin, String(env.WENS_ADMIN_PIN))) {
+    if (username !== "admin" || !same(pin, String(env.WENS_ADMIN_PIN))) {
       recordAdminAttempt(ip);
       return json({ error: "الرقم السري غير صحيح." }, 401);
     }
