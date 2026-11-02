@@ -43,7 +43,7 @@ async function passwordHash(password, salt) {
   try {
     bits = await crypto.subtle.deriveBits({
       name: "PBKDF2",
-      salt: fromB64url(salt),
+      salt: fromB64url(salt).buffer,
       iterations: 160000,
       hash: { name: "SHA-256" }
     }, key, 256);
