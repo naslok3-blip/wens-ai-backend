@@ -78,6 +78,7 @@ jobs:
           if not data.get('ok'):
               print("Registration error:", data.get('error'))
               print("Registration code:", data.get('code'))
+              print("Diagnostic:", data.get('diagnostic'))
               print("Request ID:", data.get('requestId'))
           assert data.get('ok') is True and data.get('user',{}).get('name') == 'Wens CI Test', data
           print("Registration: OK")
