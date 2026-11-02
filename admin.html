@@ -21,6 +21,8 @@
     <h1>دخول المدير</h1>
     <p class="muted">لوحة التحكم خاصة بصاحب التطبيق. أدخل الرقم السري للمتابعة.</p>
     <form id="adminLoginForm" class="admin-login-form">
+      <label for="adminUsername">اسم المستخدم</label>
+      <input id="adminUsername" type="text" autocomplete="username" maxlength="40" value="admin" required>
       <label for="adminPin">الرقم السري</label>
       <input id="adminPin" type="password" inputmode="numeric" autocomplete="current-password" pattern="[0-9]{6,12}" minlength="6" maxlength="12" placeholder="من 6 إلى 12 رقمًا" required>
       <button id="adminLoginBtn" class="btn primary" type="submit">فتح لوحة التحكم</button>
