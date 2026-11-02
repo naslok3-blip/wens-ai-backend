@@ -27,19 +27,29 @@ async function digest(value) {
   return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(value))));
 }
 async function passwordHash(password, salt) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    { name: "PBKDF2" },
-    false,
-    ["deriveBits"]
-  );
-  const bits = await crypto.subtle.deriveBits({
-    name: "PBKDF2",
-    salt: fromB64url(salt),
-    iterations: 160000,
-    hash: { name: "SHA-256" }
-  }, key, 256);
+  let key;
+  try {
+    key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(password),
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"]
+    );
+  } catch (error) {
+    throw new Error("PBKDF2_IMPORT_" + String(error?.name || "Error"));
+  }
+  let bits;
+  try {
+    bits = await crypto.subtle.deriveBits({
+      name: "PBKDF2",
+      salt: fromB64url(salt),
+      iterations: 160000,
+      hash: { name: "SHA-256" }
+    }, key, 256);
+  } catch (error) {
+    throw new Error("PBKDF2_DERIVE_" + String(error?.name || "Error"));
+  }
   return b64url(new Uint8Array(bits));
 }
 function same(a, b) {
@@ -90,7 +100,12 @@ function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثن
     error: message,
     code: "AUTH_" + phase.toUpperCase() + "_FAILED",
     requestId,
-    diagnostic: { phase, errorType: String(error?.name || "Error").slice(0, 80) }
+    diagnostic: {
+      phase,
+      errorType: String(error?.name || "Error").slice(0, 80),
+      cryptoStage: /^(PBKDF2_IMPORT|PBKDF2_DERIVE)_/.exec(raw)?.[1] || null,
+      cryptoErrorType: /^PBKDF2_(?:IMPORT|DERIVE)_([A-Za-z]+)/.exec(raw)?.[1] || null
+    }
   }, 500);
 }
 
