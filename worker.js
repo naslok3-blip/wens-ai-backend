@@ -126,7 +126,7 @@ async function authRoute(request, env, path, requestId) {
         .bind(id, email, name, hash, salt, Math.floor(Date.now() / 1000)).run();
     } catch (error) {
       const detail = String(error?.message || error);
-      if (/UNIQUE constraint failed:\\s*users\\.email/i.test(detail)) {
+      if (/UNIQUE constraint failed:\s*users\.email/i.test(detail)) {
         return json({ error: "البريد الإلكتروني مسجل بالفعل. سجّل الدخول." }, 409);
       }
       return authDiagnostic(requestId, "register_insert", error, "تعذّر حفظ الحساب في قاعدة البيانات. لم يكتمل التسجيل.");
