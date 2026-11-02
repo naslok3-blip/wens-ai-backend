@@ -76,11 +76,10 @@ class MainActivity : Activity() {
             override fun onPermissionRequest(request: PermissionRequest) {
                 if (request.origin.host != appHost) { request.deny(); return }
                 val resourcesAllowed = request.resources.all {
-                    it == PermissionRequest.RESOURCE_VIDEO_CAPTURE ||
                     it == PermissionRequest.RESOURCE_AUDIO_CAPTURE
                 }
                 if (!resourcesAllowed) { request.deny(); return }
-                val missing = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+                val missing = arrayOf(Manifest.permission.RECORD_AUDIO)
                     .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
                 if (missing.isEmpty()) {
                     request.grant(request.resources)
@@ -112,7 +111,7 @@ class MainActivity : Activity() {
                 req.grant(req.resources)
             } else {
                 req?.deny()
-                Toast.makeText(this, "اسمح بالكاميرا والميكروفون لتشغيل مكالمات الفيديو.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "اسمح بالميكروفون لتشغيل المحادثة الصوتية.", Toast.LENGTH_LONG).show()
             }
         }
     }
