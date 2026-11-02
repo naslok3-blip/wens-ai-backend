@@ -107,11 +107,12 @@ function showDashboard() {
 }
 $("adminLoginForm").addEventListener("submit", async event => {
   event.preventDefault();
+  const username = $("adminUsername").value.trim();
   const pin = $("adminPin").value;
   $("adminLoginBtn").disabled = true;
-  gateMessage("جاري التحقق من الرقم السري...");
+  gateMessage("جاري التحقق من بيانات المدير...");
   try {
-    await request("/api/admin/login", { pin }, "POST");
+    await request("/api/admin/login", { username, pin }, "POST");
     $("adminPin").value = "";
     showDashboard();
   } catch (error) {
@@ -129,7 +130,7 @@ $("adminLogoutBtn").addEventListener("click", async () => {
 });
 $("refreshStatusBtn").addEventListener("click", refreshStatus);
 $("testWorkersAiBtn").addEventListener("click", async () => {
-  $("testOpenAiBtn").disabled = true;
+  $("testWorkersAiBtn").disabled = true;
   serviceMessage("جاري اختبار Cloudflare Workers AI...");
   try {
     const result = await request("/api/admin/test-ai", {}, "POST");
@@ -139,7 +140,7 @@ $("testWorkersAiBtn").addEventListener("click", async () => {
     serviceMessage(error.message, true);
     setState("workersAiState", "فشل الاختبار", false);
   } finally {
-    $("testOpenAiBtn").disabled = false;
+    $("testWorkersAiBtn").disabled = false;
   }
 });
 document.querySelectorAll(".nav-btn").forEach(button => button.addEventListener("click", () => {
