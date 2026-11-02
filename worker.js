@@ -218,79 +218,103 @@ function recordAdminAttempt(ip) {
   item.count += 1;
   adminLoginAttempts.set(ip, item);
 }
-async function makeAdminSession(env) {
-  const expiresAt = Math.floor(Date.now() / 1000) + ADMIN_SESSION_SECONDS;
-  const nonce = b64url(crypto.getRandomValues(new Uint8Array(24)));
-  const payload = b64url(enc.encode(JSON.stringify({ exp: expiresAt, nonce })));
-  const key = await crypto.subtle.importKey(
-    "raw", enc.encode(env.WENS_ADMIN_SESSION_SECRET),
-    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  return payload + "." + b64url(new Uint8Array(signature));
-}
-async function validAdminSession(request, env) {
-  if (!env.WENS_ADMIN_SESSION_SECRET) return false;
-  const raw = cookieValue(request.headers.get("Cookie"), ADMIN_COOKIE);
-  const parts = raw.split(".");
-  if (parts.length !== 2) return false;
+async function adminConfigurationReady(env) {
+  if (!env.DB) return false;
   try {
-    const key = await crypto.subtle.importKey(
-      "raw", enc.encode(env.WENS_ADMIN_SESSION_SECRET),
-      { name: "HMAC", hash: "SHA-256" }, false, ["verify"]
-    );
-    const valid = await crypto.subtle.verify(
-      "HMAC", key, fromB64url(parts[1]), enc.encode(parts[0])
-    );
-    if (!valid) return false;
-    const payload = JSON.parse(new TextDecoder().decode(fromB64url(parts[0])));
-    return Number.isInteger(payload.exp) && payload.exp > Math.floor(Date.now() / 1000) &&
-      typeof payload.nonce === "string" && payload.nonce.length >= 20;
+    const row = await env.DB.prepare("SELECT id FROM admin_auth WHERE id=1 LIMIT 1").first();
+    return Number(row?.id) === 1;
   } catch {
     return false;
   }
 }
-function adminConfigurationReady(env) {
-  return /^\d{6,12}$/.test(String(env.WENS_ADMIN_PIN || "")) &&
-    String(env.WENS_ADMIN_SESSION_SECRET || "").length >= 32;
+async function adminPinHash(pin, salt) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(pin), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    salt: fromB64url(salt),
+    iterations: 210000,
+    hash: "SHA-256"
+  }, key, 256);
+  return b64url(new Uint8Array(bits));
+}
+async function createAdminSession(env) {
+  const token = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const tokenHash = await digest(token);
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + ADMIN_SESSION_SECONDS;
+  await env.DB.prepare("DELETE FROM admin_sessions WHERE expires_at<=?").bind(now).run();
+  await env.DB.prepare(
+    "INSERT INTO admin_sessions (id,token_hash,expires_at,created_at) VALUES (?,?,?,?)"
+  ).bind(crypto.randomUUID(), tokenHash, expiresAt, now).run();
+  return token;
+}
+async function validAdminSession(request, env) {
+  if (!env.DB) return false;
+  const raw = cookieValue(request.headers.get("Cookie"), ADMIN_COOKIE);
+  if (!raw || raw.length > 128) return false;
+  const tokenHash = await digest(raw);
+  const now = Math.floor(Date.now() / 1000);
+  try {
+    const row = await env.DB.prepare(
+      "SELECT id FROM admin_sessions WHERE token_hash=? AND expires_at>? LIMIT 1"
+    ).bind(tokenHash, now).first();
+    return Boolean(row?.id);
+  } catch {
+    return false;
+  }
 }
 async function adminRoute(request, env, path) {
   if (path === "/api/admin/logout" && request.method === "POST") {
+    const raw = cookieValue(request.headers.get("Cookie"), ADMIN_COOKIE);
+    if (raw && env.DB) {
+      await env.DB.prepare("DELETE FROM admin_sessions WHERE token_hash=?").bind(await digest(raw)).run();
+    }
     return json({ ok: true }, 200, { "Set-Cookie": adminCookie("", 0) });
   }
   if (path === "/api/admin/login" && request.method === "POST") {
-    if (!adminConfigurationReady(env)) {
-      return json({
-        error: "حماية لوحة التحكم لم تُضبط بعد. أضف WENS_ADMIN_PIN (من 6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي طويل لا يقل عن 32 حرفًا) إلى Runtime → Variables and secrets في نفس Worker، وليس Builds → Variables and secrets."
-      }, 503);
+    if (!(await adminConfigurationReady(env))) {
+      return json({ error: "إعداد حماية المدير غير مكتمل على الخادم. لم يتم إنشاء سجل المدير في قاعدة البيانات." }, 503);
     }
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
     if (!adminAttemptAllowed(ip)) {
       return json({ error: "محاولات كثيرة. انتظر 15 دقيقة ثم جرّب مرة أخرى." }, 429);
     }
     let body;
-    try { body = await request.json(); } catch { return json({ error: "الرقم السري غير صالح." }, 400); }
+    try { body = await request.json(); } catch { return json({ error: "بيانات الدخول غير صالحة." }, 400); }
     const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "admin";
     const pin = typeof body.pin === "string" ? body.pin : "";
-    if (username !== "admin" || !same(pin, String(env.WENS_ADMIN_PIN))) {
+    if (username !== "admin" || !/^\\d{6,12}$/.test(pin)) {
       recordAdminAttempt(ip);
-      return json({ error: "الرقم السري غير صحيح." }, 401);
+      return json({ error: "اسم المدير أو الرقم السري غير صحيح." }, 401);
     }
-    adminLoginAttempts.delete(ip);
-    return json({ ok: true }, 200, { "Set-Cookie": adminCookie(await makeAdminSession(env)) });
+    try {
+      const stored = await env.DB.prepare(
+        "SELECT pin_salt,pin_hash FROM admin_auth WHERE id=1 LIMIT 1"
+      ).first();
+      if (!stored || !same(await adminPinHash(pin, stored.pin_salt), stored.pin_hash)) {
+        recordAdminAttempt(ip);
+        return json({ error: "اسم المدير أو الرقم السري غير صحيح." }, 401);
+      }
+      adminLoginAttempts.delete(ip);
+      const token = await createAdminSession(env);
+      return json({ ok: true }, 200, { "Set-Cookie": adminCookie(token) });
+    } catch (error) {
+      console.error("[WENS_ADMIN_LOGIN_FAILURE]", String(error?.message || error).slice(0, 160));
+      return json({ error: "تعذّر إتمام تسجيل دخول المدير. حاول مرة أخرى." }, 500);
+    }
   }
   if (path === "/api/admin/session" && request.method === "GET") {
-    if (!adminConfigurationReady(env)) {
+    const configured = await adminConfigurationReady(env);
+    if (!configured) {
       return json({
         configured: false,
         authenticated: false,
-        error: "إعداد حماية المدير ناقص: أضف WENS_ADMIN_PIN (6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي لا يقل عن 32 حرفًا) في Runtime → Variables and secrets لنفس Worker، وليس في إعدادات Builds."
+        error: "إعداد حماية المدير لم يكتمل على الخادم."
       }, 503);
     }
-    const authenticated = await validAdminSession(request, env);
-    return json({ configured: true, authenticated });
+    return json({ configured: true, authenticated: await validAdminSession(request, env) });
   }
-  if (!adminConfigurationReady(env)) {
+  if (!(await adminConfigurationReady(env))) {
     return json({ error: "إعدادات حماية لوحة التحكم غير مكتملة على الخادم." }, 503);
   }
   if (!(await validAdminSession(request, env))) {
@@ -305,9 +329,9 @@ async function adminRoute(request, env, path) {
         databaseConnected = Number(probe?.ok) === 1;
         if (databaseConnected) {
           const schema = await env.DB.prepare(
-            "SELECT COUNT(*) AS total FROM sqlite_master WHERE type='table' AND name IN ('users','sessions','messages')"
+            "SELECT COUNT(*) AS total FROM sqlite_master WHERE type='table' AND name IN ('users','sessions','messages','admin_auth','admin_sessions')"
           ).first();
-          databaseSchemaReady = Number(schema?.total) === 3;
+          databaseSchemaReady = Number(schema?.total) === 5;
         }
       } catch {}
     }
@@ -320,6 +344,7 @@ async function adminRoute(request, env, path) {
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
         databaseSchemaReady,
+        adminProtectionConfigured: await adminConfigurationReady(env),
         videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
       }
     });
@@ -404,6 +429,7 @@ export default {
     const path = url.pathname;
     if (request.method === "GET" && path === "/api/health") {
       const workersAiBindingPresent = Boolean(env.AI);
+      const adminReady = await adminConfigurationReady(env);
       return json({
         ok: true,
         service: "wens-ai",
@@ -411,7 +437,7 @@ export default {
         features: {
           workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
-          adminProtectionConfigured: adminConfigurationReady(env),
+          adminProtectionConfigured: adminReady,
           videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
         },
         diagnostics: {
