@@ -57,7 +57,76 @@ jobs:
             "$BASE/api/auth/login")
           test "$AUTH_STATUS" = "401"
           echo "D1-backed login query: OK (unknown probe account rejected)"
-          echo "Checking deployed HTML, JavaScript, CSS and avatar assets"
+      - name: End-to-end registration and login session test
+        if: contains(github.event.head_commit.message, '[registration-e2e]')
+        env:
+          BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
+          CI_EMAIL: wens-e2e-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+          CI_PASSWORD: Wens-CI-${{ github.run_id }}-${{ github.run_attempt }}-Test!
+        run: |
+          set -euo pipefail
+          echo "Creating isolated CI account"
+          REGISTER_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+            -o /tmp/wens-register.json -w '%{http_code}' -c /tmp/wens-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data "$(python -c 'import json,os; print(json.dumps({"name":"Wens CI Test","email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
+            "$BASE/api/auth/register")
+          test "$REGISTER_STATUS" = "200"
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/wens-register.json',encoding='utf-8'))
+          assert data.get('ok') is True and data.get('user',{}).get('name') == 'Wens CI Test', data
+          print("Registration: OK")
+          PY
+          ME_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            -o /tmp/wens-me-register.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
+            "$BASE/api/auth/me")
+          test "$ME_STATUS" = "200"
+          python - <<'PY'
+          import json
+          assert json.load(open('/tmp/wens-me-register.json',encoding='utf-8')).get('ok') is True
+          print("Registration session: OK")
+          PY
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt -c /tmp/wens-cookie.txt \
+            -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
+          LOGIN_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+            -o /tmp/wens-login.json -w '%{http_code}' -c /tmp/wens-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data "$(python -c 'import json,os; print(json.dumps({"email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
+            "$BASE/api/auth/login")
+          test "$LOGIN_STATUS" = "200"
+          ME_LOGIN_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            -o /tmp/wens-me-login.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
+            "$BASE/api/auth/me")
+          test "$ME_LOGIN_STATUS" = "200"
+          python - <<'PY'
+          import json
+          assert json.load(open('/tmp/wens-login.json',encoding='utf-8')).get('ok') is True
+          assert json.load(open('/tmp/wens-me-login.json',encoding='utf-8')).get('ok') is True
+          print("Login and session persistence: OK")
+          PY
+          DUPLICATE_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+            -o /tmp/wens-duplicate.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' -X POST \
+            --data "$(python -c 'import json,os; print(json.dumps({"name":"Wens CI Test","email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
+            "$BASE/api/auth/register")
+          test "$DUPLICATE_STATUS" = "409"
+          echo "Duplicate-email protection: OK"
+          echo "CI test account for post-run cleanup: $CI_EMAIL"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt \
+            -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
+      - name: Verify deployed HTML, JavaScript, CSS and avatar assets
+        run: |
+          set -euo pipefail
+          BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/" -o /tmp/wens-index.html
+          grep -q 'id="chatForm"' /tmp/wens-index.html
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
+          grep -q 'Cloudflare AI' /tmp/wens-app.js
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/style.css" -o /tmp/wens-style.css
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.svg" -o /tmp/wens-avatar.svg
+          grep -q '<svg' /tmp/wens-avatar.svg
+          echo "Production web assets: OK"
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/" -o /tmp/wens-index.html
           grep -q 'id="chatForm"' /tmp/wens-index.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
