@@ -261,7 +261,7 @@ async function adminRoute(request, env, path) {
   if (path === "/api/admin/login" && request.method === "POST") {
     if (!adminConfigurationReady(env)) {
       return json({
-        error: "حماية لوحة التحكم لم تُضبط بعد. أضف WENS_ADMIN_PIN (من 6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي طويل لا يقل عن 32 حرفًا) إلى Secrets في نفس Worker."
+        error: "حماية لوحة التحكم لم تُضبط بعد. أضف WENS_ADMIN_PIN (من 6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي طويل لا يقل عن 32 حرفًا) إلى Runtime → Variables and secrets في نفس Worker، وليس Builds → Variables and secrets."
       }, 503);
     }
     const ip = request.headers.get("CF-Connecting-IP") || "unknown";
@@ -284,7 +284,7 @@ async function adminRoute(request, env, path) {
       return json({
         configured: false,
         authenticated: false,
-        error: "إعداد حماية المدير ناقص: أضف WENS_ADMIN_PIN (6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي لا يقل عن 32 حرفًا) في Secrets لنفس Worker."
+        error: "إعداد حماية المدير ناقص: أضف WENS_ADMIN_PIN (6 إلى 12 رقمًا) وWENS_ADMIN_SESSION_SECRET (سر عشوائي لا يقل عن 32 حرفًا) في Runtime → Variables and secrets لنفس Worker، وليس في إعدادات Builds."
       }, 503);
     }
     const authenticated = await validAdminSession(request, env);
@@ -411,6 +411,7 @@ export default {
         features: {
           workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
+          adminProtectionConfigured: adminConfigurationReady(env),
           videoAvatar: Boolean(env.LIVEKIT_URL && env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET)
         },
         diagnostics: {
