@@ -156,12 +156,12 @@ jobs:
           echo "Admin login rejects non-owner account"
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/api/settings" -o /tmp/wens-settings.json
           node -e 'const d=require("/tmp/wens-settings.json"); if(!d.settings || typeof d.settings.appName!=="string" || typeof d.settings.enableVoice!=="boolean") process.exit(1); console.log("Shared application settings endpoint: OK")'
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.html" -o /tmp/wens-admin.html
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel" -o /tmp/wens-admin.html
           grep -q 'id="adminEmail"' /tmp/wens-admin.html
           grep -q 'id="adminPassword"' /tmp/wens-admin.html
           ! grep -q 'adminPin' /tmp/wens-admin.html
           ! grep -q 'مكالمة فيديو' /tmp/wens-admin.html
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.js" -o /tmp/wens-admin.js
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js" -o /tmp/wens-admin.js
           grep -q '/api/admin/settings' /tmp/wens-admin.js
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
           grep -q 'loadServerSettings' /tmp/wens-app.js

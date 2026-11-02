@@ -11,7 +11,11 @@
       "/admin.html",
       "/admin.js",
       "/admin.css",
-      "/app.js"
+      "/app.js",
+      "/owner-panel",
+      "/owner-panel/",
+      "/owner-panel.js",
+      "/owner-panel.css"
     ]
   },
   "ai": {
