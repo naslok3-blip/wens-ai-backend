@@ -449,6 +449,15 @@ export default {
         if (env.DB && !user) return json({ error: "سجّل الدخول الأول لاستخدام ونس." }, 401);
         return await handleChat(request, env, user);
       }
+      if (request.method === "GET") {
+        const asset = INLINE_ASSETS.get(path);
+        if (asset) return new Response(asset.body, {
+          headers: {
+            "Content-Type": asset.type,
+            "Cache-Control": "no-store"
+          }
+        });
+      }
       if (path.startsWith("/api/")) return json({ error: "المسار غير موجود." }, 404);
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return json({ error: "المسار غير موجود." }, 404);
