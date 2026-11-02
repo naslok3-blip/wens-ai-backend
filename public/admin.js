@@ -192,7 +192,7 @@ $("resetBtn").addEventListener("click", () => {
     else gateMessage("أدخل الرقم السري للمتابعة.");
   } catch (error) {
     gateMessage(error.message === "تعذّر تنفيذ الطلب."
-      ? "لوحة المدير غير مهيأة. أضف WENS_ADMIN_PIN وWENS_ADMIN_SESSION_SECRET إلى Secrets في Worker."
+      ? "لوحة المدير غير مهيأة. أضف WENS_ADMIN_PIN وWENS_ADMIN_SESSION_SECRET في Runtime → Variables and secrets (وليس Builds)، واختر Secret ثم Deploy."
       : error.message.includes("Failed to fetch")
         ? "تعذّر الاتصال بالخادم. تأكد من اتصال الإنترنت."
         : error.message, true);
