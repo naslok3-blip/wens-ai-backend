@@ -1,4 +1,4 @@
-import { pbkdf2 } from "node:crypto";
+import { scrypt } from "node:crypto";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. تحدثي باللهجة المصرية الطبيعية وبصيغة المؤنث عن نفسك. كوني دافئة ومحترمة وخفيفة الظل دون ادعاء أنك إنسانة حقيقية. أجيبي بوضوح وباختصار مناسب. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص.";
 
@@ -30,7 +30,12 @@ async function digest(value) {
 }
 async function passwordHash(password, salt) {
   const derivedKey = await new Promise((resolve, reject) => {
-    pbkdf2(password, fromB64url(salt), 160000, 32, "sha256", (error, key) => {
+    scrypt(password, fromB64url(salt), 32, {
+      N: 16384,
+      r: 8,
+      p: 1,
+      maxmem: 64 * 1024 * 1024
+    }, (error, key) => {
       if (error) reject(error);
       else resolve(key);
     });
