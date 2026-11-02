@@ -51,7 +51,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 
 ## أسرار الخدمات
 
-لا يحتاج مسار المحادثة إلى `OPENAI_API_KEY`؛ فهو يستخدم Cloudflare Workers AI عبر binding باسم `AI`. أضف فقط الأسرار التي تحتاجها الميزات الاختيارية من Cloudflare Worker > Settings > Variables and Secrets > Secrets، ولا تضعها في ملفات المستودع:
+لا يحتاج مسار المحادثة إلى `OPENAI_API_KEY`؛ فهو يستخدم Cloudflare Workers AI عبر binding باسم `AI`. أضف أسرار المدير من Cloudflare Worker > Settings > Runtime > Variables and secrets، واختر نوع `Secret` ثم اضغط `Deploy`. **لا تضفها في Settings > Builds > Variables and secrets**؛ فهذه متغيرات وقت البناء فقط، ولا تصل إلى `env` أثناء تشغيل Worker. لا تضع الأسرار في ملفات المستودع:
 
 - `WENS_ADMIN_PIN`: رقم مدير من 6 إلى 12 رقمًا.
 - `WENS_ADMIN_SESSION_SECRET`: سر عشوائي قوي لا يقل عن 32 حرفًا لتوقيع جلسات المدير؛ لا تستخدم الرقم السري نفسه.
@@ -59,7 +59,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 - `LIVEKIT_API_SECRET`: السر المقابل لمفتاح LiveKit.
 - `LIVEKIT_URL`: عنوان LiveKit الآمن، غالبًا يبدأ بـ `wss://`.
 
-في النسخة الحالية تم ربط Workers AI باسم `AI` وقاعدة D1 باسم `DB` في `wrangler.jsonc`، كما طُبّق migration الأول على قاعدة الإنتاج. لا تنشئ قاعدة ثانية لنفس المشروع. افحص `GET /api/health`؛ يعرض `features.workersAI` و`features.database` و`features.videoAvatar`. مسار المحادثة يستخدم Workers AI فقط ولا يستدعي OpenAI.
+في النسخة الحالية تم ربط Workers AI باسم `AI` وقاعدة D1 باسم `DB` في `wrangler.jsonc`، كما طُبّق migration الأول على قاعدة الإنتاج. لا تنشئ قاعدة ثانية لنفس المشروع. افحص `GET /api/health`؛ يعرض `features.workersAI` و`features.database` و`features.videoAvatar` و`features.adminProtectionConfigured` (مؤشر boolean فقط دون كشف قيم الأسرار). مسار المحادثة يستخدم Workers AI فقط ولا يستدعي OpenAI.
 - `POST /api/admin/login` و`GET /api/admin/session` و`POST /api/admin/logout` — جلسة لوحة المدير.
 - `GET /api/admin/status` — فحص حالة الخدمات بعد التحقق من المدير.
 - `POST /api/admin/test-ai` — اختبار نموذج Workers AI، ويستهلك جزءًا صغيرًا من الحصة المجانية.
