@@ -63,7 +63,26 @@ async function issueSession(db, user) {
     .bind(crypto.randomUUID(), user.id, tokenHash, expires, Math.floor(Date.now() / 1000)).run();
   return json({ ok: true, user: { id: user.id, email: user.email, name: user.display_name } }, 200, { "Set-Cookie": sessionCookie(token) });
 }
-async function authRoute(request, env, path) {
+function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثناء تنفيذ طلب الحساب. جرّب مرة أخرى.") {
+  const raw = String(error?.message || error || "unknown");
+  const safeDetail = raw
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
+    .replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]")
+    .slice(0, 240);
+  console.error("[WENS_AUTH_FAILURE]", JSON.stringify({
+    requestId,
+    phase,
+    errorName: String(error?.name || "Error").slice(0, 80),
+    detail: safeDetail
+  }));
+  return json({
+    error: message,
+    code: "AUTH_" + phase.toUpperCase() + "_FAILED",
+    requestId
+  }, 500);
+}
+
+async function authRoute(request, env, path, requestId) {
   const db = requireDb(env);
   if (path === "/api/auth/me" && request.method === "GET") {
     const user = await currentUser(request, env);
@@ -87,21 +106,57 @@ async function authRoute(request, env, path) {
   if (path.endsWith("/register")) {
     const name = String(body.name || "").trim().slice(0, 60);
     if (name.length < 2) return json({ error: "اكتب اسمًا من حرفين على الأقل." }, 400);
-    const existing = await db.prepare("SELECT id FROM users WHERE email=? LIMIT 1").bind(email).first();
+    let existing;
+    try {
+      existing = await db.prepare("SELECT id FROM users WHERE email=? LIMIT 1").bind(email).first();
+    } catch (error) {
+      return authDiagnostic(requestId, "register_lookup", error, "تعذّر التحقق من البريد على قاعدة البيانات. حاول بعد قليل.");
+    }
     if (existing) return json({ error: "البريد الإلكتروني مسجل بالفعل. سجّل الدخول." }, 409);
     const id = crypto.randomUUID();
     const salt = b64url(crypto.getRandomValues(new Uint8Array(16)));
-    const hash = await passwordHash(password, salt);
-    await db.prepare("INSERT INTO users (id,email,display_name,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?)")
-      .bind(id, email, name, hash, salt, Math.floor(Date.now() / 1000)).run();
-    return issueSession(db, { id, email, display_name: name });
+    let hash;
+    try {
+      hash = await passwordHash(password, salt);
+    } catch (error) {
+      return authDiagnostic(requestId, "register_password_hash", error, "تعذّر تجهيز بيانات الحساب بأمان. حاول مرة أخرى.");
+    }
+    try {
+      await db.prepare("INSERT INTO users (id,email,display_name,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?)")
+        .bind(id, email, name, hash, salt, Math.floor(Date.now() / 1000)).run();
+    } catch (error) {
+      const detail = String(error?.message || error);
+      if (/UNIQUE constraint failed:\\s*users\\.email/i.test(detail)) {
+        return json({ error: "البريد الإلكتروني مسجل بالفعل. سجّل الدخول." }, 409);
+      }
+      return authDiagnostic(requestId, "register_insert", error, "تعذّر حفظ الحساب في قاعدة البيانات. لم يكتمل التسجيل.");
+    }
+    try {
+      return await issueSession(db, { id, email, display_name: name });
+    } catch (error) {
+      return authDiagnostic(requestId, "register_session", error, "تم إنشاء الحساب، لكن تعذّر إنشاء جلسة الدخول. جرّب تسجيل الدخول الآن.");
+    }
   }
 
-  const user = await db.prepare("SELECT id,email,display_name,password_hash,password_salt FROM users WHERE email=? LIMIT 1").bind(email).first();
+  let user;
+  try {
+    user = await db.prepare("SELECT id,email,display_name,password_hash,password_salt FROM users WHERE email=? LIMIT 1").bind(email).first();
+  } catch (error) {
+    return authDiagnostic(requestId, "login_lookup", error, "تعذّر التحقق من الحساب على قاعدة البيانات. حاول بعد قليل.");
+  }
   if (!user) return json({ error: "البريد أو كلمة المرور غير صحيحة." }, 401);
-  const candidate = await passwordHash(password, user.password_salt);
+  let candidate;
+  try {
+    candidate = await passwordHash(password, user.password_salt);
+  } catch (error) {
+    return authDiagnostic(requestId, "login_password_check", error, "تعذّر التحقق من كلمة المرور. حاول مرة أخرى.");
+  }
   if (!same(candidate, user.password_hash)) return json({ error: "البريد أو كلمة المرور غير صحيحة." }, 401);
-  return issueSession(db, user);
+  try {
+    return await issueSession(db, user);
+  } catch (error) {
+    return authDiagnostic(requestId, "login_session", error, "كلمة المرور صحيحة، لكن تعذّر إنشاء جلسة الدخول. حاول مرة أخرى.");
+  }
 }
 function base64Json(value) {
   return b64url(enc.encode(JSON.stringify(value)));
@@ -326,6 +381,7 @@ async function handleChat(request, env, user) {
 
 export default {
   async fetch(request, env) {
+    const requestId = crypto.randomUUID();
     const url = new URL(request.url);
     const path = url.pathname;
     if (request.method === "GET" && path === "/api/health") {
@@ -347,7 +403,7 @@ export default {
     }
     try {
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
-      if (path.startsWith("/api/auth/")) return await authRoute(request, env, path);
+      if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
       if (path === "/api/chat/history" && request.method === "GET") {
         if (!env.DB) return json({ messages: [], persistence: false });
         const user = await currentUser(request, env);
@@ -376,8 +432,20 @@ export default {
       if (env.ASSETS) return env.ASSETS.fetch(request);
       return json({ error: "المسار غير موجود." }, 404);
     } catch (error) {
-      if (String(error?.message) === "DB_NOT_CONFIGURED") return json({ error: "قاعدة البيانات غير مربوطة بالخادم بعد." }, 503);
-      return json({ error: "حصل خطأ داخلي. حاول مرة أخرى." }, 500);
+      const detail = String(error?.message || error || "unknown")
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
+        .replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]")
+        .slice(0, 240);
+      console.error("[WENS_REQUEST_FAILURE]", JSON.stringify({
+        requestId,
+        path,
+        errorName: String(error?.name || "Error").slice(0, 80),
+        detail
+      }));
+      if (String(error?.message) === "DB_NOT_CONFIGURED") {
+        return json({ error: "قاعدة البيانات غير مربوطة بالخادم بعد.", code: "DB_NOT_CONFIGURED", requestId }, 503);
+      }
+      return json({ error: "حصل خطأ داخلي. حاول مرة أخرى.", code: "INTERNAL_ERROR", requestId }, 500);
     }
   }
 };
