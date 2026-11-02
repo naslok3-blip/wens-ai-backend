@@ -1,3 +1,5 @@
+import { pbkdf2 } from "node:crypto";
+
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. تحدثي باللهجة المصرية الطبيعية وبصيغة المؤنث عن نفسك. كوني دافئة ومحترمة وخفيفة الظل دون ادعاء أنك إنسانة حقيقية. أجيبي بوضوح وباختصار مناسب. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص.";
 
 const enc = new TextEncoder();
@@ -27,30 +29,13 @@ async function digest(value) {
   return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(value))));
 }
 async function passwordHash(password, salt) {
-  let key;
-  try {
-    key = await crypto.subtle.importKey(
-      "raw",
-      enc.encode(password),
-      { name: "PBKDF2" },
-      false,
-      ["deriveBits"]
-    );
-  } catch (error) {
-    throw new Error("PBKDF2_IMPORT_" + String(error?.name || "Error"));
-  }
-  let bits;
-  try {
-    bits = await crypto.subtle.deriveBits({
-      name: "PBKDF2",
-      salt: fromB64url(salt).buffer,
-      iterations: 160000,
-      hash: { name: "SHA-256" }
-    }, key, 256);
-  } catch (error) {
-    throw new Error("PBKDF2_DERIVE_" + String(error?.name || "Error"));
-  }
-  return b64url(new Uint8Array(bits));
+  const derivedKey = await new Promise((resolve, reject) => {
+    pbkdf2(password, fromB64url(salt), 160000, 32, "sha256", (error, key) => {
+      if (error) reject(error);
+      else resolve(key);
+    });
+  });
+  return b64url(new Uint8Array(derivedKey));
 }
 function same(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
