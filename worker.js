@@ -27,8 +27,19 @@ async function digest(value) {
   return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(value))));
 }
 async function passwordHash(password, salt) {
-  const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: fromB64url(salt), iterations: 160000, hash: "SHA-256" }, key, 256);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits({
+    name: "PBKDF2",
+    salt: fromB64url(salt),
+    iterations: 160000,
+    hash: { name: "SHA-256" }
+  }, key, 256);
   return b64url(new Uint8Array(bits));
 }
 function same(a, b) {
