@@ -71,13 +71,18 @@ jobs:
             -H 'Content-Type: application/json' -X POST \
             --data "$(python -c 'import json,os; print(json.dumps({"name":"Wens CI Test","email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
             "$BASE/api/auth/register")
-          test "$REGISTER_STATUS" = "200"
+          echo "Registration HTTP status: $REGISTER_STATUS"
           python - <<'PY'
           import json
           data=json.load(open('/tmp/wens-register.json',encoding='utf-8'))
+          if not data.get('ok'):
+              print("Registration error:", data.get('error'))
+              print("Registration code:", data.get('code'))
+              print("Request ID:", data.get('requestId'))
           assert data.get('ok') is True and data.get('user',{}).get('name') == 'Wens CI Test', data
           print("Registration: OK")
           PY
+          test "$REGISTER_STATUS" = "200"
           ME_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
             -o /tmp/wens-me-register.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
             "$BASE/api/auth/me")
