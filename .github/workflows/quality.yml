@@ -123,6 +123,11 @@ jobs:
           import json
           data=json.load(open('/tmp/wens-image-generation.json',encoding='utf-8'))
           images=data.get('generatedImages') or []
+          if data.get('ok') is not True or len(images)!=1:
+              print("Image agent model:", data.get('model'))
+              print("Image agent steps:", data.get('steps'))
+              print("Image agent reply:", data.get('reply'))
+              print("Image agent error:", data.get('error'))
           assert data.get('ok') is True, data.get('error') or data
           assert len(images)==1, f"Agent did not return exactly one image: {len(images)}"
           assert images[0].get('dataUrl','').startswith('data:image/'), "Generated image data URL missing"
