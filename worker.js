@@ -498,32 +498,39 @@ function agentTools() {
     type: "function",
     function: { name, description, parameters: { type: "object", properties, required } }
   });
-  const taskId = { type: "string", description: "The exact task id returned by list_tasks." };
+  const taskId = { type: "string", description: "Exact task id returned by list_tasks." };
   return [
     fn("get_current_time", "Get the current date and time in ISO format."),
-    fn("calculate", "Calculate a simple arithmetic expression using numbers and +, -, *, /, parentheses, and decimals.", { expression: { type: "string", description: "Example: (1250 * 3.5) + 80" } }, ["expression"]),
-    fn("save_task", "Create a task in this user's private WENS task list. Optional due_at must be an ISO date/time, and priority is low, normal, or high.", {
-      title: { type: "string" }, details: { type: "string" },
-      due_at: { type: "string", description: "Optional ISO-8601 due date/time." },
-      priority: { type: "string", enum: ["low", "normal", "high"] }
+    fn("calculate", "Calculate a simple arithmetic expression using numbers, parentheses, decimals, +, -, *, /, and remainder.", {
+      expression: { type: "string", description: "Arithmetic expression, for example (1250 * 3.5) + 80." }
+    }, ["expression"]),
+    fn("save_task", "Create a task in this user's private WENS task list. Priority can be low, normal, or high; due_at is optional ISO-8601 date/time.", {
+      title: { type: "string", description: "Short task title." },
+      details: { type: "string", description: "Optional task notes or details." },
+      due_at: { type: "string", description: "Optional ISO-8601 due date or date-time." },
+      priority: { type: "string", description: "Optional priority: low, normal, or high." }
     }, ["title"]),
-    fn("list_tasks", "List this user's tasks. Use scope active, completed, archived, or all.", {
-      scope: { type: "string", enum: ["active", "completed", "archived", "all"] },
-      limit: { type: "integer", minimum: 1, maximum: 30 }
+    fn("list_tasks", "List this user's tasks by status. Scope can be active, completed, archived, or all.", {
+      scope: { type: "string", description: "Task scope: active, completed, archived, or all." },
+      limit: { type: "integer", description: "Maximum number of tasks to return, from 1 to 30." }
     }),
-    fn("update_task", "Update the title, details, due date, or priority of one task owned by this user. Use the exact id from list_tasks. Set due_at to an empty string to clear it.", {
-      id: taskId, title: { type: "string" }, details: { type: "string" },
-      due_at: { type: "string" }, priority: { type: "string", enum: ["low", "normal", "high"] }
+    fn("update_task", "Update the title, details, due date, or priority of one active task owned by this user. Use the exact id from list_tasks. Set due_at to an empty string to clear it.", {
+      id: taskId,
+      title: { type: "string", description: "New task title." },
+      details: { type: "string", description: "New task details." },
+      due_at: { type: "string", description: "New ISO-8601 due date/time, or an empty string to clear." },
+      priority: { type: "string", description: "New priority: low, normal, or high." }
     }, ["id"]),
-    fn("set_task_status", "Mark one of this user's tasks complete or active again.", {
-      id: taskId, done: { type: "boolean" }
+    fn("set_task_status", "Mark one of this user's active tasks complete or active again.", {
+      id: taskId,
+      done: { type: "boolean", description: "True to mark complete; false to reopen." }
     }, ["id", "done"]),
-    fn("archive_task", "Move a task to the archive without permanently deleting it. Only do this when the user clearly asks to archive or remove that task.", {
+    fn("archive_task", "Move a task to the archive without permanently deleting it. Only use when the user clearly asks to archive or remove that task.", {
       id: taskId
     }, ["id"]),
     fn("restore_task", "Restore one of this user's archived tasks to the active list.", { id: taskId }, ["id"]),
-    fn("search_my_messages", "Search this signed-in user's own WENS conversation history for a phrase or topic. Return only short relevant excerpts.", {
-      query: { type: "string", description: "A distinctive word or phrase to search for." }
+    fn("search_my_messages", "Search only this signed-in user's own WENS conversation history for a phrase or topic. Return short relevant excerpts.", {
+      query: { type: "string", description: "A distinctive phrase or at least two characters to search for." }
     }, ["query"])
   ];
 }
