@@ -802,8 +802,9 @@ async function runAgentImage(env, action, args, sourceImage) {
 
 function agentTools() {
   const fn = (name, description, properties = {}, required = []) => ({
-    type: "function",
-    function: { name, description, parameters: { type: "object", properties, required } }
+    name,
+    description,
+    parameters: { type: "object", properties, required }
   });
   const taskId = { type: "string", description: "Exact task id returned by list_tasks." };
   const webUrl = { type: "string", description: "A public HTTPS page URL. Do not use private network or localhost URLs." };
@@ -1177,7 +1178,10 @@ async function handleAgent(request, env, user, options = {}) {
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const calls = Array.isArray(assistantMessage?.tool_calls) ? assistantMessage.tool_calls : (Array.isArray(result?.tool_calls) ? result.tool_calls : []);
       if (!calls.length) { finalText = typeof assistantMessage?.content === "string" ? assistantMessage.content.trim() : (typeof result?.response === "string" ? result.response.trim() : ""); break; }
-      messages.push({ role: "assistant", content: assistantMessage.content || "", tool_calls: calls });
+      const nativeToolResponse = Array.isArray(result?.tool_calls) && !Array.isArray(assistantMessage?.tool_calls);
+      if (!nativeToolResponse) {
+        messages.push({ role: "assistant", content: assistantMessage.content || "", tool_calls: calls });
+      }
       for (const call of calls.slice(0, 6)) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
@@ -1219,7 +1223,12 @@ async function handleAgent(request, env, user, options = {}) {
           browser_close: "إغلاق جلسة المتصفح"
         };
         steps.push(labels[name] + (output.error ? " — " + output.error : " — تم"));
-        messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify(output) });
+        if (nativeToolResponse) {
+          messages.push({ role: "assistant", content: JSON.stringify({ name, arguments: args || {} }) });
+          messages.push({ role: "tool", content: JSON.stringify(output) });
+        } else {
+          messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify(output) });
+        }
       }
     }
     if (!finalText) {
