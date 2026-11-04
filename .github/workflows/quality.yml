@@ -59,7 +59,7 @@ jobs:
           test "$AUTH_STATUS" = "401"
           echo "D1-backed login query: OK (unknown probe account rejected)"
       - name: End-to-end registration and login session test
-        if: contains(github.event.head_commit.message, '[registration-e2e]')
+        if: contains(github.event.head_commit.message, '[registration-e2e]') || contains(github.event.head_commit.message, '[image-agent-e2e]')
         env:
           BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
           CI_EMAIL: wens-e2e-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
@@ -111,6 +111,50 @@ jobs:
           assert json.load(open('/tmp/wens-login.json',encoding='utf-8')).get('ok') is True
           assert json.load(open('/tmp/wens-me-login.json',encoding='utf-8')).get('ok') is True
           print("Login and session persistence: OK")
+          PY
+          echo "Testing in-chat AI image generation through the authenticated agent"
+          IMAGE_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 120 \
+            -o /tmp/wens-image-generation.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data '{"message":"أنشئي صورة اختبار بسيطة: كوب قهوة أحمر على طاولة بيضاء بإضاءة نهارية، بدون كتابة أو شعارات."}' \
+            "$BASE/api/chat")
+          test "$IMAGE_STATUS" = "200"
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/wens-image-generation.json',encoding='utf-8'))
+          images=data.get('generatedImages') or []
+          assert data.get('ok') is True, data.get('error') or data
+          assert len(images)==1, f"Agent did not return exactly one image: {len(images)}"
+          assert images[0].get('dataUrl','').startswith('data:image/'), "Generated image data URL missing"
+          assert len(images[0]['dataUrl']) > 5000, "Generated image payload is unexpectedly small"
+          print("Authenticated agent image generation: OK")
+          PY
+          echo "Testing in-chat edit of the generated reference image"
+          python - <<'PY'
+          import json
+          generated=json.load(open('/tmp/wens-image-generation.json',encoding='utf-8'))
+          data_url=generated['generatedImages'][0]['dataUrl']
+          header, image=data_url.split(',',1)
+          mime=header.split(';',1)[0].split(':',1)[1]
+          payload={
+            "message":"عدّلي الصورة المرفقة واجعلي الكوب أزرق بدل الأحمر مع الحفاظ على الخلفية والتكوين.",
+            "attachments":[{"kind":"image","name":"wens-ci-reference.jpg","type":mime,"data":image}]
+          }
+          json.dump(payload,open('/tmp/wens-image-edit-request.json','w',encoding='utf-8'),ensure_ascii=False)
+          PY
+          EDIT_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 150 \
+            -o /tmp/wens-image-edit.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data-binary @/tmp/wens-image-edit-request.json "$BASE/api/chat")
+          test "$EDIT_STATUS" = "200"
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/wens-image-edit.json',encoding='utf-8'))
+          images=data.get('generatedImages') or []
+          assert data.get('ok') is True, data.get('error') or data
+          assert len(images)==1, f"Agent did not return an edited image: {len(images)}"
+          assert images[0].get('dataUrl','').startswith('data:image/'), "Edited image data URL missing"
+          print("Authenticated agent reference-image editing: OK")
           PY
           DUPLICATE_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
             -o /tmp/wens-duplicate.json -w '%{http_code}' \
