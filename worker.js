@@ -287,7 +287,7 @@ async function adminUser(request, env) {
     "SELECT u.id,u.email,u.display_name FROM admin_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND lower(u.email)=? LIMIT 1"
   ).bind(tokenHash, now, ADMIN_EMAIL).first();
 }
-async function issueAdminSession(db, user) {
+async function issueAdminSession(db, user, extra = {}) {
   await ensureAdminSecurityTables(db);
   const token = b64url(crypto.getRandomValues(new Uint8Array(32)));
   const now = Math.floor(Date.now() / 1000), tokenHash = await digest(token);
@@ -295,7 +295,7 @@ async function issueAdminSession(db, user) {
     "INSERT INTO admin_sessions (id,user_id,token_hash,expires_at,created_at) VALUES (?,?,?,?,?)"
   ).bind(crypto.randomUUID(), user.id, tokenHash, now + ADMIN_SESSION_SECONDS, now).run();
   return json(
-    { ok: true, user: { id: user.id, email: user.email, name: user.display_name } },
+    { ok: true, user: { id: user.id, email: user.email, name: user.display_name }, ...extra },
     200, { "Set-Cookie": adminSessionCookie(token, ADMIN_SESSION_SECONDS) }
   );
 }
@@ -314,23 +314,35 @@ async function adminRoute(request, env, path) {
     if (!adminAttemptAllowed(ip)) return json({ error: "محاولات كثيرة. انتظر 15 دقيقة ثم جرّب مرة أخرى." }, 429);
     let body;
     try { body = await request.json(); } catch { return json({ error: "بيانات التهيئة غير صالحة." }, 400); }
-    const email = String(body.email || "").trim().toLowerCase();
     const ownerPassword = String(body.ownerPassword || "");
-    if (email !== ADMIN_EMAIL || ownerPassword.length < 8 || ownerPassword.length > 128) {
+    if (ownerPassword.length < 8 || ownerPassword.length > 128) {
       recordAdminAttempt(ip);
-      return json({ error: "بيانات التهيئة غير مكتملة أو غير صالحة." }, 400);
+      return json({ error: "أدخل كلمة مرور حساب ونس الحالية." }, 400);
     }
+    let stage = "owner_session";
     try {
+      // Require an active normal WENS owner session as well as the current account password.
+      const signedInUser = await currentUser(request, env);
+      if (!signedInUser || String(signedInUser.email || "").trim().toLowerCase() !== ADMIN_EMAIL) {
+        recordAdminAttempt(ip);
+        return json({ error: "سجّل الدخول أولًا إلى حساب المالك في ونس، ثم افتح الإدارة مرة أخرى." }, 401);
+      }
+      stage = "owner_lookup";
       await ensureAdminSecurityTables(env.DB);
       const user = await env.DB.prepare(
-        "SELECT id,email,display_name,password_hash,password_salt FROM users WHERE email=? LIMIT 1"
-      ).bind(ADMIN_EMAIL).first();
-      if (!user) { recordAdminAttempt(ip); return json({ error: "حساب المالك غير موجود." }, 403); }
+        "SELECT id,email,display_name,password_hash,password_salt FROM users WHERE id=? AND lower(email)=? LIMIT 1"
+      ).bind(signedInUser.id, ADMIN_EMAIL).first();
+      if (!user) {
+        recordAdminAttempt(ip);
+        return json({ error: "حساب المالك غير موجود في قاعدة البيانات." }, 403);
+      }
+      stage = "password_check";
       const ownerCandidate = await passwordHash(ownerPassword, user.password_salt);
       if (!same(ownerCandidate, user.password_hash)) {
         recordAdminAttempt(ip);
-        return json({ error: "كلمة مرور حساب ونس الحالية غير صحيحة." }, 401);
+        return json({ error: "كلمة مرور حساب ونس الحالية غير صحيحة. لم يتم إنشاء كلمة مرور المدير." }, 401);
       }
+      stage = "credential_save";
       const passwordBytes = crypto.getRandomValues(new Uint8Array(32));
       const newPassword = Array.from(passwordBytes, byte => byte.toString(16).padStart(2, "0")).join("");
       const salt = b64url(crypto.getRandomValues(new Uint8Array(16)));
@@ -340,12 +352,19 @@ async function adminRoute(request, env, path) {
       ).bind(ADMIN_EMAIL, hash, salt, Math.floor(Date.now() / 1000)).run();
       await env.DB.prepare("DELETE FROM admin_sessions WHERE user_id=?").bind(user.id).run();
       adminLoginAttempts.delete(ip);
-      const sessionResponse = await issueAdminSession(env.DB, user);
-      const sessionData = await sessionResponse.json();
-      return json({ ...sessionData, password: newPassword }, 200, Object.fromEntries(sessionResponse.headers));
+      stage = "admin_session";
+      return await issueAdminSession(env.DB, user, { password: newPassword });
     } catch (error) {
-      console.error("[WENS_ADMIN_SETUP_FAILURE]", String(error?.message || error).slice(0, 180));
-      return json({ error: "تعذّر إنشاء كلمة مرور المدير. لم تتغير كلمة مرور حساب ونس." }, 500);
+      console.error("[WENS_ADMIN_SETUP_FAILURE]", JSON.stringify({
+        stage,
+        errorName: String(error?.name || "Error").slice(0, 80),
+        detail: String(error?.message || error).replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]").slice(0, 160)
+      }));
+      return json({
+        error: "تعذّر إنشاء كلمة مرور المدير. لم تتغير كلمة مرور حساب ونس.",
+        code: "ADMIN_SETUP_FAILED",
+        stage
+      }, 500);
     }
   }
   if (path === "/api/admin/login" && request.method === "POST") {
