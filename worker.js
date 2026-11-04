@@ -1025,7 +1025,49 @@ async function handleAgent(request, env, user, options = {}) {
   let body;
   try { body = await request.json(); } catch { return json({ error: "بيانات المهمة غير صالحة." }, 400); }
   const message = typeof body.message === "string" ? body.message.trim() : "";
-  if (!message || message.length > 4000) return json({ error: "اكتب مهمة من 1 إلى 4000 حرف." }, 400);
+  const attachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 4) : [];
+  const deepThink = body.deepThink === true;
+  if ((!message && !attachments.length) || message.length > 4000) {
+    return json({ error: "اكتب رسالة أو أرفق ملفًا، وبحد أقصى 4000 حرف." }, 400);
+  }
+  let imageBase64 = "";
+  let textAttachmentContext = "";
+  const attachmentNames = [];
+  let textAttachmentLength = 0;
+  for (const item of attachments) {
+    const name = String(item?.name || "ملف مرفق").replace(/[\\r\\n]/g, " ").slice(0, 120);
+    const kind = String(item?.kind || "");
+    const type = String(item?.type || "").toLowerCase();
+    attachmentNames.push(name);
+    if (kind === "image") {
+      if (imageBase64) return json({ error: "يمكن إرفاق صورة واحدة في الرسالة حاليًا." }, 400);
+      if (!["image/jpeg", "image/png", "image/webp"].includes(type)) {
+        return json({ error: "نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP." }, 415);
+      }
+      const data = String(item?.data || "");
+      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(data) || data.length > 6 * 1024 * 1024) {
+        return json({ error: "بيانات الصورة غير صالحة أو حجمها كبير جدًا." }, 413);
+      }
+      imageBase64 = data;
+    } else if (kind === "text") {
+      const content = String(item?.text || "");
+      if (content.length > 100000 || textAttachmentLength + content.length > 100000) {
+        return json({ error: "إجمالي نصوص الملفات المرفقة يجب ألا يتجاوز 100 ألف حرف." }, 413);
+      }
+      textAttachmentLength += content.length;
+      textAttachmentContext += "\\n\\n--- ملف: " + name + " ---\\n" + content;
+    } else {
+      textAttachmentContext += "\\n\\n[مرفق ملف باسم " + name + " ونوع " + (type || "غير معروف") + ". محتوى هذا النوع لم يتم استخراجه؛ لا تدّعي قراءته.]";
+    }
+  }
+  const imageName = attachmentNames.find((name, index) => attachments[index]?.kind === "image") || "صورة";
+  const promptMessage = [
+    message,
+    imageBase64 ? "[تم إرفاق صورة باسم " + imageName + ". افحص الصورة وأجب عنها.]" : "",
+    textAttachmentContext
+  ].filter(Boolean).join("\\n\\n") || "افحص المرفقات المرسلة ووضّح ما يمكن قراءته منها.";
+  const storedMessage = promptMessage +
+    (attachmentNames.length ? "\\n\\n[أسماء المرفقات: " + attachmentNames.join("، ") + "]" : "");
   const steps = [];
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
@@ -1038,21 +1080,41 @@ async function handleAgent(request, env, user, options = {}) {
     }));
     await env.DB.prepare(
       "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
-    ).bind(crypto.randomUUID(), user.id, "user", message, Math.floor(Date.now() / 1000)).run();
+    ).bind(crypto.randomUUID(), user.id, "user", storedMessage, Math.floor(Date.now() / 1000)).run();
   }
   const systemPrompt = options.persist
-    ? SYSTEM_PROMPT + "\n\n" + AGENT_SYSTEM_PROMPT + "\nفي المحادثة الرئيسية، كوني رفيقة طبيعية: جاوبي مباشرة وباختصار مناسب، ولا تحولي كل سؤال بسيط إلى خطة. استخدمي الأدوات عند الحاجة الفعلية فقط. إذا طلب المستخدم تنفيذ شيء، خططي ونفذي ما تسمح به الأدوات ثم اشرحي النتيجة بصدق."
+    ? SYSTEM_PROMPT + "\\n\\n" + AGENT_SYSTEM_PROMPT + "\\nفي المحادثة الرئيسية، كوني رفيقة طبيعية: جاوبي مباشرة وباختصار مناسب، ولا تحولي كل سؤال بسيط إلى خطة. استخدمي الأدوات عند الحاجة الفعلية فقط. إذا طلب المستخدم تنفيذ شيء، خططي ونفذي ما تسمح به الأدوات ثم اشرحي النتيجة بصدق."
     : AGENT_SYSTEM_PROMPT;
+  const effectiveSystemPrompt = deepThink
+    ? systemPrompt + "\\nفي وضع التفكير العميق، تحققي من الخطوات والافتراضات، وراجعي النتائج قبل الإجابة. قدّمي الخلاصة المفيدة ولا تعرضي التفكير الداخلي."
+    : systemPrompt;
   const messages = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: effectiveSystemPrompt },
     ...conversationHistory,
-    { role: "user", content: message }
+    { role: "user", content: promptMessage }
   ];
-  const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+  const useReasoningModel = deepThink || Boolean(imageBase64);
+  const model = useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
   try {
     let finalText = "";
-    for (let turn = 0; turn < 6; turn++) {
-      const result = await env.AI.run(model, { messages, tools: agentTools(), temperature: 0.2, max_tokens: 900 });
+    let pendingImage = imageBase64;
+    const maxTurns = deepThink ? 8 : 6;
+    for (let turn = 0; turn < maxTurns; turn++) {
+      const runOptions = {
+        messages,
+        tools: agentTools(),
+        temperature: 0.2,
+        max_tokens: deepThink ? 1500 : 1100
+      };
+      if (model === "@cf/qwen/qwen3.8-27b") {
+        runOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
+      }
+      if (pendingImage) {
+        runOptions.image = pendingImage;
+        pendingImage = "";
+        steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
+      }
+      const result = await env.AI.run(model, runOptions);
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const calls = Array.isArray(assistantMessage?.tool_calls) ? assistantMessage.tool_calls : (Array.isArray(result?.tool_calls) ? result.tool_calls : []);
       if (!calls.length) { finalText = typeof assistantMessage?.content === "string" ? assistantMessage.content.trim() : (typeof result?.response === "string" ? result.response.trim() : ""); break; }
@@ -1087,7 +1149,13 @@ async function handleAgent(request, env, user, options = {}) {
       }
     }
     if (!finalText) {
-      const last = await env.AI.run(model, { messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]), temperature: 0.2, max_tokens: 900 });
+      const lastOptions = {
+        messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]),
+        temperature: 0.2,
+        max_tokens: deepThink ? 1500 : 1100
+      };
+      if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
+      const last = await env.AI.run(model, lastOptions);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
