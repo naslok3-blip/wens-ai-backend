@@ -4,11 +4,11 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b0b16"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css">
 <title>ونس AI</title>
-<style>.messages{max-height:min(60vh,620px);min-height:150px;overflow:auto}.bubble-text{white-space:pre-wrap;overflow-wrap:anywhere}.bubble-text a{color:#d9c9ff;text-decoration:underline;overflow-wrap:anywhere}.execution-trace{margin-top:10px;padding-top:8px;border-top:1px solid #ffffff18;color:#d9c9ff;font-size:11px}.execution-trace summary{cursor:pointer}.execution-trace ul{margin:7px 0 0;padding-inline-start:20px;color:#b7b0cb;line-height:1.8}</style></head>
+<style>.messages{max-height:min(60vh,620px);min-height:150px;overflow:auto}.bubble-text{white-space:pre-wrap;overflow-wrap:anywhere}.bubble-text a{color:#d9c9ff;text-decoration:underline;overflow-wrap:anywhere}.execution-trace{margin-top:10px;padding-top:8px;border-top:1px solid #ffffff18;color:#d9c9ff;font-size:11px}.execution-trace summary{cursor:pointer}.execution-trace ul{margin:7px 0 0;padding-inline-start:20px;color:#b7b0cb;line-height:1.8}.admin-inline-panel{margin-top:14px;padding:14px}.admin-inline-panel iframe{display:block;width:100%;height:82vh;min-height:760px;border:1px solid #ffffff18;border-radius:16px;background:#101020}.admin-inline-panel .section-head{margin-bottom:10px}@media(max-width:480px){.admin-inline-panel{padding:9px}.admin-inline-panel iframe{height:82vh;min-height:720px}}\n</style></head>
 <body>
 <header class="topbar">
   <a class="brand" href="index.html"><span class="logo">و</span><span><b id="brandName">ونس AI</b><small>رفيقة يومك الذكية</small></span></a>
-  <div class="top-actions"><button id="logoutBtn" class="admin-shortcut" hidden>خروج</button></div>
+  <div class="top-actions"><button id="openAdminBtn" class="admin-shortcut" type="button" hidden>الإدارة</button><button id="backToAppBtn" class="admin-shortcut" type="button" hidden>العودة لونس</button><button id="logoutBtn" class="admin-shortcut" hidden>خروج</button></div>
 </header>
 <main class="app">
 <section id="authPanel" class="panel auth-panel">
@@ -36,11 +36,18 @@
 
 <section class="panel">
   <div class="section-head"><div><h2>الدردشة مع ونس</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div><button id="clearBtn" class="text-btn">مسح العرض</button></div>
-  <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><div class="mini-avatar">و</div><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
+  <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><img class="mini-avatar" src="/avatar.jpg?v=real-jpg-20261104" alt="ونس" width="30" height="30"><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
   <form id="chatForm" class="chat-form"><input id="messageInput" placeholder="اكتب سؤالك أو المهمة أو رابط الموقع..." autocomplete="off" aria-label="رسالتك"><button class="send-btn" type="submit">إرسال</button></form>
   <p class="disclaimer">رسائلك تُعالج عبر Cloudflare Workers AI، وتُحفظ في قاعدة بيانات حسابك. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.</p>
 </section>
 </div>
+<section id="adminInlinePanel" class="panel admin-inline-panel" hidden>
+  <div class="section-head">
+    <div><h2>لوحة إدارة ونس</h2><p>الإدارة داخل حسابك ومن نفس صفحة ونس</p></div>
+    <span class="eyebrow">PRIVATE</span>
+  </div>
+  <iframe id="adminFrame" title="لوحة إدارة ونس" loading="lazy" referrerpolicy="same-origin" src="about:blank"></iframe>
+</section>
 </main>
 <footer>ونس AI • نسخة تطويرية</footer>
 <script src="app.js"></script>
