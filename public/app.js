@@ -163,6 +163,10 @@ $("chatForm").addEventListener("submit", async event => {
   try {
     const data = await api("/api/chat", { message });
     addMessage(data.reply);
+    if (Array.isArray(data.steps) && data.steps.length) {
+      const summary = data.steps.filter(Boolean).join(" • ");
+      addMessage("نفذت ونس الأدوات التالية: " + summary);
+    }
     speak(data.reply);
   } catch (error) {
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);
