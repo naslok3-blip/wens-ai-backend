@@ -44,6 +44,7 @@ jobs:
           assert data.get('ok') is True, f"Worker health failed: {data}"
           assert features.get('workersAI') is True, f"Workers AI binding missing: {features}"
           assert features.get('database') is True, f"D1 binding missing: {features}"
+          assert features.get('browser') is True, f"Browser Run binding missing: {features}"
           assert data.get('configured') is True, "No AI service is configured"
           print("Production health: OK")
           print("Cloudflare Workers AI binding: OK")
