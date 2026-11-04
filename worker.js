@@ -802,9 +802,8 @@ async function runAgentImage(env, action, args, sourceImage) {
 
 function agentTools() {
   const fn = (name, description, properties = {}, required = []) => ({
-    name,
-    description,
-    parameters: { type: "object", properties, required }
+    type: "function",
+    function: { name, description, parameters: { type: "object", properties, required } }
   });
   const taskId = { type: "string", description: "Exact task id returned by list_tasks." };
   const webUrl = { type: "string", description: "A public HTTPS page URL. Do not use private network or localhost URLs." };
@@ -1137,6 +1136,41 @@ async function handleAgent(request, env, user, options = {}) {
     await env.DB.prepare(
       "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
     ).bind(crypto.randomUUID(), user.id, "user", storedMessage, Math.floor(Date.now() / 1000)).run();
+  }
+
+  const imageWords = /(?:صورة|صوره|صور|الصورة|الصوره|رسم|رسمة|رسمة|لوحة|image|picture|photo|illustration|artwork)/i;
+  const imageCreateWords = /(?:أنشئ|انشئ|أنشئي|انشئي|اعمل|اعملي|صمم|صممي|ارسم|ارسمي|اصنع|اصنعي|ولّد|ولد|ابتكر|عايز|عاوزه|عاوز|اريد|أريد|محتاج|محتاجة|create|generate|draw|design|make)/i;
+  const imageEditWords = /(?:عدل|عدّل|تعديل|غير|غيّر|بدل|استبدل|احذف|أزل|شيل|قص|حوّل|حول|خلي|اجعل|ضيف|أضف|اضف|remove|edit|change|replace|erase|crop|transform|modify)/i;
+  const requestedImageTool = imageBase64 && imageEditWords.test(message)
+    ? "edit_image"
+    : (!imageBase64 && imageWords.test(message) && imageCreateWords.test(message) ? "generate_image" : "");
+  if (requestedImageTool) {
+    const result = await runAgentImage(
+      env,
+      requestedImageTool,
+      { prompt: message, size: body.imageSize || "square" },
+      imageBase64 ? { data: imageBase64, type: imageMimeType || "image/jpeg" } : null
+    );
+    if (!result.imageDataUrl) {
+      steps.push(requestedImageTool === "edit_image" ? "تعذّر تعديل الصورة" : "تعذّر إنشاء الصورة");
+      return json({ ok: false, error: result.error || "تعذّر تنفيذ مهمة الصور." }, 502);
+    }
+    const reply = requestedImageTool === "edit_image"
+      ? "تم تعديل الصورة حسب طلبك. تقدر تحفظ النسخة الجديدة من هنا."
+      : "أنشأت لك الصورة المطلوبة. تقدر تحفظها من هنا.";
+    steps.push(requestedImageTool === "edit_image" ? "تعديل الصورة المرفقة — تم" : "إنشاء صورة بالذكاء الاصطناعي — تم");
+    const generatedImages = [{
+      dataUrl: result.imageDataUrl,
+      name: requestedImageTool === "edit_image" ? "wens-edited-image" : "wens-generated-image",
+      width: result.width,
+      height: result.height
+    }];
+    if (options.persist && env.DB && user) {
+      await env.DB.prepare(
+        "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
+      ).bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+    }
+    return json({ ok: true, model: result.model, steps, reply, generatedImages });
   }
   const systemPrompt = options.persist
     ? SYSTEM_PROMPT + "\\n\\n" + AGENT_SYSTEM_PROMPT + "\\nفي المحادثة الرئيسية، كوني رفيقة طبيعية: جاوبي مباشرة وباختصار مناسب، ولا تحولي كل سؤال بسيط إلى خطة. استخدمي الأدوات عند الحاجة الفعلية فقط. إذا طلب المستخدم تنفيذ شيء، خططي ونفذي ما تسمح به الأدوات ثم اشرحي النتيجة بصدق."
