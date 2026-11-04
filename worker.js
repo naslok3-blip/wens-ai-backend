@@ -707,7 +707,7 @@ async function runAgentBrowser(env, user, db, task, options = {}) {
     let liveViewUrl = "";
     if (task.action === "open" && env.BROWSER.getLiveView) {
       try {
-        const view = await env.BROWSER.getLiveView(sessionId, { targetId, mode: "devtools" });
+        const view = await env.BROWSER.getLiveView(sessionId, { targetId, mode: "tab", expiresInMs: 600000 });
         liveViewUrl = String(view?.devtoolsFrontendUrl || view?.url || "");
       } catch {}
     }
