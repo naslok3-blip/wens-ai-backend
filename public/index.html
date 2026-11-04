@@ -37,8 +37,47 @@
 <section class="panel">
   <div class="section-head"><div><h2>الدردشة مع ونس</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div><button id="clearBtn" class="text-btn">مسح العرض</button></div>
   <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><img class="mini-avatar" src="/avatar.jpg?v=real-jpg-20261104" alt="ونس" width="30" height="30"><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
-  <form id="chatForm" class="chat-form"><input id="messageInput" placeholder="اكتب سؤالك أو المهمة أو رابط الموقع..." autocomplete="off" aria-label="رسالتك"><button class="send-btn" type="submit">إرسال</button></form>
-  <p class="disclaimer">رسائلك تُعالج عبر Cloudflare Workers AI، وتُحفظ في قاعدة بيانات حسابك. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.</p>
+  <div class="chat-composer">
+    <div id="attachmentMenu" class="attachment-menu" role="menu" aria-label="إضافة إلى المحادثة" hidden>
+      <button type="button" class="attachment-option" data-action="camera">
+        <span class="attachment-icon">📷</span><span><b>الكاميرا</b><small>التقط صورة وأرسلها لونس</small></span>
+      </button>
+      <button type="button" class="attachment-option" data-action="photos">
+        <span class="attachment-icon">🖼️</span><span><b>الصور</b><small>اختر صورة من هاتفك</small></span>
+      </button>
+      <button type="button" class="attachment-option" data-action="files">
+        <span class="attachment-icon">📎</span><span><b>الملفات</b><small>نصوص ومستندات وملفات أخرى</small></span>
+      </button>
+      <button type="button" class="attachment-option" data-action="plugins" aria-expanded="false">
+        <span class="attachment-icon">🧩</span><span><b>المكونات الإضافية</b><small>أدوات ونس المتصلة</small></span>
+        <span class="attachment-chevron">‹</span>
+      </button>
+      <button type="button" class="attachment-option deep-option" data-action="deep" aria-pressed="false">
+        <span class="attachment-icon">🧠</span><span><b>فكّر بعمق أكبر</b><small>استدلال أعمق للمسائل الصعبة</small></span>
+        <span id="deepThinkCheck" class="attachment-check" hidden>✓</span>
+      </button>
+    </div>
+    <div id="pluginTools" class="plugin-tools" hidden>
+      <div class="plugin-tools-heading"><b>أدوات ونس المتاحة</b><button id="backToAttachmentMenu" type="button" aria-label="رجوع">رجوع</button></div>
+      <button type="button" data-plugin-prompt="ابحثي في الإنترنت عن: ">🌐 البحث في الإنترنت</button>
+      <button type="button" data-plugin-prompt="افتحي هذا الموقع واستخدمي متصفح ونس لقراءته: ">🌍 متصفح المواقع</button>
+      <button type="button" data-plugin-prompt="اعرضي مهامي المحفوظة وساعديني في تنظيمها.">✅ إدارة المهام</button>
+      <button type="button" data-plugin-prompt="احسبي لي: ">🧮 الحاسبة</button>
+      <button type="button" data-plugin-prompt="ابحثي في سجل محادثاتي عن: ">🗂️ البحث في المحادثات</button>
+    </div>
+    <div id="deepThinkBadge" class="deep-think-badge" hidden>🧠 التفكير العميق مفعّل <button id="disableDeepThink" type="button">إيقاف</button></div>
+    <div id="attachmentsPreview" class="attachments-preview" hidden></div>
+    <form id="chatForm" class="chat-form">
+      <button id="attachMenuBtn" class="attach-menu-btn" type="button" aria-label="إضافة مرفق أو أداة" aria-expanded="false">＋</button>
+      <input id="messageInput" placeholder="اكتب رسالتك أو أرفق ملفًا..." autocomplete="off" aria-label="رسالتك">
+      <button class="send-btn" type="submit">إرسال</button>
+    </form>
+    <input id="cameraInput" class="visually-hidden-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
+    <input id="photosInput" class="visually-hidden-input" type="file" accept="image/jpeg,image/png,image/webp">
+    <input id="filesInput" class="visually-hidden-input" type="file" multiple accept=".txt,.md,.csv,.json,.xml,.html,.js,.css,.log,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
+    <p id="attachmentStatus" class="attachment-status" role="status" aria-live="polite"></p>
+  </div>
+  <p class="disclaimer">رسائلك ومرفقاتك تُعالج لإعداد الرد. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.</p>
 </section>
 </div>
 <section id="adminInlinePanel" class="panel admin-inline-panel" hidden>
