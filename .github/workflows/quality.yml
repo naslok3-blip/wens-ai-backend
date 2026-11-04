@@ -118,7 +118,12 @@ jobs:
             -H 'Content-Type: application/json' -X POST \
             --data '{"message":"أنشئي صورة اختبار بسيطة: كوب قهوة أحمر على طاولة بيضاء بإضاءة نهارية، بدون كتابة أو شعارات."}' \
             "$BASE/api/chat")
-          test "$IMAGE_STATUS" = "200"
+          echo "Image chat HTTP status: $IMAGE_STATUS"
+          if [ "$IMAGE_STATUS" != "200" ]; then
+            head -c 1800 /tmp/wens-image-generation.json || true
+            echo
+            exit 1
+          fi
           python - <<'PY'
           import json
           data=json.load(open('/tmp/wens-image-generation.json',encoding='utf-8'))
