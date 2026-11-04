@@ -464,6 +464,257 @@ async function adminRoute(request, env, path) {
 }
 
 
+let agentBrowserTableReady;
+let nextCdpCommandId = 0;
+
+async function ensureAgentBrowserSessions(db) {
+  if (!agentBrowserTableReady) {
+    agentBrowserTableReady = db.prepare(
+      "CREATE TABLE IF NOT EXISTS agent_browser_sessions (user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE, session_id TEXT NOT NULL, target_id TEXT NOT NULL, last_url TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL)"
+    ).run().catch(error => { agentBrowserTableReady = null; throw error; });
+  }
+  await agentBrowserTableReady;
+}
+
+function validatePublicWebUrl(value) {
+  let url;
+  try { url = new URL(String(value || "").trim()); }
+  catch { throw new Error("اكتب رابط موقع صحيح يبدأ بـ https://"); }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("المتصفح الخارجي يقبل روابط HTTPS العامة فقط، ولا يقبل بيانات دخول مضمّنة في الرابط.");
+  }
+  const host = url.hostname.toLowerCase().replace(/\.$/, "");
+  if (!host || host === "localhost" || host.endsWith(".localhost") ||
+      host.endsWith(".local") || host.endsWith(".internal") ||
+      host.endsWith(".test") || host.endsWith(".invalid") ||
+      host === "metadata.google.internal" || host === "metadata") {
+    throw new Error("هذا العنوان داخلي أو غير مسموح به.");
+  }
+  // Disallow IP literals to avoid browser access to private and link-local networks.
+  if (host.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) ||
+      host.startsWith("127.") || host.startsWith("10.") ||
+      host.startsWith("192.168.") || host.startsWith("169.254.") ||
+      /^172\.(?:1[6-9]|2\d|3[01])\./.test(host)) {
+    throw new Error("العناوين المباشرة للشبكات الداخلية أو عناوين IP غير مسموح بها.");
+  }
+  url.hash = url.hash.slice(0, 512);
+  return url.toString();
+}
+
+async function browserQuickAction(env, action, options) {
+  if (!env.BROWSER || typeof env.BROWSER.quickAction !== "function") {
+    return { error: "متصفح المواقع الخارجي غير مربوط على الخادم حتى الآن." };
+  }
+  const response = await env.BROWSER.quickAction(action, options);
+  let data = response;
+  if (response && typeof response.json === "function") {
+    if (response.ok === false) return { error: "تعذر فتح الموقع (HTTP " + response.status + ")." };
+    data = await response.json();
+  }
+  if (data && data.success === false) return { error: String(data.errors?.[0]?.message || "تعذر قراءة الموقع.") };
+  return data;
+}
+
+async function getAgentBrowserConnection(env, user, db, create = true) {
+  if (!env.BROWSER || !db || !user) throw new Error("متصفح المواقع يحتاج ربط Browser Run وتسجيل الدخول إلى ونس.");
+  await ensureAgentBrowserSessions(db);
+  const now = Math.floor(Date.now() / 1000);
+  let saved = await db.prepare(
+    "SELECT session_id,target_id,last_url,updated_at FROM agent_browser_sessions WHERE user_id=? LIMIT 1"
+  ).bind(user.id).first();
+
+  let live = saved && now - Number(saved.updated_at || 0) < 900
+    ? await env.BROWSER.getSession(saved.session_id).catch(() => null)
+    : null;
+
+  if (!saved || !live) {
+    if (!create) throw new Error("لا توجد جلسة متصفح مفتوحة. اطلبي من ونس فتح موقع أولًا.");
+    const launched = await env.BROWSER.launch({ keepAlive: 1200000, targets: true });
+    const sessionId = launched.sessionId;
+    if (!sessionId) throw new Error("لم يرجع Browser Run معرّف جلسة.");
+    let targets = Array.isArray(launched.targets) ? launched.targets : [];
+    if (!targets.length && env.BROWSER.devtools?.listTargets) {
+      targets = await env.BROWSER.devtools.listTargets(sessionId);
+    }
+    let target = targets.find(item => item.type === "page");
+    if (!target && env.BROWSER.devtools?.newTarget) {
+      target = await env.BROWSER.devtools.newTarget(sessionId, "about:blank");
+    }
+    const targetId = String(target?.id || target?.targetId || "");
+    if (!targetId) {
+      await env.BROWSER.closeSession(sessionId).catch(() => {});
+      throw new Error("تم فتح جلسة المتصفح لكن لم يتم العثور على تبويب.");
+    }
+    await db.prepare(
+      "INSERT INTO agent_browser_sessions (user_id,session_id,target_id,last_url,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET session_id=excluded.session_id,target_id=excluded.target_id,last_url=excluded.last_url,updated_at=excluded.updated_at"
+    ).bind(user.id, sessionId, targetId, "about:blank", now).run();
+    saved = { session_id: sessionId, target_id: targetId, last_url: "about:blank", updated_at: now };
+  }
+
+  const connection = await env.BROWSER.connectSession(saved.session_id, { targetId: saved.target_id });
+  const response = await connection.webSocket.fetch(
+    "https://browser-binding.invalid",
+    { headers: { Upgrade: "websocket" } }
+  );
+  if (!response.webSocket) throw new Error("Browser Run لم ينشئ اتصال تحكم صالحًا.");
+  const socket = response.webSocket;
+  socket.accept();
+  return { socket, sessionId: saved.session_id, targetId: saved.target_id, lastUrl: saved.last_url };
+}
+
+function sendCdpCommand(socket, method, params = {}, timeoutMs = 12000) {
+  return new Promise((resolve, reject) => {
+    const id = ++nextCdpCommandId;
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.removeEventListener("message", onMessage);
+      socket.removeEventListener("close", onClose);
+      socket.removeEventListener("error", onError);
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("انتهت مهلة التحكم في صفحة الموقع."));
+    }, timeoutMs);
+    const onClose = () => { cleanup(); reject(new Error("انقطع اتصال المتصفح.")); };
+    const onError = () => { cleanup(); reject(new Error("حدث خطأ في اتصال المتصفح.")); };
+    const onMessage = event => {
+      let message;
+      try { message = JSON.parse(event.data); } catch { return; }
+      if (message.id !== id) return;
+      cleanup();
+      if (message.error) reject(new Error(String(message.error.message || "فشل أمر المتصفح.")));
+      else resolve(message.result || {});
+    };
+    socket.addEventListener("message", onMessage);
+    socket.addEventListener("close", onClose);
+    socket.addEventListener("error", onError);
+    try { socket.send(JSON.stringify({ id, method, params })); }
+    catch (error) { cleanup(); reject(error); }
+  });
+}
+
+async function browserEvaluate(socket, expression) {
+  const result = await sendCdpCommand(socket, "Runtime.evaluate", {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+    userGesture: true
+  });
+  if (result.exceptionDetails) {
+    const message = result.exceptionDetails.exception?.description ||
+      result.exceptionDetails.text || "تعذر قراءة الصفحة.";
+    throw new Error(String(message).slice(0, 240));
+  }
+  return result.result?.value ?? null;
+}
+
+async function browserPageSummary(socket) {
+  return await browserEvaluate(socket, `(() => ({
+    title: document.title || "",
+    url: location.href,
+    text: (document.body?.innerText || "").slice(0, 10000),
+    links: [...document.querySelectorAll("a")].filter(a => {
+      const r = a.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && a.href.startsWith("https://");
+    }).slice(0, 25).map(a => ({ text: (a.innerText || a.getAttribute("aria-label") || "").trim().slice(0, 100), url: a.href }))
+  }))()`);
+}
+
+async function runAgentBrowser(env, user, db, task, options = {}) {
+  const connection = await getAgentBrowserConnection(env, user, db, options.create !== false);
+  const { socket, sessionId, targetId } = connection;
+  try {
+    await sendCdpCommand(socket, "Page.enable");
+    await sendCdpCommand(socket, "Runtime.enable");
+
+    if (task.action === "open") {
+      const url = validatePublicWebUrl(task.url);
+      await sendCdpCommand(socket, "Page.navigate", { url });
+      await new Promise(resolve => setTimeout(resolve, 1800));
+    } else if (task.action === "click") {
+      const label = String(task.label || "").trim().slice(0, 100);
+      if (!label) return { error: "اكتبي اسم الزر أو الرابط الذي تريدين فتحه." };
+      const result = await browserEvaluate(socket, `(() => {
+        const needle = ${JSON.stringify(label.toLowerCase())};
+        const dangerous = /(delete|remove|purchase|buy now|checkout|payment|pay now|transfer|submit|send|publish|unsubscribe|cancel order|حذف|إزالة|شراء|ادفع|دفع|تحويل|إرسال|نشر|إلغاء|تأكيد الطلب)/i;
+        const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden"; };
+        const elements = [...document.querySelectorAll('a,button,[role="button"],input[type="button"],input[type="submit"]')].filter(visible);
+        const textOf = el => (el.innerText || el.getAttribute("aria-label") || el.value || "").trim().replace(/\\s+/g," ");
+        const el = elements.find(item => textOf(item).toLowerCase() === needle) ||
+          elements.find(item => textOf(item).toLowerCase().includes(needle));
+        if (!el) return { ok:false, error:"لم أجد زرًا أو رابطًا بهذا الاسم في الصفحة." };
+        const text = textOf(el).slice(0,100);
+        if (dangerous.test(text)) return { ok:false, blocked:true, label:text, error:"لم أضغط هذا الزر لأنه قد يرسل أو يحذف أو يشتري أو يغيّر شيئًا خارجيًا." };
+        el.click();
+        return { ok:true, clicked:text, href:el.href || "" };
+      })()`);
+      if (!result?.ok) return result || { error: "تعذر تنفيذ الضغط." };
+      await new Promise(resolve => setTimeout(resolve, 900));
+    } else if (task.action === "fill") {
+      const field = String(task.field || "").trim().slice(0, 100);
+      const value = String(task.value ?? "").slice(0, 2000);
+      if (!field || !value) return { error: "اسم الحقل والقيمة غير مكتملين." };
+      const sensitive = /(password|passcode|otp|one.?time|verification code|security code|token|secret|cvv|cvc|credit card|debit card|card number|bank account|iban|كلمة المرور|رمز التحقق|رمز الأمان|الرقم السري|بطاقة|رقم الحساب|رمز الدخول)/i;
+      const result = await browserEvaluate(socket, `(() => {
+        const needle = ${JSON.stringify(field.toLowerCase())};
+        const value = ${JSON.stringify(value)};
+        const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden"; };
+        const fields = [...document.querySelectorAll('input:not([type=hidden]),textarea,[contenteditable="true"],select')].filter(visible);
+        const labelFor = el => {
+          const labels = [...(el.labels || [])].map(x => x.innerText || "").join(" ");
+          const parent = el.closest("label");
+          return [labels,parent?.innerText || "",el.getAttribute("aria-label") || "",el.placeholder || "",el.name || "",el.id || ""].join(" ").toLowerCase();
+        };
+        const el = fields.find(item => labelFor(item) === needle) || fields.find(item => labelFor(item).includes(needle));
+        if (!el) return {ok:false,error:"لم أجد هذا الحقل في الصفحة."};
+        const hint = labelFor(el);
+        if (el.type === "password" || /(password|passcode|otp|verification|security code|token|secret|cvv|cvc|card number|bank account|iban|كلمة المرور|رمز التحقق|رقم الحساب|بطاقة)/i.test(hint)) {
+          return {ok:false,blocked:true,error:"لا تضع كلمات المرور أو رموز التحقق أو بيانات الدفع داخل الشات. أدخلها بنفسك في نافذة المتصفح الآمنة."};
+        }
+        if (el.tagName === "SELECT") {
+          const option = [...el.options].find(o => o.text.trim().toLowerCase() === value.toLowerCase() || o.value.toLowerCase() === value.toLowerCase());
+          if (!option) return {ok:false,error:"القيمة غير موجودة ضمن اختيارات القائمة."};
+          el.value = option.value;
+        } else if (el.isContentEditable) {
+          el.textContent = value;
+        } else {
+          const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(proto,"value")?.set;
+          if (setter) setter.call(el,value); else el.value = value;
+        }
+        el.dispatchEvent(new Event("input",{bubbles:true}));
+        el.dispatchEvent(new Event("change",{bubbles:true}));
+        return {ok:true,field:hint.slice(0,100),filled:true};
+      })()`);
+      return result || { error: "تعذر ملء الحقل." };
+    }
+
+    const summary = await browserPageSummary(socket);
+    await db.prepare(
+      "UPDATE agent_browser_sessions SET last_url=?,updated_at=? WHERE user_id=? AND session_id=?"
+    ).bind(String(summary?.url || ""), Math.floor(Date.now() / 1000), user.id, sessionId).run();
+
+    let liveViewUrl = "";
+    if (task.action === "open" && env.BROWSER.getLiveView) {
+      try {
+        const view = await env.BROWSER.getLiveView(sessionId, { targetId, mode: "devtools" });
+        liveViewUrl = String(view?.devtoolsFrontendUrl || view?.url || "");
+      } catch {}
+    }
+    return {
+      ok: true,
+      action: task.action,
+      title: summary?.title || "",
+      url: summary?.url || "",
+      text: String(summary?.text || "").slice(0, 8500),
+      links: task.action === "open" ? (summary?.links || []).slice(0, 15) : [],
+      liveViewUrl
+    };
+  } finally {
+    socket.close();
+  }
+}
+
 const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب، ثم استخدمي أدوات ونس الفعلية عندما تفيد: الحساب، إنشاء المهام وتعديلها وتحديد مواعيدها وأولوياتها، إنجازها، أرشفتها واستعادتها، والبحث في سجل محادثات المستخدم نفسه. لا تنفذي إلا ما تسمح به الأدوات. لا تدّعي الوصول للهاتف أو الملفات أو التطبيقات أو الحسابات الخارجية أو الإنترنت ما لم توجد أداة متصلة بذلك صراحة. لا تطلبي كلمات المرور أو مفاتيح الوصول. الأرشفة قابلة للاسترجاع وليست حذفًا نهائيًا. لا تنفذي إجراءً خارجيًا أو ماليًا. كوني طبيعية في الحوار ولا تحولي كل سؤال إلى خطة. بعد استخدام أداة اذكري بدقة ما تم.`;
 let agentTasksReady;
 async function ensureAgentTasks(db) {
