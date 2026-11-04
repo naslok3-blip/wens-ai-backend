@@ -128,20 +128,26 @@ jobs:
           BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/" -o /tmp/wens-index.html
           grep -q 'id="chatForm"' /tmp/wens-index.html
+          grep -q 'id="openAdminBtn"' /tmp/wens-index.html
+          grep -q 'id="adminInlinePanel"' /tmp/wens-index.html
+          grep -q 'avatar.jpg' /tmp/wens-index.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
           grep -q 'Cloudflare AI' /tmp/wens-app.js
+          grep -q 'updateAdminShortcut' /tmp/wens-app.js
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/style.css" -o /tmp/wens-style.css
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.svg" -o /tmp/wens-avatar.svg
-          grep -q '<svg' /tmp/wens-avatar.svg
-          echo "Production web assets: OK"
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/" -o /tmp/wens-index.html
-          grep -q 'id="chatForm"' /tmp/wens-index.html
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
-          grep -q 'Cloudflare AI' /tmp/wens-app.js
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/style.css" -o /tmp/wens-style.css
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.svg" -o /tmp/wens-avatar.svg
-          grep -q '<svg' /tmp/wens-avatar.svg
-          echo "Production web assets: OK"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.jpg?v=real-jpg-20261104" -o /tmp/wens-avatar.jpg
+          python - <<'PY'
+          image = open('/tmp/wens-avatar.jpg', 'rb').read()
+          assert image[:3] == b'\\xff\\xd8\\xff', 'Wens portrait is not a valid JPEG asset'
+          assert len(image) > 5000, f'Wens portrait unexpectedly small: {len(image)} bytes'
+          print(f'Wens portrait JPEG: OK ({len(image)} bytes)')
+          PY
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.html?embed=1" -o /tmp/wens-admin.html
+          grep -q 'id="adminSetupForm"' /tmp/wens-admin.html
+          grep -q 'id="showAdminResetBtn"' /tmp/wens-admin.html
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js" -o /tmp/wens-admin.js
+          grep -q '/api/auth/me' /tmp/wens-admin.js
+          echo "Production Wens portrait, chat and same-page admin assets: OK"
       - name: Verify owner-only admin and shared settings API
         run: |
           set -euo pipefail
