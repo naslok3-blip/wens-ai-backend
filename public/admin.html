@@ -23,15 +23,23 @@
     <form id="adminLoginForm" class="admin-login-form">
       <label for="adminEmail">البريد الإلكتروني</label>
       <input id="adminEmail" type="email" autocomplete="username" maxlength="190" value="naslok3@gmail.com" required>
-      <label for="adminPassword">كلمة المرور</label>
-      <input id="adminPassword" type="password" autocomplete="current-password" minlength="8" maxlength="128" placeholder="كلمة مرور حساب ونس" required>
+      <label for="adminPassword">كلمة مرور المدير المستقلة</label>
+      <input id="adminPassword" type="password" autocomplete="current-password" minlength="20" maxlength="128" placeholder="كلمة مرور المدير" required>
       <button id="adminLoginBtn" class="btn primary" type="submit">فتح لوحة التحكم</button>
+    </form>
+    <button id="showAdminResetBtn" class="text-btn auth-toggle" type="button" hidden>نسيت كلمة مرور المدير؟ إنشاء كلمة مرور جديدة</button>
+    <form id="adminSetupForm" class="admin-login-form" hidden>
+      <p class="muted">لتهيئة أو استعادة كلمة مرور المدير، يجب أن تكون مسجلًا بحساب المالك في ونس. أدخل كلمة مرور حساب ونس الحالية هنا.</p>
+      <label for="ownerPassword">كلمة مرور حساب ونس الحالية</label>
+      <input id="ownerPassword" type="password" autocomplete="current-password" minlength="8" maxlength="128" required>
+      <button id="adminSetupBtn" class="btn primary" type="submit">إنشاء كلمة مرور المدير المستقلة</button>
     </form>
     <p id="adminGateStatus" class="status-line" role="status" aria-live="polite"></p>
     <p class="disclaimer">الدخول بحساب المالك الموجود في قاعدة البيانات. كلمة المرور لا تُحفظ في لوحة الإدارة.</p>
   </section>
 
   <div id="adminApp" hidden>
+    <div id="adminNewPasswordNotice" class="notice" hidden><b>كلمة مرور المدير الجديدة</b><p>انسخها واحفظها الآن؛ لن تظهر مرة أخرى.</p><code id="adminNewPasswordText" dir="ltr" style="display:block;overflow-wrap:anywhere;padding:10px 0"></code><button id="copyAdminPasswordBtn" class="btn secondary" type="button">نسخ كلمة المرور</button><p id="copyAdminPasswordStatus" class="muted"></p></div>
     <section class="admin-heading">
       <p class="eyebrow">PRIVATE CONTROL CENTER</p>
       <h1>لوحة إدارة ونس AI</h1>
