@@ -509,15 +509,32 @@ async function executeAgentTool(name, args, env, user) {
   }
   return { error: "الأداة غير مسموح بها." };
 }
-async function handleAgent(request, env, user) {
+async function handleAgent(request, env, user, options = {}) {
   if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ error: "بيانات المهمة غير صالحة." }, 400); }
   const message = typeof body.message === "string" ? body.message.trim() : "";
   if (!message || message.length > 4000) return json({ error: "اكتب مهمة من 1 إلى 4000 حرف." }, 400);
   const steps = [];
+  let conversationHistory = [];
+  if (options.persist && env.DB && user) {
+    const prior = await env.DB.prepare(
+      "SELECT role,content FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 16"
+    ).bind(user.id).all();
+    conversationHistory = (prior.results || []).reverse().map(item => ({
+      role: item.role,
+      content: item.content
+    }));
+    await env.DB.prepare(
+      "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
+    ).bind(crypto.randomUUID(), user.id, "user", message, Math.floor(Date.now() / 1000)).run();
+  }
+  const systemPrompt = options.persist
+    ? SYSTEM_PROMPT + "\n\n" + AGENT_SYSTEM_PROMPT + "\nفي المحادثة الرئيسية، كوني رفيقة طبيعية: جاوبي مباشرة وباختصار مناسب، ولا تحولي كل سؤال بسيط إلى خطة. استخدمي الأدوات عند الحاجة الفعلية فقط. إذا طلب المستخدم تنفيذ شيء، خططي ونفذي ما تسمح به الأدوات ثم اشرحي النتيجة بصدق."
+    : AGENT_SYSTEM_PROMPT;
   const messages = [
-    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
+    ...conversationHistory,
     { role: "user", content: message }
   ];
   const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
@@ -547,6 +564,11 @@ async function handleAgent(request, env, user) {
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
     if (!finalText) return json({ error: "نفذت الوكيلة الأدوات لكن النموذج لم يرجع ملخصًا نهائيًا." }, 502);
+    if (options.persist && env.DB && user) {
+      await env.DB.prepare(
+        "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
+      ).bind(crypto.randomUUID(), user.id, "assistant", finalText, Math.floor(Date.now() / 1000)).run();
+    }
     return json({ ok: true, model, steps, reply: finalText });
   } catch (error) {
     console.error("[WENS_AGENT_FAILURE]", String(error?.message || error).slice(0,180));
@@ -666,7 +688,7 @@ export default {
       if (path === "/api/chat" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
         if (env.DB && !user) return json({ error: "سجّل الدخول الأول لاستخدام ونس." }, 401);
-        return await handleChat(request, env, user);
+        return await handleAgent(request, env, user, { persist: true });
       }
       if (request.method === "GET") {
         const asset = INLINE_ASSETS.get(path);
