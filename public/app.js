@@ -197,7 +197,7 @@ function appendMessageText(container, text) {
   }
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
-function addMessage(text, who = "assistant", steps = [], attachments = []) {
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = []) {
   const row = document.createElement("div");
   row.className = "message " + who;
   if (who === "assistant") {
@@ -233,6 +233,25 @@ function addMessage(text, who = "assistant", steps = [], attachments = []) {
       }
     }
     bubble.appendChild(media);
+  }
+  if (who === "assistant" && Array.isArray(generatedImages) && generatedImages.length) {
+    const media = document.createElement("div");
+    media.className = "message-attachments";
+    for (const item of generatedImages.slice(0, 1)) {
+      if (!item || typeof item.dataUrl !== "string" || !item.dataUrl.startsWith("data:image/")) continue;
+      const image = document.createElement("img");
+      image.src = item.dataUrl;
+      image.alt = item.name || "صورة من ونس";
+      image.loading = "lazy";
+      media.appendChild(image);
+      const save = document.createElement("a");
+      save.className = "message-attachment-name";
+      save.href = item.dataUrl;
+      save.download = String(item.name || "wens-ai-image") + ".jpg";
+      save.textContent = "حفظ الصورة";
+      media.appendChild(save);
+    }
+    if (media.childNodes.length) bubble.appendChild(media);
   }
   if (who === "assistant" && Array.isArray(steps) && steps.length) {
     const trace = document.createElement("details");
@@ -344,13 +363,30 @@ async function addSelectedFile(file) {
       return;
     }
     try {
-      const dataUrl = await readAsDataUrl(file);
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("تعذّر تجهيز الصورة للمعالجة.");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close?.();
+      const optimizedBlob = await new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("تعذّر ضغط الصورة.")), "image/jpeg", 0.88);
+      });
+      const [dataUrl, previewUrl] = await Promise.all([
+        readAsDataUrl(optimizedBlob),
+        readAsDataUrl(file)
+      ]);
       pendingAttachments.push({
         kind: "image", name: file.name || "صورة",
-        type: file.type, size: file.size,
-        data: dataUrl.split(",")[1], dataUrl
+        type: "image/jpeg", size: optimizedBlob.size,
+        data: dataUrl.split(",")[1], dataUrl: previewUrl
       });
-      setAttachmentStatus("الصورة جاهزة للتحليل مع رسالتك.");
+      setAttachmentStatus("الصورة جاهزة للتحليل والتعديل بالذكاء الاصطناعي.");
     } catch (error) { setAttachmentStatus(error.message, true); }
   } else {
     const extension = String(file.name.split(".").pop() || "").toLowerCase();
@@ -466,7 +502,7 @@ $("chatForm").addEventListener("submit", async event => {
     const data = await api("/api/chat", {
       message: text, attachments: payload, deepThink
     });
-    addMessage(data.reply, "assistant", data.steps || []);
+    addMessage(data.reply, "assistant", data.steps || [], [], data.generatedImages || []);
     speak(data.reply);
   } catch (error) {
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);
