@@ -130,28 +130,36 @@ async function loadChatHistory() {
   }
 }
 function appendMessageText(container, text) {
-  const pieces = String(text ?? "").split(/(https:\/\/[^\s<>"']+)/g);
-  for (const piece of pieces) {
-    if (!piece) continue;
-    if (piece.startsWith("https://")) {
-      const match = piece.match(/^(https:\/\/[^\s<>"']+?)([),.!?؟،؛]*)$/);
-      const href = match ? match[1] : piece;
-      const suffix = match ? match[2] : "";
-      try {
-        const parsed = new URL(href);
-        if (parsed.protocol === "https:") {
-          const link = document.createElement("a");
-          link.href = parsed.href;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.textContent = href;
-          container.append(link, document.createTextNode(suffix));
-          continue;
-        }
-      } catch {}
+  const source = String(text ?? "");
+  const pattern = /\[([^\]\n]{1,100})\]\((https:\/\/[^)\s]+)\)|(https:\/\/[^\s<>"']+)/g;
+  let cursor = 0, match;
+  while ((match = pattern.exec(source))) {
+    if (match.index > cursor) {
+      container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
     }
-    container.appendChild(document.createTextNode(piece));
+    const label = match[1] || "";
+    const rawUrl = match[2] || match[3];
+    const suffix = match[3] ? (rawUrl.match(/[),.!?؟،؛]+$/)?.[0] || "") : "";
+    const href = suffix ? rawUrl.slice(0, -suffix.length) : rawUrl;
+    try {
+      const parsed = new URL(href);
+      if (parsed.protocol === "https:") {
+        const link = document.createElement("a");
+        link.href = parsed.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = label || href;
+        container.appendChild(link);
+        if (suffix) container.appendChild(document.createTextNode(suffix));
+      } else {
+        container.appendChild(document.createTextNode(match[0]));
+      }
+    } catch {
+      container.appendChild(document.createTextNode(match[0]));
+    }
+    cursor = match.index + match[0].length;
   }
+  if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
 function addMessage(text, who = "assistant", steps = []) {
   const row = document.createElement("div");
