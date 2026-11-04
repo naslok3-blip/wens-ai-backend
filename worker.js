@@ -365,6 +365,108 @@ async function adminRoute(request, env, path) {
   return json({ error: "مسار إدارة غير موجود." }, 404);
 }
 
+
+const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة تنفيذ مهام باللغة العربية المصرية. افهمي الهدف، واستخدمي الأدوات المتاحة فقط عندما تفيد. اشرحي ما فعلتِه بصدق ولا تدّعي تنفيذ شيء لم يحدث. لا تحذفي بيانات ولا تنفذي معاملات مالية أو إجراءات خارجية. اطلبِي توضيحًا إذا كانت المهمة غامضة أو خطرة. بعد الأدوات قدمي نتيجة واضحة وخطوات مختصرة.`;
+async function ensureAgentTasks(db) {
+  await db.prepare("CREATE TABLE IF NOT EXISTS agent_tasks (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_created ON agent_tasks(user_id, created_at DESC)").run();
+}
+function agentTools() {
+  return [
+    { name: "get_current_time", description: "Get the current server date and time in ISO format.", parameters: { type: "object", properties: {}, required: [] } },
+    { name: "calculate", description: "Calculate one simple arithmetic expression with two numbers and +, -, *, or /.", parameters: { type: "object", properties: { expression: { type: "string", description: "Example: 1250 * 3.5" } }, required: ["expression"] } },
+    { name: "save_task", description: "Save a to-do task for the signed-in WENS user.", parameters: { type: "object", properties: { title: { type: "string" }, details: { type: "string" } }, required: ["title"] } },
+    { name: "list_tasks", description: "List the signed-in user's saved tasks.", parameters: { type: "object", properties: {}, required: [] } }
+  ];
+}
+async function executeAgentTool(name, args, env, user) {
+  if (name === "get_current_time") return { now: new Date().toISOString() };
+  if (name === "calculate") {
+    const expression = String(args.expression || "").trim();
+    const match = expression.match(/^(-?\\d+(?:\\.\\d+)?)\\s*([+\\-*/×÷])\\s*(-?\\d+(?:\\.\\d+)?)$/);
+    if (!match) return { error: "اكتبي عملية حسابية بسيطة بين رقمين." };
+    const a = Number(match[1]), b = Number(match[3]), op = match[2];
+    if ((op === "/" || op === "÷") && b === 0) return { error: "لا يمكن القسمة على صفر." };
+    const value = op === "+" ? a+b : op === "-" ? a-b : (op === "*" || op === "×") ? a*b : a/b;
+    return { expression, result: Number(value.toFixed(8)) };
+  }
+  if (!env.DB || !user) return { error: "يلزم تسجيل الدخول لحفظ المهام." };
+  await ensureAgentTasks(env.DB);
+  if (name === "save_task") {
+    const title = String(args.title || "").trim().slice(0,180);
+    const details = String(args.details || "").trim().slice(0,1000);
+    if (!title) return { error: "عنوان المهمة مطلوب." };
+    const id = crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO agent_tasks (id,user_id,title,details,done,created_at) VALUES (?,?,?,?,0,?)")
+      .bind(id,user.id,title,details,Math.floor(Date.now()/1000)).run();
+    return { saved: true, id, title };
+  }
+  if (name === "list_tasks") {
+    const rows = await env.DB.prepare("SELECT id,title,details,done,created_at FROM agent_tasks WHERE user_id=? ORDER BY created_at DESC LIMIT 30").bind(user.id).all();
+    return { tasks: rows.results || [] };
+  }
+  return { error: "الأداة غير مسموح بها." };
+}
+async function handleAgent(request, env, user) {
+  if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "بيانات المهمة غير صالحة." }, 400); }
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+  if (!message || message.length > 4000) return json({ error: "اكتب مهمة من 1 إلى 4000 حرف." }, 400);
+  const steps = [];
+  const messages = [
+    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    { role: "user", content: message }
+  ];
+  const model = env.WENS_AGENT_MODEL || "@hf/nousresearch/hermes-2-pro-mistral-7b";
+  try {
+    let finalText = "";
+    for (let turn = 0; turn < 4; turn++) {
+      const result = await env.AI.run(model, { messages, tools: agentTools(), temperature: 0.2, max_tokens: 700 });
+      const calls = Array.isArray(result?.tool_calls) ? result.tool_calls : [];
+      if (!calls.length) { finalText = typeof result?.response === "string" ? result.response.trim() : ""; break; }
+      messages.push({ role: "assistant", content: result.response || "", tool_calls: calls });
+      for (const call of calls.slice(0, 4)) {
+        const name = String(call.name || call.function?.name || "");
+        let args = call.arguments ?? call.function?.arguments ?? {};
+        if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
+        const allowed = ["get_current_time","calculate","save_task","list_tasks"];
+        if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
+        const output = await executeAgentTool(name, args || {}, env, user);
+        const labels = { get_current_time: "قراءة الوقت الحالي", calculate: "تنفيذ عملية حسابية", save_task: "حفظ مهمة في حسابك", list_tasks: "قراءة مهامك المحفوظة" };
+        steps.push(labels[name] + (output.error ? " — " + output.error : " — تم"));
+        messages.push({ role: "tool", name, content: JSON.stringify(output) });
+      }
+    }
+    if (!finalText) {
+      const last = await env.AI.run(model, { messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]), temperature: 0.2, max_tokens: 700 });
+      finalText = typeof last?.response === "string" ? last.response.trim() : "";
+    }
+    if (!finalText) return json({ error: "نفذت الوكيلة الأدوات لكن النموذج لم يرجع ملخصًا نهائيًا." }, 502);
+    return json({ ok: true, model, steps, reply: finalText });
+  } catch (error) {
+    console.error("[WENS_AGENT_FAILURE]", String(error?.message || error).slice(0,180));
+    return json({ error: "تعذّر تشغيل وكيل ونس الآن. قد لا يكون نموذج الوكلاء متاحًا في حساب Workers AI أو قد تكون الحصة انتهت." }, 502);
+  }
+}
+async function agentTasksRoute(request, env, user) {
+  if (!env.DB || !user) return json({ error: "سجّل الدخول أولًا لاستخدام المهام المحفوظة." }, 401);
+  await ensureAgentTasks(env.DB);
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare("SELECT id,title,details,done,created_at FROM agent_tasks WHERE user_id=? ORDER BY created_at DESC LIMIT 50").bind(user.id).all();
+    return json({ tasks: rows.results || [] });
+  }
+  if (request.method === "PATCH") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "الطلب غير صالح." }, 400); }
+    const id = String(body.id || "");
+    if (!id || typeof body.done !== "boolean") return json({ error: "بيانات تحديث المهمة غير مكتملة." }, 400);
+    const result = await env.DB.prepare("UPDATE agent_tasks SET done=? WHERE id=? AND user_id=?").bind(body.done ? 1 : 0,id,user.id).run();
+    return json({ ok: true, changes: result.meta?.changes || 0 });
+  }
+  return json({ error: "طريقة الطلب غير مدعومة." }, 405);
+}
+
 async function handleChat(request, env, user) {
   if (!env.AI) {
     return json({ error: "خدمة الذكاء الاصطناعي المجانية غير مربوطة على الخادم." }, 503);
@@ -447,6 +549,15 @@ export default {
         if (!user) return json({ error: "سجّل الدخول الأول." }, 401);
         const rows = await requireDb(env).prepare("SELECT role,content,created_at FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 60").bind(user.id).all();
         return json({ messages: (rows.results || []).reverse(), persistence: true });
+      }
+      if (path === "/api/agent" && request.method === "POST") {
+        const user = env.DB ? await currentUser(request, env) : null;
+        if (env.DB && !user) return json({ error: "سجّل الدخول الأول لاستخدام وكيل ونس." }, 401);
+        return await handleAgent(request, env, user);
+      }
+      if (path === "/api/agent/tasks" && (request.method === "GET" || request.method === "PATCH")) {
+        const user = env.DB ? await currentUser(request, env) : null;
+        return await agentTasksRoute(request, env, user);
       }
       if (path === "/api/chat" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
