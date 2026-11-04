@@ -115,12 +115,17 @@ jobs:
           echo "Testing in-chat AI image generation through the authenticated agent"
           IMAGE_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 120 \
             -o /tmp/wens-image-generation.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
-            -H 'Content-Type: application/json' -X POST \
+            -H 'Content-Type: application/json' -H 'X-Wens-Diagnostics: image-agent-e2e' -X POST \
             --data '{"message":"أنشئي صورة اختبار بسيطة: كوب قهوة أحمر على طاولة بيضاء بإضاءة نهارية، بدون كتابة أو شعارات."}' \
             "$BASE/api/chat")
           echo "Image chat HTTP status: $IMAGE_STATUS"
           if [ "$IMAGE_STATUS" != "200" ]; then
-            head -c 1800 /tmp/wens-image-generation.json || true
+            python - <<'PY'
+            import json
+            data=json.load(open('/tmp/wens-image-generation.json',encoding='utf-8'))
+            print('Agent diagnostic:',data.get('diagnostic'))
+            print('Agent error:',data.get('error'))
+            PY
             echo
             exit 1
           fi
