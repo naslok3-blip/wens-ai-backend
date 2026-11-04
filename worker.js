@@ -1251,8 +1251,14 @@ async function handleAgent(request, env, user, options = {}) {
     }
     return json({ ok: true, model, steps, reply: finalText, generatedImages });
   } catch (error) {
-    console.error("[WENS_AGENT_FAILURE]", String(error?.message || error).slice(0,180));
-    return json({ error: "تعذّر تشغيل وكيل ونس الآن. قد لا يكون نموذج الوكلاء متاحًا في حساب Workers AI أو قد تكون الحصة انتهت." }, 502);
+    const diagnostic = String(error?.message || error || "Unknown AI error")
+      .replace(/Bearer\\s+[^\\s]+/gi, "Bearer [redacted]")
+      .replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g, "[redacted]")
+      .slice(0, 220);
+    console.error("[WENS_AGENT_FAILURE]", diagnostic);
+    const payload = { error: "تعذّر تشغيل وكيل ونس الآن. قد لا يكون نموذج الوكلاء متاحًا في حساب Workers AI أو قد تكون الحصة انتهت." };
+    if (request.headers.get("x-wens-diagnostics") === "image-agent-e2e") payload.diagnostic = diagnostic;
+    return json(payload, 502);
   }
 }
 async function agentTasksRoute(request, env, user) {
