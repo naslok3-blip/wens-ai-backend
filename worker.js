@@ -774,29 +774,33 @@ async function runAgentImage(env, action, args, sourceImage) {
   const [width,height] = imageDimensions(args?.size);
   const model = "@cf/black-forest-labs/flux-2-klein-4b";
   try {
-    let result;
-    if (action === "edit_image") {
-      if (!sourceImage?.data) return { error: "لتعديل صورة، أرفقي الصورة الأصلية مع الرسالة ثم اطلبي التعديل." };
-      const bytes = Uint8Array.from(atob(sourceImage.data), c => c.charCodeAt(0));
-      const form = new FormData();
-      form.append("prompt",prompt);
-      form.append("input_image_0",new Blob([bytes],{type:sourceImage.type || "image/jpeg"}),"wens-reference.jpg");
-      form.append("width",String(width));
-      form.append("height",String(height));
-      const serialized = new Response(form);
-      result = await env.AI.run(model,{multipart:{body:serialized.body,contentType:serialized.headers.get("content-type")}});
-    } else {
-      result = await env.AI.run(model,{prompt,width,height});
+    if (action === "edit_image" && !sourceImage?.data) {
+      return { error: "لتعديل صورة، أرفقي الصورة الأصلية مع الرسالة ثم اطلبي التعديل." };
     }
+    const form = new FormData();
+    form.append("prompt",prompt);
+    form.append("width",String(width));
+    form.append("height",String(height));
+    if (action === "edit_image") {
+      const bytes = Uint8Array.from(atob(sourceImage.data), c => c.charCodeAt(0));
+      form.append("input_image_0",new Blob([bytes],{type:sourceImage.type || "image/jpeg"}),"wens-reference.jpg");
+    }
+    const serialized = new Response(form);
+    const result = await env.AI.run(model,{
+      multipart:{body:serialized.body,contentType:serialized.headers.get("content-type")}
+    });
     const image = typeof result?.image === "string" ? result.image : (typeof result?.result?.image === "string" ? result.result.image : "");
-    if (!image || image.length < 1000) return {error:"خدمة الصور لم تُرجع ملف صورة صالحًا. جرّبي وصفًا آخر."};
+    if (!image || image.length < 1000) {
+      const resultInfo = "response fields=" + Object.keys(result || {}).join(",") + "; image type=" + typeof result?.image + "; image length=" + (typeof result?.image === "string" ? result.image.length : 0);
+      return {error:"خدمة الصور لم تُرجع ملف صورة صالحًا. جرّبي وصفًا آخر.",diagnostic:resultInfo};
+    }
     return {imageDataUrl:"data:"+imageMimeFromBase64(image)+";base64,"+image,prompt,width,height,model};
   } catch(error) {
     const detail=String(error?.message || error || "").slice(0,180);
     console.error("[WENS_IMAGE_FAILURE]",detail);
     return {error:/quota|allocation|neurons|billing|payment/i.test(detail)
       ? "خدمة الصور وصلت إلى حد الاستخدام المتاح حاليًا."
-      : "تعذّر إنشاء الصورة أو تعديلها الآن. تأكدي من نوع الصورة وحجمها ثم حاولي مرة أخرى."};
+      : "تعذّر إنشاء الصورة أو تعديلها الآن. تأكدي من نوع الصورة وحجمها ثم حاولي مرة أخرى.",diagnostic:detail};
   }
 }
 
@@ -1153,7 +1157,9 @@ async function handleAgent(request, env, user, options = {}) {
     );
     if (!result.imageDataUrl) {
       steps.push(requestedImageTool === "edit_image" ? "تعذّر تعديل الصورة" : "تعذّر إنشاء الصورة");
-      return json({ ok: false, error: result.error || "تعذّر تنفيذ مهمة الصور." }, 502);
+      const payload = { ok: false, error: result.error || "تعذّر تنفيذ مهمة الصور." };
+      if (request.headers.get("x-wens-diagnostics") === "image-agent-e2e" && result.diagnostic) payload.diagnostic = result.diagnostic;
+      return json(payload, 502);
     }
     const reply = requestedImageTool === "edit_image"
       ? "تم تعديل الصورة حسب طلبك. تقدر تحفظ النسخة الجديدة من هنا."
