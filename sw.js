@@ -1,5 +1,5 @@
-const CACHE='wens-ai-v4';
-const ASSETS=['./','./index.html','./admin.html','./style.css','./admin.css','./app.js','./admin.js','./manifest.json'];
+const CACHE='wens-ai-v5';
+const ASSETS=['./','./index.html','./admin.html','./style.css','./admin.css','./app.js','./admin.js','./manifest.json','./avatar.svg?v=real-20261104'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('wens-ai-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
