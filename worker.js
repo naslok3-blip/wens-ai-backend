@@ -710,13 +710,13 @@ async function handleAgent(request, env, user, options = {}) {
   const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
   try {
     let finalText = "";
-    for (let turn = 0; turn < 4; turn++) {
-      const result = await env.AI.run(model, { messages, tools: agentTools(), temperature: 0.2, max_tokens: 700 });
+    for (let turn = 0; turn < 6; turn++) {
+      const result = await env.AI.run(model, { messages, tools: agentTools(), temperature: 0.2, max_tokens: 900 });
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const calls = Array.isArray(assistantMessage?.tool_calls) ? assistantMessage.tool_calls : (Array.isArray(result?.tool_calls) ? result.tool_calls : []);
       if (!calls.length) { finalText = typeof assistantMessage?.content === "string" ? assistantMessage.content.trim() : (typeof result?.response === "string" ? result.response.trim() : ""); break; }
       messages.push({ role: "assistant", content: assistantMessage.content || "", tool_calls: calls });
-      for (const call of calls.slice(0, 4)) {
+      for (const call of calls.slice(0, 6)) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
@@ -739,7 +739,7 @@ async function handleAgent(request, env, user, options = {}) {
       }
     }
     if (!finalText) {
-      const last = await env.AI.run(model, { messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]), temperature: 0.2, max_tokens: 700 });
+      const last = await env.AI.run(model, { messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]), temperature: 0.2, max_tokens: 900 });
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
