@@ -1,24 +1,5 @@
 const $ = id => document.getElementById(id);
-// Hidden manager entry: tap the brand five times within three seconds.
-(() => {
-  const brand = document.querySelector(".brand");
-  if (!brand) return;
-  let taps = 0;
-  let resetTimer;
-  brand.addEventListener("click", event => {
-    event.preventDefault();
-    taps += 1;
-    clearTimeout(resetTimer);
-    resetTimer = setTimeout(() => { taps = 0; }, 3000);
-    if (taps >= 5) window.location.assign("/admin.html");
-  });
-  window.addEventListener("keydown", event => {
-    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "a") {
-      event.preventDefault();
-      window.location.assign("/admin.html");
-    }
-  });
-})();
+// إدارة ونس تفتح من الصورة الشخصية فقط، داخل الصفحة نفسها.
 let authMode = "login";
 let currentUser = null;
 let recognition = null;
@@ -85,12 +66,15 @@ function showAuth() {
   $("authPanel").hidden = false;
   $("appRoot").hidden = true;
   $("logoutBtn").hidden = true;
+  $("openAdminBtn").hidden = true;
+  $("backToAppBtn").hidden = true;
 }
 function showApp(user) {
   currentUser = user;
   $("authPanel").hidden = true;
   $("appRoot").hidden = false;
   $("logoutBtn").hidden = false;
+  $("openAdminBtn").hidden = false;
   $("accountLabel").textContent = user.id === "guest"
     ? "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات"
     : "مسجّل الدخول: " + user.name;
@@ -145,7 +129,31 @@ async function loadChatHistory() {
     addMessage("تعذّر تحميل المحادثة: " + error.message);
   }
 }
-function addMessage(text, who = "assistant") {
+function appendMessageText(container, text) {
+  const pieces = String(text ?? "").split(/(https:\/\/[^\s<>"']+)/g);
+  for (const piece of pieces) {
+    if (!piece) continue;
+    if (piece.startsWith("https://")) {
+      const match = piece.match(/^(https:\/\/[^\s<>"']+?)([),.!?؟،؛]*)$/);
+      const href = match ? match[1] : piece;
+      const suffix = match ? match[2] : "";
+      try {
+        const parsed = new URL(href);
+        if (parsed.protocol === "https:") {
+          const link = document.createElement("a");
+          link.href = parsed.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = href;
+          container.append(link, document.createTextNode(suffix));
+          continue;
+        }
+      } catch {}
+    }
+    container.appendChild(document.createTextNode(piece));
+  }
+}
+function addMessage(text, who = "assistant", steps = []) {
   const row = document.createElement("div");
   row.className = "message " + who;
   if (who === "assistant") {
@@ -159,10 +167,28 @@ function addMessage(text, who = "assistant") {
   }
   const bubble = document.createElement("div");
   bubble.className = "bubble";
-  bubble.textContent = text;
+  const content = document.createElement("div");
+  content.className = "bubble-text";
+  appendMessageText(content, text);
+  bubble.appendChild(content);
+  if (who === "assistant" && Array.isArray(steps) && steps.length) {
+    const trace = document.createElement("details");
+    trace.className = "execution-trace";
+    const summary = document.createElement("summary");
+    summary.textContent = "خطوات التنفيذ (" + steps.length + ")";
+    const list = document.createElement("ul");
+    for (const item of steps.slice(0, 14)) {
+      const li = document.createElement("li");
+      li.textContent = String(item);
+      list.appendChild(li);
+    }
+    trace.append(summary, list);
+    bubble.appendChild(trace);
+  }
   row.appendChild(bubble);
   $("messages").appendChild(row);
   $("messages").scrollTop = $("messages").scrollHeight;
+  return row;
 }
 function setBusy(busy) {
   document.querySelector(".send-btn").disabled = busy;
@@ -178,7 +204,7 @@ $("chatForm").addEventListener("submit", async event => {
   setBusy(true);
   try {
     const data = await api("/api/chat", { message });
-    addMessage(data.reply);
+    addMessage(data.reply, "assistant", data.steps || []);
     speak(data.reply);
   } catch (error) {
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);
@@ -236,7 +262,7 @@ async function loadSystemStatus() {
       "Cloudflare AI " + (f.workersAI ? "جاهز" : "غير مربوط"),
       "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة")
     ];
-    $("systemStatus").textContent = labels.join(" · ");
+    $("systemStatus").textContent = labels.concat(f.browser ? "متصفح المواقع جاهز" : "متصفح المواقع غير مربوط").join(" · ");
     $("systemStatus").classList.toggle("all-ready", !!(f.workersAI && f.database));
     return data;
   } catch {
