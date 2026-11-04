@@ -3,6 +3,8 @@ const $ = id => document.getElementById(id);
 let authMode = "login";
 let currentUser = null;
 let recognition = null;
+let pendingAttachments = [];
+let deepThinkEnabled = false;
 const appSettings = loadLocalSettings();
 
 function loadLocalSettings() {
@@ -195,7 +197,7 @@ function appendMessageText(container, text) {
   }
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
-function addMessage(text, who = "assistant", steps = []) {
+function addMessage(text, who = "assistant", steps = [], attachments = []) {
   const row = document.createElement("div");
   row.className = "message " + who;
   if (who === "assistant") {
@@ -213,6 +215,25 @@ function addMessage(text, who = "assistant", steps = []) {
   content.className = "bubble-text";
   appendMessageText(content, text);
   bubble.appendChild(content);
+  if (Array.isArray(attachments) && attachments.length) {
+    const media = document.createElement("div");
+    media.className = "message-attachments";
+    for (const item of attachments.slice(0, 4)) {
+      if (item.kind === "image" && item.dataUrl) {
+        const image = document.createElement("img");
+        image.src = item.dataUrl;
+        image.alt = item.name || "صورة مرفقة";
+        image.loading = "lazy";
+        media.appendChild(image);
+      } else {
+        const name = document.createElement("span");
+        name.className = "message-attachment-name";
+        name.textContent = "📎 " + String(item.name || "ملف").slice(0, 100);
+        media.appendChild(name);
+      }
+    }
+    bubble.appendChild(media);
+  }
   if (who === "assistant" && Array.isArray(steps) && steps.length) {
     const trace = document.createElement("details");
     trace.className = "execution-trace";
@@ -235,17 +256,216 @@ function addMessage(text, who = "assistant", steps = []) {
 function setBusy(busy) {
   document.querySelector(".send-btn").disabled = busy;
   $("messageInput").disabled = busy;
+  $("attachMenuBtn").disabled = busy;
   document.querySelector(".send-btn").textContent = busy ? "ونس بتفكر…" : "إرسال";
+}
+function setAttachmentStatus(message, error = false) {
+  $("attachmentStatus").textContent = message || "";
+  $("attachmentStatus").style.color = error ? "#ffb5c9" : "#a9efc7";
+}
+function closeAttachmentMenu() {
+  $("attachmentMenu").hidden = true;
+  $("pluginTools").hidden = true;
+  $("attachMenuBtn").setAttribute("aria-expanded", "false");
+  $("attachMenuBtn").classList.remove("active");
+  document.querySelector('[data-action="plugins"]')?.setAttribute("aria-expanded", "false");
+}
+function updateDeepThinkUI() {
+  const option = document.querySelector('[data-action="deep"]');
+  option.setAttribute("aria-pressed", String(deepThinkEnabled));
+  $("deepThinkCheck").hidden = !deepThinkEnabled;
+  $("deepThinkBadge").hidden = !deepThinkEnabled;
+}
+function showAttachmentMenu() {
+  $("attachmentMenu").hidden = false;
+  $("pluginTools").hidden = true;
+  $("attachMenuBtn").setAttribute("aria-expanded", "true");
+  $("attachMenuBtn").classList.add("active");
+}
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("تعذّرت قراءة الملف من الهاتف."));
+    reader.readAsDataURL(file);
+  });
+}
+function renderAttachmentPreview() {
+  const preview = $("attachmentsPreview");
+  preview.replaceChildren();
+  preview.hidden = pendingAttachments.length === 0;
+  pendingAttachments.forEach((item, index) => {
+    const chip = document.createElement("div");
+    chip.className = "attachment-chip";
+    if (item.kind === "image" && item.dataUrl) {
+      const img = document.createElement("img");
+      img.src = item.dataUrl;
+      img.alt = item.name;
+      chip.appendChild(img);
+    } else {
+      const icon = document.createElement("b");
+      icon.textContent = item.kind === "text" ? "TXT" : "📎";
+      chip.appendChild(icon);
+    }
+    const label = document.createElement("span");
+    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : "");
+    chip.appendChild(label);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "إزالة " + item.name);
+    remove.addEventListener("click", () => {
+      pendingAttachments.splice(index, 1);
+      renderAttachmentPreview();
+      setAttachmentStatus("");
+    });
+    chip.appendChild(remove);
+    preview.appendChild(chip);
+  });
+}
+async function addSelectedFile(file) {
+  if (!file) return;
+  if (pendingAttachments.length >= 4) {
+    setAttachmentStatus("يمكنك إرفاق 4 ملفات كحد أقصى في الرسالة الواحدة.", true);
+    return;
+  }
+  const isImage = file.type.startsWith("image/");
+  if (isImage) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setAttachmentStatus("نوع الصورة غير مدعوم. استخدم JPG أو PNG أو WEBP.", true);
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setAttachmentStatus("حجم الصورة أكبر من 4 ميجابايت. اختر صورة أصغر.", true);
+      return;
+    }
+    if (pendingAttachments.some(item => item.kind === "image")) {
+      setAttachmentStatus("أرفق صورة واحدة في كل رسالة حاليًا.", true);
+      return;
+    }
+    try {
+      const dataUrl = await readAsDataUrl(file);
+      pendingAttachments.push({
+        kind: "image", name: file.name || "صورة",
+        type: file.type, size: file.size,
+        data: dataUrl.split(",")[1], dataUrl
+      });
+      setAttachmentStatus("الصورة جاهزة للتحليل مع رسالتك.");
+    } catch (error) { setAttachmentStatus(error.message, true); }
+  } else {
+    const extension = String(file.name.split(".").pop() || "").toLowerCase();
+    const textExtensions = ["txt","md","csv","json","xml","html","js","css","log"];
+    if (textExtensions.includes(extension)) {
+      if (file.size > 150 * 1024) {
+        setAttachmentStatus("الملف النصي أكبر من 150 كيلوبايت.", true);
+        return;
+      }
+      try {
+        const text = await file.text();
+        pendingAttachments.push({
+          kind: "text", name: file.name, type: file.type || "text/plain",
+          size: file.size, text
+        });
+        setAttachmentStatus("تم إرفاق الملف النصي وقراءته.");
+      } catch (error) { setAttachmentStatus("تعذّرت قراءة الملف النصي.", true); }
+    } else {
+      pendingAttachments.push({
+        kind: "file", name: file.name, type: file.type || "application/octet-stream",
+        size: file.size
+      });
+      setAttachmentStatus("تم إرفاق اسم الملف. قراءة محتوى PDF وWord وExcel غير مفعّلة بعد.");
+    }
+  }
+  renderAttachmentPreview();
+}
+$("attachMenuBtn").addEventListener("click", () => {
+  if (!$("attachmentMenu").hidden || !$("pluginTools").hidden) closeAttachmentMenu();
+  else showAttachmentMenu();
+});
+$("attachmentMenu").addEventListener("click", event => {
+  const button = event.target.closest("[data-action]");
+  if (!button) return;
+  const action = button.dataset.action;
+  if (action === "camera") { closeAttachmentMenu(); $("cameraInput").click(); }
+  else if (action === "photos") { closeAttachmentMenu(); $("photosInput").click(); }
+  else if (action === "files") { closeAttachmentMenu(); $("filesInput").click(); }
+  else if (action === "plugins") {
+    $("attachmentMenu").hidden = true;
+    $("pluginTools").hidden = false;
+    button.setAttribute("aria-expanded", "true");
+  } else if (action === "deep") {
+    deepThinkEnabled = !deepThinkEnabled;
+    updateDeepThinkUI();
+    closeAttachmentMenu();
+    setAttachmentStatus(deepThinkEnabled ? "التفكير العميق مفعّل للرسالة التالية." : "تم إيقاف التفكير العميق.");
+  }
+});
+$("backToAttachmentMenu").addEventListener("click", () => {
+  $("pluginTools").hidden = true;
+  $("attachmentMenu").hidden = false;
+  document.querySelector('[data-action="plugins"]')?.setAttribute("aria-expanded", "false");
+});
+$("pluginTools").addEventListener("click", event => {
+  const button = event.target.closest("[data-plugin-prompt]");
+  if (!button) return;
+  $("messageInput").value = button.dataset.pluginPrompt;
+  closeAttachmentMenu();
+  $("messageInput").focus();
+});
+$("disableDeepThink").addEventListener("click", () => {
+  deepThinkEnabled = false;
+  updateDeepThinkUI();
+  setAttachmentStatus("تم إيقاف التفكير العميق.");
+});
+document.addEventListener("click", event => {
+  if (!event.target.closest(".chat-composer")) closeAttachmentMenu();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeAttachmentMenu();
+});
+for (const inputId of ["cameraInput", "photosInput", "filesInput"]) {
+  $(inputId).addEventListener("change", async event => {
+    const files = Array.from(event.target.files || []);
+    for (const file of files) await addSelectedFile(file);
+    event.target.value = "";
+    closeAttachmentMenu();
+  });
+}
+function clearPendingAttachments() {
+  pendingAttachments = [];
+  renderAttachmentPreview();
+  setAttachmentStatus("");
+}
+function attachmentPayload() {
+  return pendingAttachments.map(item => {
+    if (item.kind === "image") return {
+      kind: item.kind, name: item.name, type: item.type, data: item.data
+    };
+    if (item.kind === "text") return {
+      kind: item.kind, name: item.name, type: item.type, text: item.text
+    };
+    return { kind: "file", name: item.name, type: item.type, size: item.size };
+  });
 }
 $("chatForm").addEventListener("submit", async event => {
   event.preventDefault();
   const message = $("messageInput").value.trim();
-  if (!message || !currentUser) return;
-  addMessage(message, "user");
+  if ((!message && !pendingAttachments.length) || !currentUser) return;
+  const selected = pendingAttachments.slice();
+  const text = message || (selected.some(item => item.kind === "image")
+    ? "افحص الصورة المرفقة واشرح لي ما يظهر فيها."
+    : "ساعدني في قراءة المرفقات المرسلة.");
+  addMessage(text, "user", [], selected);
+  const payload = attachmentPayload();
+  const deepThink = deepThinkEnabled;
   $("messageInput").value = "";
+  clearPendingAttachments();
+  closeAttachmentMenu();
   setBusy(true);
   try {
-    const data = await api("/api/chat", { message });
+    const data = await api("/api/chat", {
+      message: text, attachments: payload, deepThink
+    });
     addMessage(data.reply, "assistant", data.steps || []);
     speak(data.reply);
   } catch (error) {
