@@ -636,7 +636,7 @@ async function runAgentBrowser(env, user, db, task, options = {}) {
       if (!label) return { error: "اكتبي اسم الزر أو الرابط الذي تريدين فتحه." };
       const result = await browserEvaluate(socket, `(() => {
         const needle = ${JSON.stringify(label.toLowerCase())};
-        const dangerous = /(delete|remove|purchase|buy now|checkout|payment|pay now|transfer|submit|send|publish|unsubscribe|cancel order|حذف|إزالة|شراء|ادفع|دفع|تحويل|إرسال|نشر|إلغاء|تأكيد الطلب)/i;
+        const dangerous = /(delete|remove|purchase|buy|cart|checkout|payment|pay|transfer|submit|send|publish|unsubscribe|cancel|logout|log out|sign out|save|confirm|approve|place order|حذف|إزالة|شراء|سلة|الدفع|ادفع|دفع|تحويل|إرسال|نشر|إلغاء|تسجيل خروج|حفظ|تأكيد|اعتماد|تنفيذ الطلب)/i;
         const visible = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== "hidden"; };
         const elements = [...document.querySelectorAll('a,button,[role="button"],input[type="button"],input[type="submit"]')].filter(visible);
         const textOf = el => (el.innerText || el.getAttribute("aria-label") || el.value || "").trim().replace(/\\s+/g," ");
@@ -644,11 +644,17 @@ async function runAgentBrowser(env, user, db, task, options = {}) {
           elements.find(item => textOf(item).toLowerCase().includes(needle));
         if (!el) return { ok:false, error:"لم أجد زرًا أو رابطًا بهذا الاسم في الصفحة." };
         const text = textOf(el).slice(0,100);
-        const isSubmit = el.matches("input[type=submit],button[type=submit]");
-        const safeSearch = /(search|بحث|filter|فلتر|lookup)/i.test(text);
-        if (dangerous.test(text) || (isSubmit && !safeSearch)) return { ok:false, blocked:true, label:text, error:"لم أضغط زر إرسال أو تنفيذ نهائي أو إجراء مالي/حساس. أستطيع تجهيز الحقول وعرضها لك قبل الاعتماد." };
+        const isAnchor = el.tagName === "A";
+        const isTab = el.getAttribute("role") === "tab";
+        const isSafeSearch = /(search|بحث|filter|فلتر|lookup)/i.test(text);
+        const href = isAnchor ? String(el.href || "") : "";
+        const riskyUrl = /\\/(?:logout|signout|delete|remove|unsubscribe|checkout|payment|purchase|order|transfer|publish)(?:[/?#.-]|$)/i.test(href);
+        if (dangerous.test(text) || riskyUrl || (isAnchor && !href.startsWith("https://")) ||
+            (!isAnchor && !isTab && !isSafeSearch)) {
+          return { ok:false, blocked:true, label:text, error:"لم أضغط هذا العنصر لأنه ليس تنقلًا آمنًا مؤكدًا أو قد يحفظ أو يرسل أو يحذف أو يغيّر شيئًا خارجيًا." };
+        }
         el.click();
-        return { ok:true, clicked:text, href:el.href || "" };
+        return { ok:true, clicked:text, href };
       })()`);
       if (!result?.ok) return result || { error: "تعذر تنفيذ الضغط." };
       await new Promise(resolve => setTimeout(resolve, 900));
