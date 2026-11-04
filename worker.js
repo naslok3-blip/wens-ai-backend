@@ -715,7 +715,7 @@ async function runAgentBrowser(env, user, db, task, options = {}) {
   }
 }
 
-const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب، ثم استخدمي أدوات ونس الفعلية عندما تفيد: الحساب، إنشاء المهام وتعديلها وتحديد مواعيدها وأولوياتها، إنجازها، أرشفتها واستعادتها، والبحث في سجل محادثات المستخدم نفسه. لا تنفذي إلا ما تسمح به الأدوات. لا تدّعي الوصول للهاتف أو الملفات أو التطبيقات أو الحسابات الخارجية أو الإنترنت ما لم توجد أداة متصلة بذلك صراحة. لا تطلبي كلمات المرور أو مفاتيح الوصول. الأرشفة قابلة للاسترجاع وليست حذفًا نهائيًا. لا تنفذي إجراءً خارجيًا أو ماليًا. كوني طبيعية في الحوار ولا تحولي كل سؤال إلى خطة. بعد استخدام أداة اذكري بدقة ما تم.`;
+const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب، ثم استخدمي أدوات ونس الفعلية عندما تفيد: الحساب، إنشاء المهام وتعديلها وتحديد مواعيدها وأولوياتها، إنجازها، أرشفتها واستعادتها، والبحث في سجل محادثات المستخدم نفسه. لا تنفذي إلا ما تسمح به الأدوات. يمكنك الآن البحث في الويب وقراءة المواقع العامة، وفتح جلسة متصفح خاصة بالمستخدم للتنقل وقراءة الصفحات والضغط على الروابط والأزرار العادية وملء الحقول غير الحساسة. لا تطلبي كلمة مرور أو رمز تحقق أو رقم بطاقة في الشات؛ أرسلي رابط Live View المؤقت ليُدخل المستخدم بيانات تسجيل الدخول بنفسه داخل المتصفح. لا تضغطي أزرار الدفع والشراء والتحويل والحذف والإرسال والنشر أو اعتماد التغييرات النهائية، ولا تنفذي معاملات مالية أو إجراءات لا يمكن التراجع عنها. لا تطلبي تأكيدًا على البحث أو القراءة أو التنقل أو ملء الحقول غير الحساسة؛ نفذيها مباشرة. الأرشفة قابلة للاسترجاع وليست حذفًا نهائيًا. كوني طبيعية في الحوار ولا تحولي كل سؤال إلى خطة، واذكري بدقة ما تم وما لم يتم.`;
 let agentTasksReady;
 async function ensureAgentTasks(db) {
   if (!agentTasksReady) {
@@ -750,11 +750,30 @@ function agentTools() {
     function: { name, description, parameters: { type: "object", properties, required } }
   });
   const taskId = { type: "string", description: "Exact task id returned by list_tasks." };
+  const webUrl = { type: "string", description: "A public HTTPS page URL. Do not use private network or localhost URLs." };
   return [
     fn("get_current_time", "Get the current date and time in ISO format."),
     fn("calculate", "Calculate a simple arithmetic expression using numbers, parentheses, decimals, +, -, *, /, and remainder.", {
       expression: { type: "string", description: "Arithmetic expression, for example (1250 * 3.5) + 80." }
     }, ["expression"]),
+    fn("search_web", "Search the public web for current information. Return search results and source links.", {
+      query: { type: "string", description: "A focused web search query." }
+    }, ["query"]),
+    fn("open_webpage", "Open and read a public HTTPS webpage, including JavaScript-rendered content, as Markdown.", {
+      url: webUrl
+    }, ["url"]),
+    fn("browser_open", "Open a website in this user's private browser session. Returns page text and a temporary Live View link so the user can sign in directly without sharing passwords in chat.", {
+      url: webUrl
+    }, ["url"]),
+    fn("browser_inspect", "Read the currently open browser page, its visible text, title, URL, and visible links.", {}),
+    fn("browser_click", "Click a visible navigation link or ordinary non-destructive button by its visible text. Do not use for purchases, payments, sending, deleting, publishing, or account changes.", {
+      label: { type: "string", description: "Exact or distinctive visible text of a safe link or button." }
+    }, ["label"]),
+    fn("browser_fill", "Fill a non-sensitive visible form field on the current browser page. Never fill passwords, verification codes, payment information, API keys, or secrets.", {
+      field: { type: "string", description: "Label, placeholder, name, or ID of the visible field." },
+      value: { type: "string", description: "Text to place in the non-sensitive field." }
+    }, ["field", "value"]),
+    fn("browser_close", "Close this user's current external browser session and clear its saved session reference.", {}),
     fn("save_task", "Create a task in this user's private WENS task list. Priority can be low, normal, or high; due_at is optional ISO-8601 date/time.", {
       title: { type: "string", description: "Short task title." },
       details: { type: "string", description: "Optional task notes or details." },
@@ -832,8 +851,60 @@ async function executeAgentTool(name, args, env, user) {
       return { error: error.message === "zero" ? "لا يمكن القسمة أو أخذ باقي القسمة على صفر." : "صيغة العملية الحسابية غير صحيحة." };
     }
   }
+  if (name === "search_web") {
+    if (!env.BROWSER) return { error: "خاصية البحث الخارجي غير مربوطة بعد." };
+    const query = String(args.query || "").trim().slice(0, 300);
+    if (query.length < 2) return { error: "اكتبي موضوع بحث أو سؤالًا واضحًا." };
+    const searchUrl = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
+    try {
+      const data = await browserQuickAction(env, "markdown", {
+        url: searchUrl,
+        gotoOptions: { waitUntil: "domcontentloaded", timeout: 25000 }
+      });
+      return { query, source: searchUrl, results: String(data?.result || data?.markdown || data?.content || JSON.stringify(data)).slice(0, 12000) };
+    } catch (error) {
+      return { error: "تعذر البحث في الويب: " + String(error?.message || error).slice(0, 180) };
+    }
+  }
+  if (name === "open_webpage") {
+    if (!env.BROWSER) return { error: "خاصية قراءة المواقع غير مربوطة بعد." };
+    let url;
+    try { url = validatePublicWebUrl(args.url); }
+    catch (error) { return { error: error.message }; }
+    try {
+      const data = await browserQuickAction(env, "markdown", {
+        url,
+        gotoOptions: { waitUntil: "networkidle2", timeout: 30000 }
+      });
+      return { url, content: String(data?.result || data?.markdown || data?.content || JSON.stringify(data)).slice(0, 14000) };
+    } catch (error) {
+      return { error: "تعذر قراءة الموقع: " + String(error?.message || error).slice(0, 180) };
+    }
+  }
   if (!env.DB || !user) return { error: "يلزم تسجيل الدخول إلى حساب ونس للوصول إلى بياناتك الخاصة." };
   await ensureAgentTasks(env.DB);
+  if (name === "browser_open" || name === "browser_inspect" || name === "browser_click" || name === "browser_fill") {
+    if (!env.BROWSER) return { error: "خدمة المتصفح الخارجي غير مربوطة على الخادم." };
+    const task = {
+      action: name === "browser_open" ? "open" : name === "browser_inspect" ? "inspect" : name === "browser_click" ? "click" : "fill",
+      url: args.url, label: args.label, field: args.field, value: args.value
+    };
+    try {
+      return await runAgentBrowser(env, user, env.DB, task, { create: name === "browser_open" });
+    } catch (error) {
+      return { error: "تعذر تنفيذ خطوة المتصفح: " + String(error?.message || error).slice(0, 200) };
+    }
+  }
+  if (name === "browser_close") {
+    if (!env.BROWSER) return { error: "خدمة المتصفح الخارجي غير مربوطة على الخادم." };
+    await ensureAgentBrowserSessions(env.DB);
+    const saved = await env.DB.prepare("SELECT session_id FROM agent_browser_sessions WHERE user_id=? LIMIT 1").bind(user.id).first();
+    if (!saved) return { closed: true, message: "لا توجد جلسة متصفح مفتوحة." };
+    await env.BROWSER.closeSession(saved.session_id).catch(() => {});
+    await env.DB.prepare("DELETE FROM agent_browser_sessions WHERE user_id=?").bind(user.id).run();
+    return { closed: true };
+  }
+
 
   if (name === "save_task") {
     const title = String(args.title || "").trim().slice(0, 180);
@@ -978,7 +1049,7 @@ async function handleAgent(request, env, user, options = {}) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
-        const allowed = ["get_current_time","calculate","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages"];
+        const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages"];
         if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
         const output = await executeAgentTool(name, args || {}, env, user);
         const labels = {
@@ -990,7 +1061,14 @@ async function handleAgent(request, env, user, options = {}) {
           set_task_status: "تحديث حالة مهمة",
           archive_task: "أرشفة مهمة",
           restore_task: "استعادة مهمة",
-          search_my_messages: "البحث في سجل المحادثات"
+          search_my_messages: "البحث في سجل المحادثات",
+          search_web: "البحث في المواقع العامة",
+          open_webpage: "قراءة صفحة ويب",
+          browser_open: "فتح موقع في المتصفح",
+          browser_inspect: "قراءة الصفحة المفتوحة",
+          browser_click: "التنقل داخل الموقع",
+          browser_fill: "ملء حقل غير حساس",
+          browser_close: "إغلاق جلسة المتصفح"
         };
         steps.push(labels[name] + (output.error ? " — " + output.error : " — تم"));
         messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify(output) });
