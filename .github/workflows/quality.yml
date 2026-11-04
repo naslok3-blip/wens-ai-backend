@@ -131,9 +131,19 @@ jobs:
           grep -q 'id="openAdminBtn"' /tmp/wens-index.html
           grep -q 'id="adminInlinePanel"' /tmp/wens-index.html
           grep -q 'avatar.jpg' /tmp/wens-index.html
+          grep -q 'data-action="camera"' /tmp/wens-index.html
+          grep -q 'data-action="photos"' /tmp/wens-index.html
+          grep -q 'data-action="files"' /tmp/wens-index.html
+          grep -q 'data-action="plugins"' /tmp/wens-index.html
+          grep -q 'data-action="deep"' /tmp/wens-index.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
           grep -q 'Cloudflare AI' /tmp/wens-app.js
           grep -q 'updateAdminShortcut' /tmp/wens-app.js
+          grep -q 'addSelectedFile' /tmp/wens-app.js
+          grep -q 'attachmentPayload' /tmp/wens-app.js
+          grep -q 'reasoning_effort' worker.js
+          grep -q 'runOptions.image' worker.js
+          grep -q '@cf/qwen/qwen3.8-27b' worker.js
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/style.css" -o /tmp/wens-style.css
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.jpg?v=real-jpg-20261104" -o /tmp/wens-avatar.jpg
           python - <<'PY'
