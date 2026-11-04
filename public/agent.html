@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0b16"><link rel="stylesheet" href="/agent.css">
+<title>وكيل ونس الذكي | WENS AI</title>
+</head>
+<body>
+<header><a class="brand" href="/"><span class="logo">و</span><span><b>ونس AI</b><small>وكيلك الذكي</small></span></a><span class="pill">AGENT MODE</span></header>
+<main>
+<section class="intro"><div class="orb">و</div><p class="eyebrow">WENS AI AGENT</p><h1>أنا وكيل ونس الذكي 💜</h1><p>اكتب هدفك، وأنا هافهمه وأقسمه لخطوات وأستخدم الأدوات المتاحة لتنفيذه.</p></section>
+<section class="panel">
+<div class="panel-head"><div><h2>مهمة جديدة</h2><small>كل طلب يُنفذ في حدود الصلاحيات والأدوات المفعّلة</small></div><span id="status" class="status">جاهزة</span></div>
+<form id="agentForm"><textarea id="goal" maxlength="4000" required placeholder="مثال: نظّم لي خطة أسبوعية لمتابعة شغل المحل، واحفظ المهام المهمة..."></textarea><button id="run" type="submit">ابدئي تنفيذ المهمة <span>←</span></button></form>
+<div class="examples"><button type="button" data-example="اعملي خطة من 5 خطوات لتطوير مشروع ونس AI، وحددي الأولويات.">خطة تطوير ونس</button><button type="button" data-example="احسبي 1250 × 3.5 ثم اشرحي النتيجة.">حساب وتحليل</button><button type="button" data-example="احفظي مهمة: مراجعة مخزون محل الدهانات، ثم اعرضي مهامي المحفوظة.">حفظ المهام</button></div>
+</section>
+<section id="work" class="panel" hidden><div class="panel-head"><h2>سجل التنفيذ</h2><span class="dot"></span></div><div id="steps" class="steps"></div><div class="answer"><h3>النتيجة</h3><div id="reply"></div></div></section>
+<section class="panel tasks"><div class="panel-head"><div><h2>مهامي المحفوظة</h2><small>مرتبطة بحسابك في ونس</small></div><button id="refresh" type="button" class="refresh">تحديث</button></div><div id="taskList" class="task-list"><p class="muted">اضغط تحديث لعرض المهام.</p></div></section>
+<p class="notice">ملاحظة: الوكيل لا ينفذ عمليات مالية أو يحذف بيانات أو يرسل رسائل خارجية. أي أداة جديدة تحتاج ربطًا وصلاحيات واضحة.</p>
+</main><script src="/agent.js"></script></body></html>
