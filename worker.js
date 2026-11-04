@@ -372,11 +372,15 @@ async function ensureAgentTasks(db) {
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_created ON agent_tasks(user_id, created_at DESC)").run();
 }
 function agentTools() {
+  const fn = (name, description, properties = {}, required = []) => ({
+    type: "function",
+    function: { name, description, parameters: { type: "object", properties, required } }
+  });
   return [
-    { name: "get_current_time", description: "Get the current server date and time in ISO format.", parameters: { type: "object", properties: {}, required: [] } },
-    { name: "calculate", description: "Calculate one simple arithmetic expression with two numbers and +, -, *, or /.", parameters: { type: "object", properties: { expression: { type: "string", description: "Example: 1250 * 3.5" } }, required: ["expression"] } },
-    { name: "save_task", description: "Save a to-do task for the signed-in WENS user.", parameters: { type: "object", properties: { title: { type: "string" }, details: { type: "string" } }, required: ["title"] } },
-    { name: "list_tasks", description: "List the signed-in user's saved tasks.", parameters: { type: "object", properties: {}, required: [] } }
+    fn("get_current_time", "Get the current server date and time in ISO format."),
+    fn("calculate", "Calculate one simple arithmetic expression with two numbers and +, -, *, or /.", { expression: { type: "string", description: "Example: 1250 * 3.5" } }, ["expression"]),
+    fn("save_task", "Save a to-do task for the signed-in WENS user.", { title: { type: "string" }, details: { type: "string" } }, ["title"]),
+    fn("list_tasks", "List the signed-in user's saved tasks.")
   ];
 }
 async function executeAgentTool(name, args, env, user) {
@@ -418,14 +422,15 @@ async function handleAgent(request, env, user) {
     { role: "system", content: AGENT_SYSTEM_PROMPT },
     { role: "user", content: message }
   ];
-  const model = env.WENS_AGENT_MODEL || "@hf/nousresearch/hermes-2-pro-mistral-7b";
+  const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
   try {
     let finalText = "";
     for (let turn = 0; turn < 4; turn++) {
       const result = await env.AI.run(model, { messages, tools: agentTools(), temperature: 0.2, max_tokens: 700 });
-      const calls = Array.isArray(result?.tool_calls) ? result.tool_calls : [];
-      if (!calls.length) { finalText = typeof result?.response === "string" ? result.response.trim() : ""; break; }
-      messages.push({ role: "assistant", content: result.response || "", tool_calls: calls });
+      const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
+      const calls = Array.isArray(assistantMessage?.tool_calls) ? assistantMessage.tool_calls : (Array.isArray(result?.tool_calls) ? result.tool_calls : []);
+      if (!calls.length) { finalText = typeof assistantMessage?.content === "string" ? assistantMessage.content.trim() : (typeof result?.response === "string" ? result.response.trim() : ""); break; }
+      messages.push({ role: "assistant", content: assistantMessage.content || "", tool_calls: calls });
       for (const call of calls.slice(0, 4)) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
@@ -435,12 +440,12 @@ async function handleAgent(request, env, user) {
         const output = await executeAgentTool(name, args || {}, env, user);
         const labels = { get_current_time: "قراءة الوقت الحالي", calculate: "تنفيذ عملية حسابية", save_task: "حفظ مهمة في حسابك", list_tasks: "قراءة مهامك المحفوظة" };
         steps.push(labels[name] + (output.error ? " — " + output.error : " — تم"));
-        messages.push({ role: "tool", name, content: JSON.stringify(output) });
+        messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify(output) });
       }
     }
     if (!finalText) {
       const last = await env.AI.run(model, { messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]), temperature: 0.2, max_tokens: 700 });
-      finalText = typeof last?.response === "string" ? last.response.trim() : "";
+      const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;\n      finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
     if (!finalText) return json({ error: "نفذت الوكيلة الأدوات لكن النموذج لم يرجع ملخصًا نهائيًا." }, 502);
     return json({ ok: true, model, steps, reply: finalText });
