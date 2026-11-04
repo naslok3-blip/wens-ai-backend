@@ -85,12 +85,15 @@ function showAuth() {
   $("authPanel").hidden = false;
   $("appRoot").hidden = true;
   $("logoutBtn").hidden = true;
+  $("openAdminBtn").hidden = true;
+  $("backToAppBtn").hidden = true;
 }
 function showApp(user) {
   currentUser = user;
   $("authPanel").hidden = true;
   $("appRoot").hidden = false;
   $("logoutBtn").hidden = false;
+  $("openAdminBtn").hidden = false;
   $("accountLabel").textContent = user.id === "guest"
     ? "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات"
     : "مسجّل الدخول: " + user.name;
