@@ -445,7 +445,8 @@ async function handleAgent(request, env, user) {
     }
     if (!finalText) {
       const last = await env.AI.run(model, { messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]), temperature: 0.2, max_tokens: 700 });
-      const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;\n      finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
+      const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
+      finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
     if (!finalText) return json({ error: "نفذت الوكيلة الأدوات لكن النموذج لم يرجع ملخصًا نهائيًا." }, 502);
     return json({ ok: true, model, steps, reply: finalText });
