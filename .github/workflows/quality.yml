@@ -138,7 +138,7 @@ jobs:
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.jpg?v=real-jpg-20261104" -o /tmp/wens-avatar.jpg
           python - <<'PY'
           image = open('/tmp/wens-avatar.jpg', 'rb').read()
-          assert image[:3] == b'\\xff\\xd8\\xff', 'Wens portrait is not a valid JPEG asset'
+          assert image[:3] == bytes.fromhex("ffd8ff"), "Wens portrait is not a valid JPEG asset"
           assert len(image) > 5000, f'Wens portrait unexpectedly small: {len(image)} bytes'
           print(f'Wens portrait JPEG: OK ({len(image)} bytes)')
           PY
