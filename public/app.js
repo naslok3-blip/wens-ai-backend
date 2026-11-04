@@ -167,7 +167,7 @@ function addMessage(text, who = "assistant", steps = []) {
   if (who === "assistant") {
     const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
-    avatar.src = "avatar.svg?v=real-20261104";
+    avatar.src = "avatar.jpg?v=real-jpg-20261104";
     avatar.alt = "ونس";
     avatar.width = 30;
     avatar.height = 30;
