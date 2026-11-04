@@ -65,6 +65,7 @@ function setAuthMessage(message, error = false) {
 function showAuth() {
   $("authPanel").hidden = false;
   $("appRoot").hidden = true;
+  $("adminInlinePanel").hidden = true;
   $("logoutBtn").hidden = true;
   $("openAdminBtn").hidden = true;
   $("backToAppBtn").hidden = true;
@@ -73,13 +74,46 @@ function showApp(user) {
   currentUser = user;
   $("authPanel").hidden = true;
   $("appRoot").hidden = false;
+  $("adminInlinePanel").hidden = true;
   $("logoutBtn").hidden = false;
-  $("openAdminBtn").hidden = false;
+  $("openAdminBtn").hidden = true;
+  $("backToAppBtn").hidden = true;
   $("accountLabel").textContent = user.id === "guest"
     ? "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات"
     : "مسجّل الدخول: " + user.name;
+  updateAdminShortcut();
   loadChatHistory();
 }
+async function updateAdminShortcut() {
+  try {
+    const result = await api("/api/admin/session", undefined, "GET");
+    $("openAdminBtn").hidden = !result.owner;
+  } catch {
+    $("openAdminBtn").hidden = true;
+  }
+}
+function openAdminInsideWens() {
+  $("appRoot").hidden = true;
+  $("authPanel").hidden = true;
+  $("adminInlinePanel").hidden = false;
+  $("openAdminBtn").hidden = true;
+  $("backToAppBtn").hidden = false;
+  const frame = $("adminFrame");
+  if (!frame.dataset.loaded) {
+    frame.src = "/admin.html?embed=1&v=single-entry-20261104";
+    frame.dataset.loaded = "true";
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function returnToWensChat() {
+  $("adminInlinePanel").hidden = true;
+  $("appRoot").hidden = false;
+  $("openAdminBtn").hidden = false;
+  $("backToAppBtn").hidden = true;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+$("openAdminBtn").addEventListener("click", openAdminInsideWens);
+$("backToAppBtn").addEventListener("click", returnToWensChat);
 function updateAuthMode() {
   const registering = authMode === "register";
   $("nameField").hidden = !registering;
@@ -167,7 +201,7 @@ function addMessage(text, who = "assistant", steps = []) {
   if (who === "assistant") {
     const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
-    avatar.src = "avatar.jpg?v=real-jpg-20261104";
+    avatar.src = "/avatar.jpg?v=real-jpg-20261104";
     avatar.alt = "ونس";
     avatar.width = 30;
     avatar.height = 30;
