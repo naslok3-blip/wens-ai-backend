@@ -39,3 +39,39 @@
 
 /* Photoreal Wens profile */
 .hero-portrait{display:block;width:clamp(142px,32vw,192px);height:clamp(142px,32vw,192px);object-fit:cover;object-position:center 34%;border-radius:50%;margin:0 auto 20px;border:3px solid #d4baff;box-shadow:0 0 0 9px #a28bff14,0 16px 55px #a28bff40;background:#20172e}.mini-avatar{overflow:hidden;object-fit:cover;border:1px solid #ffffff28}.avatar-chip img{width:42px;height:42px;object-fit:cover;object-position:center 34%;border-radius:50%;border:2px solid #c9b4ff;box-shadow:0 0 0 4px #b49aff20}.avatar-chip.speaking img{animation:avatarTalk .45s infinite alternate;box-shadow:0 0 0 7px #b49aff20}
+
+/* ChatGPT-style attachment menu and composer */
+[hidden]{display:none!important}
+.chat-composer{position:relative;margin-top:8px}
+.chat-form{align-items:center;gap:8px}
+.chat-form input{flex:1;min-height:48px;font-size:14px}
+.attach-menu-btn{width:46px;height:46px;flex:0 0 46px;border:1px solid #ffffff22;border-radius:50%;background:#29253a;color:#f8f4ff;font-size:30px;line-height:1;display:grid;place-items:center;cursor:pointer;transition:transform .18s,background .18s}
+.attach-menu-btn[aria-expanded="true"]{background:linear-gradient(135deg,var(--purple),var(--pink));color:#21182f;transform:rotate(45deg)}
+.attachment-menu,.plugin-tools{position:absolute;z-index:30;right:0;bottom:calc(100% + 12px);width:min(310px,calc(100vw - 54px));padding:9px;border:1px solid #ffffff22;border-radius:24px;background:rgba(35,32,49,.98);box-shadow:0 18px 48px #0008;backdrop-filter:blur(18px);animation:menuRise .16s ease-out}
+@keyframes menuRise{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+.attachment-option{width:100%;min-height:65px;padding:9px 10px;display:flex;align-items:center;gap:13px;border:0;border-radius:16px;background:transparent;color:var(--text);text-align:right;font:inherit;cursor:pointer}
+.attachment-option:hover,.attachment-option:focus-visible,.plugin-tools>button:hover{background:#ffffff12}
+.attachment-option>span:nth-child(2){display:grid;gap:2px;flex:1}
+.attachment-option b{font-size:14px;font-weight:700}
+.attachment-option small{color:var(--muted);font-size:11px}
+.attachment-icon{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;border-radius:50%;background:#ffffff13;font-size:21px}
+.attachment-chevron{font-size:25px;color:var(--muted)}
+.attachment-check{color:#a8f0c7;font-weight:900;font-size:20px}
+.deep-option[aria-pressed="true"]{background:#b49aff20}
+.plugin-tools{padding:12px}
+.plugin-tools-heading{display:flex;align-items:center;justify-content:space-between;padding:4px 7px 9px;font-size:13px;color:#e8ddff}
+.plugin-tools-heading button{border:0;background:transparent;color:#c9b9ff;font:inherit;font-size:12px}
+.plugin-tools>button{display:block;width:100%;padding:12px 10px;border:0;border-radius:12px;background:transparent;color:var(--text);text-align:right;font:inherit;font-size:13px}
+.deep-think-badge{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;padding:7px 11px;border:1px solid #b49aff50;border-radius:12px;background:#9f87ff17;color:#e5d9ff;font-size:12px}
+.deep-think-badge button{border:0;background:none;color:#ffb6d7;font:inherit;font-size:11px}
+.attachments-preview{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 9px}
+.attachment-chip{max-width:100%;display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid #ffffff20;border-radius:14px;background:#ffffff0c;color:var(--text);font-size:11px}
+.attachment-chip img{width:42px;height:42px;object-fit:cover;border-radius:9px;background:#080812;margin:0}
+.attachment-chip span{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachment-chip button{width:25px;height:25px;border:0;border-radius:50%;background:#ffffff15;color:#fff;font-size:16px}
+.attachment-status{min-height:16px;margin:5px 5px 0;color:#ffcadb;font-size:11px}
+.visually-hidden-input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;clip-path:inset(50%)}
+.message-attachments{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.message-attachments img{display:block;width:auto;max-width:min(220px,58vw);max-height:230px;object-fit:contain;border:1px solid #ffffff24;border-radius:13px;background:#080812;margin:0}
+.message-attachment-name{padding:6px 9px;border-radius:9px;background:#ffffff12;color:#e8dfff;font-size:11px}
+@media(max-width:420px){.attachment-menu,.plugin-tools{width:min(300px,calc(100vw - 42px));right:-2px}.attachment-option{min-height:61px}.chat-form{gap:6px}.attach-menu-btn{width:42px;height:42px;flex-basis:42px}.send-btn{padding:0 13px}}
