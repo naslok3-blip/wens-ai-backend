@@ -644,7 +644,9 @@ async function runAgentBrowser(env, user, db, task, options = {}) {
           elements.find(item => textOf(item).toLowerCase().includes(needle));
         if (!el) return { ok:false, error:"لم أجد زرًا أو رابطًا بهذا الاسم في الصفحة." };
         const text = textOf(el).slice(0,100);
-        if (dangerous.test(text)) return { ok:false, blocked:true, label:text, error:"لم أضغط هذا الزر لأنه قد يرسل أو يحذف أو يشتري أو يغيّر شيئًا خارجيًا." };
+        const isSubmit = el.matches("input[type=submit],button[type=submit]");
+        const safeSearch = /(search|بحث|filter|فلتر|lookup)/i.test(text);
+        if (dangerous.test(text) || (isSubmit && !safeSearch)) return { ok:false, blocked:true, label:text, error:"لم أضغط زر إرسال أو تنفيذ نهائي أو إجراء مالي/حساس. أستطيع تجهيز الحقول وعرضها لك قبل الاعتماد." };
         el.click();
         return { ok:true, clicked:text, href:el.href || "" };
       })()`);
@@ -1081,9 +1083,10 @@ async function handleAgent(request, env, user, options = {}) {
     }
     if (!finalText) return json({ error: "نفذت الوكيلة الأدوات لكن النموذج لم يرجع ملخصًا نهائيًا." }, 502);
     if (options.persist && env.DB && user) {
+      const safeStoredReply = finalText.replace(/https:\/\/live\.browser\.run\/[^\s)]+/g, "[رابط متصفح مؤقت]");
       await env.DB.prepare(
         "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
-      ).bind(crypto.randomUUID(), user.id, "assistant", finalText, Math.floor(Date.now() / 1000)).run();
+      ).bind(crypto.randomUUID(), user.id, "assistant", safeStoredReply, Math.floor(Date.now() / 1000)).run();
     }
     return json({ ok: true, model, steps, reply: finalText });
   } catch (error) {
@@ -1179,10 +1182,12 @@ export default {
         features: {
           workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
+          browser: Boolean(env.BROWSER),
           adminProtectionConfigured: Boolean(env.DB)
         },
         diagnostics: {
           workersAiBindingPresent,
+          browserBindingPresent: Boolean(env.BROWSER),
           model: workersAiBindingPresent ? (env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct") : null
         }
       });
