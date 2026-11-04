@@ -1,24 +1,5 @@
 const $ = id => document.getElementById(id);
-// Hidden manager entry: tap the brand five times within three seconds.
-(() => {
-  const brand = document.querySelector(".brand");
-  if (!brand) return;
-  let taps = 0;
-  let resetTimer;
-  brand.addEventListener("click", event => {
-    event.preventDefault();
-    taps += 1;
-    clearTimeout(resetTimer);
-    resetTimer = setTimeout(() => { taps = 0; }, 3000);
-    if (taps >= 5) window.location.assign("/admin.html");
-  });
-  window.addEventListener("keydown", event => {
-    if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "a") {
-      event.preventDefault();
-      window.location.assign("/admin.html");
-    }
-  });
-})();
+// إدارة ونس تفتح من الصورة الشخصية فقط، داخل الصفحة نفسها.
 let authMode = "login";
 let currentUser = null;
 let recognition = null;
