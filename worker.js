@@ -387,7 +387,7 @@ async function executeAgentTool(name, args, env, user) {
   if (name === "get_current_time") return { now: new Date().toISOString() };
   if (name === "calculate") {
     const expression = String(args.expression || "").trim();
-    const match = expression.match(/^(-?\\d+(?:\\.\\d+)?)\\s*([+\\-*/×÷])\\s*(-?\\d+(?:\\.\\d+)?)$/);
+    const match = expression.match(/^(-?\d+(?:\.\d+)?)\s*([+*\/×÷-])\s*(-?\d+(?:\.\d+)?)$/);
     if (!match) return { error: "اكتبي عملية حسابية بسيطة بين رقمين." };
     const a = Number(match[1]), b = Number(match[3]), op = match[2];
     if ((op === "/" || op === "÷") && b === 0) return { error: "لا يمكن القسمة على صفر." };
