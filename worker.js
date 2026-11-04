@@ -464,49 +464,219 @@ async function adminRoute(request, env, path) {
 }
 
 
-const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة تنفيذ مهام باللغة العربية المصرية. افهمي الهدف، واستخدمي الأدوات المتاحة فقط عندما تفيد. اشرحي ما فعلتِه بصدق ولا تدّعي تنفيذ شيء لم يحدث. لا تحذفي بيانات ولا تنفذي معاملات مالية أو إجراءات خارجية. اطلبِي توضيحًا إذا كانت المهمة غامضة أو خطرة. بعد الأدوات قدمي نتيجة واضحة وخطوات مختصرة.`;
+const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب، ثم استخدمي أدوات ونس الفعلية عندما تفيد: الحساب، إنشاء المهام وتعديلها وتحديد مواعيدها وأولوياتها، إنجازها، أرشفتها واستعادتها، والبحث في سجل محادثات المستخدم نفسه. لا تنفذي إلا ما تسمح به الأدوات. لا تدّعي الوصول للهاتف أو الملفات أو التطبيقات أو الحسابات الخارجية أو الإنترنت ما لم توجد أداة متصلة بذلك صراحة. لا تطلبي كلمات المرور أو مفاتيح الوصول. الأرشفة قابلة للاسترجاع وليست حذفًا نهائيًا. لا تنفذي إجراءً خارجيًا أو ماليًا. كوني طبيعية في الحوار ولا تحولي كل سؤال إلى خطة. بعد استخدام أداة اذكري بدقة ما تم.`;
+let agentTasksReady;
 async function ensureAgentTasks(db) {
-  await db.prepare("CREATE TABLE IF NOT EXISTS agent_tasks (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)").run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_created ON agent_tasks(user_id, created_at DESC)").run();
+  if (!agentTasksReady) {
+    agentTasksReady = (async () => {
+      await db.prepare("CREATE TABLE IF NOT EXISTS agent_tasks (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, details TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, due_at INTEGER, priority TEXT NOT NULL DEFAULT 'normal', archived INTEGER NOT NULL DEFAULT 0)").run();
+      const info = await db.prepare("PRAGMA table_info(agent_tasks)").all();
+      const columns = new Set((info.results || []).map(column => column.name));
+      if (!columns.has("due_at")) await db.prepare("ALTER TABLE agent_tasks ADD COLUMN due_at INTEGER").run();
+      if (!columns.has("priority")) await db.prepare("ALTER TABLE agent_tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'").run();
+      if (!columns.has("archived")) await db.prepare("ALTER TABLE agent_tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_created ON agent_tasks(user_id, created_at DESC)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_agent_tasks_user_status ON agent_tasks(user_id, done, archived)").run();
+    })().catch(error => { agentTasksReady = null; throw error; });
+  }
+  await agentTasksReady;
+}
+function parseTaskDueAt(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const millis = typeof value === "number" ? value : Date.parse(String(value));
+  if (!Number.isFinite(millis)) return NaN;
+  const seconds = Math.floor(millis > 100000000000 ? millis / 1000 : millis);
+  const now = Math.floor(Date.now() / 1000);
+  if (seconds < now - 86400 * 365 || seconds > now + 86400 * 3650) return NaN;
+  return seconds;
+}
+function taskPriority(value, fallback = "normal") {
+  return ["low", "normal", "high"].includes(value) ? value : fallback;
 }
 function agentTools() {
   const fn = (name, description, properties = {}, required = []) => ({
     type: "function",
     function: { name, description, parameters: { type: "object", properties, required } }
   });
+  const taskId = { type: "string", description: "The exact task id returned by list_tasks." };
   return [
-    fn("get_current_time", "Get the current server date and time in ISO format."),
-    fn("calculate", "Calculate one simple arithmetic expression with two numbers and +, -, *, or /.", { expression: { type: "string", description: "Example: 1250 * 3.5" } }, ["expression"]),
-    fn("save_task", "Save a to-do task for the signed-in WENS user.", { title: { type: "string" }, details: { type: "string" } }, ["title"]),
-    fn("list_tasks", "List the signed-in user's saved tasks.")
+    fn("get_current_time", "Get the current date and time in ISO format."),
+    fn("calculate", "Calculate a simple arithmetic expression using numbers and +, -, *, /, parentheses, and decimals.", { expression: { type: "string", description: "Example: (1250 * 3.5) + 80" } }, ["expression"]),
+    fn("save_task", "Create a task in this user's private WENS task list. Optional due_at must be an ISO date/time, and priority is low, normal, or high.", {
+      title: { type: "string" }, details: { type: "string" },
+      due_at: { type: "string", description: "Optional ISO-8601 due date/time." },
+      priority: { type: "string", enum: ["low", "normal", "high"] }
+    }, ["title"]),
+    fn("list_tasks", "List this user's tasks. Use scope active, completed, archived, or all.", {
+      scope: { type: "string", enum: ["active", "completed", "archived", "all"] },
+      limit: { type: "integer", minimum: 1, maximum: 30 }
+    }),
+    fn("update_task", "Update the title, details, due date, or priority of one task owned by this user. Use the exact id from list_tasks. Set due_at to an empty string to clear it.", {
+      id: taskId, title: { type: "string" }, details: { type: "string" },
+      due_at: { type: "string" }, priority: { type: "string", enum: ["low", "normal", "high"] }
+    }, ["id"]),
+    fn("set_task_status", "Mark one of this user's tasks complete or active again.", {
+      id: taskId, done: { type: "boolean" }
+    }, ["id", "done"]),
+    fn("archive_task", "Move a task to the archive without permanently deleting it. Only do this when the user clearly asks to archive or remove that task.", {
+      id: taskId
+    }, ["id"]),
+    fn("restore_task", "Restore one of this user's archived tasks to the active list.", { id: taskId }, ["id"]),
+    fn("search_my_messages", "Search this signed-in user's own WENS conversation history for a phrase or topic. Return only short relevant excerpts.", {
+      query: { type: "string", description: "A distinctive word or phrase to search for." }
+    }, ["query"])
   ];
 }
 async function executeAgentTool(name, args, env, user) {
   if (name === "get_current_time") return { now: new Date().toISOString() };
   if (name === "calculate") {
     const expression = String(args.expression || "").trim();
-    const match = expression.match(/^(-?\d+(?:\.\d+)?)\s*([+*\/×÷-])\s*(-?\d+(?:\.\d+)?)$/);
-    if (!match) return { error: "اكتبي عملية حسابية بسيطة بين رقمين." };
-    const a = Number(match[1]), b = Number(match[3]), op = match[2];
-    if ((op === "/" || op === "÷") && b === 0) return { error: "لا يمكن القسمة على صفر." };
-    const value = op === "+" ? a+b : op === "-" ? a-b : (op === "*" || op === "×") ? a*b : a/b;
-    return { expression, result: Number(value.toFixed(8)) };
+    if (!expression || expression.length > 160 || !/^[\d\s.+*/()%-]+$/.test(expression)) {
+      return { error: "اكتبي عملية حسابية صحيحة بالأرقام والعمليات المسموحة فقط." };
+    }
+    try {
+      const tokens = expression.match(/\d+(?:\.\d+)?|[()+*/%-]/g) || [];
+      if (tokens.join("").replace(/\s/g, "") !== expression.replace(/\s/g, "")) return { error: "صيغة العملية الحسابية غير صحيحة." };
+      let index = 0;
+      function parsePrimary() {
+        const token = tokens[index++];
+        if (token === "(") {
+          const value = parseExpression();
+          if (tokens[index++] !== ")") throw new Error("parenthesis");
+          return value;
+        }
+        if (token === "-") return -parsePrimary();
+        if (token === "+") return parsePrimary();
+        if (!token || !/^\d+(?:\.\d+)?$/.test(token)) throw new Error("number");
+        return Number(token);
+      }
+      function parseTerm() {
+        let value = parsePrimary();
+        while (["*", "/", "%"].includes(tokens[index])) {
+          const op = tokens[index++], right = parsePrimary();
+          if ((op === "/" || op === "%") && right === 0) throw new Error("zero");
+          value = op === "*" ? value * right : op === "/" ? value / right : value % right;
+        }
+        return value;
+      }
+      function parseExpression() {
+        let value = parseTerm();
+        while (["+", "-"].includes(tokens[index])) {
+          const op = tokens[index++], right = parseTerm();
+          value = op === "+" ? value + right : value - right;
+        }
+        return value;
+      }
+      const value = parseExpression();
+      if (index !== tokens.length || !Number.isFinite(value)) return { error: "صيغة العملية الحسابية غير مكتملة أو نتيجتها غير صالحة." };
+      return { expression, result: Number(value.toFixed(8)) };
+    } catch (error) {
+      return { error: error.message === "zero" ? "لا يمكن القسمة أو أخذ باقي القسمة على صفر." : "صيغة العملية الحسابية غير صحيحة." };
+    }
   }
-  if (!env.DB || !user) return { error: "يلزم تسجيل الدخول لحفظ المهام." };
+  if (!env.DB || !user) return { error: "يلزم تسجيل الدخول إلى حساب ونس للوصول إلى بياناتك الخاصة." };
   await ensureAgentTasks(env.DB);
+
   if (name === "save_task") {
-    const title = String(args.title || "").trim().slice(0,180);
-    const details = String(args.details || "").trim().slice(0,1000);
+    const title = String(args.title || "").trim().slice(0, 180);
+    const details = String(args.details || "").trim().slice(0, 1000);
+    const dueAt = parseTaskDueAt(args.due_at);
+    const priority = taskPriority(args.priority);
     if (!title) return { error: "عنوان المهمة مطلوب." };
-    const id = crypto.randomUUID();
-    await env.DB.prepare("INSERT INTO agent_tasks (id,user_id,title,details,done,created_at) VALUES (?,?,?,?,0,?)")
-      .bind(id,user.id,title,details,Math.floor(Date.now()/1000)).run();
-    return { saved: true, id, title };
+    if (Number.isNaN(dueAt)) return { error: "موعد المهمة غير صالح. استخدمي تاريخًا واضحًا." };
+    const id = crypto.randomUUID(), now = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      "INSERT INTO agent_tasks (id,user_id,title,details,done,created_at,due_at,priority,archived) VALUES (?,?,?,?,0,?,?,?,0)"
+    ).bind(id, user.id, title, details, now, dueAt, priority).run();
+    return { saved: true, id, title, due_at: dueAt ? new Date(dueAt * 1000).toISOString() : null, priority };
   }
+
   if (name === "list_tasks") {
-    const rows = await env.DB.prepare("SELECT id,title,details,done,created_at FROM agent_tasks WHERE user_id=? ORDER BY created_at DESC LIMIT 30").bind(user.id).all();
-    return { tasks: rows.results || [] };
+    const scope = ["active", "completed", "archived", "all"].includes(args.scope) ? args.scope : "active";
+    const limit = Math.min(30, Math.max(1, Number(args.limit) || 20));
+    const filters = {
+      active: "archived=0 AND done=0",
+      completed: "archived=0 AND done=1",
+      archived: "archived=1",
+      all: "1=1"
+    };
+    const rows = await env.DB.prepare(
+      "SELECT id,title,details,done,created_at,due_at,priority,archived FROM agent_tasks WHERE user_id=? AND " + filters[scope] + " ORDER BY CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at ASC, created_at DESC LIMIT ?"
+    ).bind(user.id, limit).all();
+    return { scope, tasks: (rows.results || []).map(task => ({
+      ...task,
+      due_at: task.due_at ? new Date(task.due_at * 1000).toISOString() : null,
+      done: Boolean(task.done), archived: Boolean(task.archived)
+    })) };
   }
+
+  if (name === "update_task") {
+    const id = String(args.id || "").trim();
+    if (!id) return { error: "معرّف المهمة مطلوب." };
+    const fields = [], values = [];
+    if (Object.hasOwn(args, "title")) {
+      const title = String(args.title || "").trim().slice(0, 180);
+      if (!title) return { error: "عنوان المهمة لا يمكن أن يكون فارغًا." };
+      fields.push("title=?"); values.push(title);
+    }
+    if (Object.hasOwn(args, "details")) {
+      fields.push("details=?"); values.push(String(args.details || "").trim().slice(0, 1000));
+    }
+    if (Object.hasOwn(args, "due_at")) {
+      const dueAt = parseTaskDueAt(args.due_at);
+      if (Number.isNaN(dueAt)) return { error: "موعد المهمة غير صالح." };
+      fields.push("due_at=?"); values.push(dueAt);
+    }
+    if (Object.hasOwn(args, "priority")) {
+      if (!["low", "normal", "high"].includes(args.priority)) return { error: "الأولوية يجب أن تكون منخفضة أو عادية أو عالية." };
+      fields.push("priority=?"); values.push(args.priority);
+    }
+    if (!fields.length) return { error: "لم تحددي أي تعديل للمهمة." };
+    values.push(id, user.id);
+    const result = await env.DB.prepare(
+      "UPDATE agent_tasks SET " + fields.join(", ") + " WHERE id=? AND user_id=? AND archived=0"
+    ).bind(...values).run();
+    if (!(result.meta?.changes > 0)) return { error: "لم أجد المهمة المطلوبة في قائمتك النشطة." };
+    return { updated: true, id };
+  }
+
+  if (name === "set_task_status") {
+    const id = String(args.id || "").trim();
+    if (!id || typeof args.done !== "boolean") return { error: "بيانات تحديث حالة المهمة غير مكتملة." };
+    const result = await env.DB.prepare(
+      "UPDATE agent_tasks SET done=? WHERE id=? AND user_id=? AND archived=0"
+    ).bind(args.done ? 1 : 0, id, user.id).run();
+    return result.meta?.changes > 0 ? { updated: true, id, done: args.done } : { error: "لم أجد المهمة المطلوبة." };
+  }
+
+  if (name === "archive_task" || name === "restore_task") {
+    const id = String(args.id || "").trim();
+    if (!id) return { error: "معرّف المهمة مطلوب." };
+    const archived = name === "archive_task" ? 1 : 0;
+    const result = await env.DB.prepare(
+      "UPDATE agent_tasks SET archived=? WHERE id=? AND user_id=?"
+    ).bind(archived, id, user.id).run();
+    return result.meta?.changes > 0
+      ? { updated: true, id, archived: Boolean(archived), reversible: true }
+      : { error: "لم أجد المهمة المطلوبة." };
+  }
+
+  if (name === "search_my_messages") {
+    const query = String(args.query || "").trim().slice(0, 100);
+    if (query.length < 2) return { error: "اكتبي كلمة بحث من حرفين على الأقل." };
+    const rows = await env.DB.prepare(
+      "SELECT role,content,created_at FROM messages WHERE user_id=? AND content LIKE ? ORDER BY created_at DESC LIMIT 6"
+    ).bind(user.id, "%" + query + "%").all();
+    return {
+      query,
+      matches: (rows.results || []).map(row => ({
+        role: row.role,
+        excerpt: String(row.content || "").slice(0, 420),
+        date: new Date(row.created_at * 1000).toISOString()
+      }))
+    };
+  }
+
   return { error: "الأداة غير مسموح بها." };
 }
 async function handleAgent(request, env, user, options = {}) {
@@ -550,10 +720,20 @@ async function handleAgent(request, env, user, options = {}) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
-        const allowed = ["get_current_time","calculate","save_task","list_tasks"];
+        const allowed = ["get_current_time","calculate","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages"];
         if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
         const output = await executeAgentTool(name, args || {}, env, user);
-        const labels = { get_current_time: "قراءة الوقت الحالي", calculate: "تنفيذ عملية حسابية", save_task: "حفظ مهمة في حسابك", list_tasks: "قراءة مهامك المحفوظة" };
+        const labels = {
+          get_current_time: "قراءة التاريخ والوقت",
+          calculate: "إجراء حساب",
+          save_task: "إنشاء مهمة",
+          list_tasks: "عرض المهام",
+          update_task: "تعديل مهمة",
+          set_task_status: "تحديث حالة مهمة",
+          archive_task: "أرشفة مهمة",
+          restore_task: "استعادة مهمة",
+          search_my_messages: "البحث في سجل المحادثات"
+        };
         steps.push(labels[name] + (output.error ? " — " + output.error : " — تم"));
         messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify(output) });
       }
@@ -579,16 +759,22 @@ async function agentTasksRoute(request, env, user) {
   if (!env.DB || !user) return json({ error: "سجّل الدخول أولًا لاستخدام المهام المحفوظة." }, 401);
   await ensureAgentTasks(env.DB);
   if (request.method === "GET") {
-    const rows = await env.DB.prepare("SELECT id,title,details,done,created_at FROM agent_tasks WHERE user_id=? ORDER BY created_at DESC LIMIT 50").bind(user.id).all();
+    const rows = await env.DB.prepare(
+      "SELECT id,title,details,done,created_at,due_at,priority,archived FROM agent_tasks WHERE user_id=? AND archived=0 ORDER BY done ASC, CASE WHEN due_at IS NULL THEN 1 ELSE 0 END, due_at ASC, created_at DESC LIMIT 50"
+    ).bind(user.id).all();
     return json({ tasks: rows.results || [] });
   }
   if (request.method === "PATCH") {
     let body;
     try { body = await request.json(); } catch { return json({ error: "الطلب غير صالح." }, 400); }
     const id = String(body.id || "");
-    if (!id || typeof body.done !== "boolean") return json({ error: "بيانات تحديث المهمة غير مكتملة." }, 400);
-    const result = await env.DB.prepare("UPDATE agent_tasks SET done=? WHERE id=? AND user_id=?").bind(body.done ? 1 : 0,id,user.id).run();
-    return json({ ok: true, changes: result.meta?.changes || 0 });
+    if (!id) return json({ error: "معرّف المهمة مطلوب." }, 400);
+    if (typeof body.done === "boolean") {
+      const result = await env.DB.prepare("UPDATE agent_tasks SET done=? WHERE id=? AND user_id=? AND archived=0")
+        .bind(body.done ? 1 : 0, id, user.id).run();
+      return json({ ok: true, changes: result.meta?.changes || 0 });
+    }
+    return json({ error: "التعديل غير مدعوم من هذا الطلب." }, 400);
   }
   return json({ error: "طريقة الطلب غير مدعومة." }, 405);
 }
