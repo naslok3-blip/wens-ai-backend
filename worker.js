@@ -445,7 +445,7 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct",
+      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
       features: {
         workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady
@@ -455,14 +455,17 @@ async function adminRoute(request, env, path) {
   if (path === "/api/admin/test-ai" && request.method === "POST") {
     if (!env.AI) return json({ error: "ربط Cloudflare Workers AI غير موجود على هذا الخادم." }, 503);
     try {
-      const model = env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct";
+      const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
       const result = await env.AI.run(model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: "اكتبي كلمة واحدة فقط: جاهزة" }
         ], temperature: 0, max_tokens: 12
       });
-      const reply = typeof result?.response === "string" ? result.response.trim() : "";
+      const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
+      const reply = typeof assistantMessage?.content === "string"
+        ? assistantMessage.content.trim()
+        : typeof result?.response === "string" ? result.response.trim() : "";
       return reply ? json({ ok: true, model, reply }) : json({ error: "تم الاتصال بالنموذج لكنه لم يرجع نصًا." }, 502);
     } catch {
       return json({ error: "تعذّر تشغيل نموذج Cloudflare Workers AI. راجع الحصة اليومية وحالة النموذج." }, 502);
@@ -1196,13 +1199,23 @@ async function handleAgent(request, env, user, options = {}) {
   const messages = [
     { role: "system", content: finalSystemPrompt },
     ...conversationHistory,
-    { role: "user", content: promptMessage }
+    {
+      role: "user",
+      content: imageBase64
+        ? [
+            { type: "text", text: promptMessage },
+            {
+              type: "image_url",
+              image_url: { url: "data:" + (imageMimeType || "image/jpeg") + ";base64," + imageBase64 }
+            }
+          ]
+        : promptMessage
+    }
   ];
   const useReasoningModel = deepThink || Boolean(imageBase64);
   const model = useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
   try {
     let finalText = "";
-    let pendingImage = imageBase64;
     const maxTurns = deepThink ? 8 : 6;
     for (let turn = 0; turn < maxTurns; turn++) {
       const runOptions = {
@@ -1214,9 +1227,7 @@ async function handleAgent(request, env, user, options = {}) {
       if (model === "@cf/qwen/qwen3.8-27b") {
         runOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
       }
-      if (pendingImage) {
-        runOptions.image = pendingImage;
-        pendingImage = "";
+      if (imageBase64 && turn === 0) {
         steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
       }
       const result = await env.AI.run(model, runOptions);
@@ -1355,13 +1366,16 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct";
+    const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
     const result = await env.AI.run(model, {
       messages,
       temperature: 0.7,
       max_tokens: 500
     });
-    const reply = typeof result?.response === "string" ? result.response.trim() : "";
+    const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
+      const reply = typeof assistantMessage?.content === "string"
+        ? assistantMessage.content.trim()
+        : typeof result?.response === "string" ? result.response.trim() : "";
     if (!reply) return json({ error: "لم يصل رد نصي من نموذج الذكاء الاصطناعي." }, 502);
     if (db && user) {
       await db.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
@@ -1400,7 +1414,7 @@ export default {
         diagnostics: {
           workersAiBindingPresent,
           browserBindingPresent: Boolean(env.BROWSER),
-          model: workersAiBindingPresent ? (env.WENS_AI_MODEL || "@cf/meta/llama-3.2-1b-instruct") : null
+          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
         }
       });
     }
