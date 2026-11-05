@@ -84,6 +84,17 @@
           <div class="field"><label for="appName">اسم التطبيق</label><input id="appName" maxlength="45" value="ونس AI"></div>
           <div class="field"><label for="assistantName">اسم الشخصية</label><input id="assistantName" maxlength="35" value="ونس"></div>
           <div class="field"><label for="theme">لون التصميم</label><select id="theme"><option value="purple">بنفسجي ووردي</option><option value="blue">أزرق وسماوي</option><option value="green">أخضر هادئ</option><option value="rose">وردي دافئ</option></select></div>
+          <div class="field">
+            <label for="avatarUpload">الصورة الشخصية لونس</label>
+            <img id="avatarPreview" src="/avatar.jpg?v=real-jpg-20261105" alt="معاينة صورة ونس" width="132" height="132" style="display:block;width:132px;height:132px;object-fit:cover;border-radius:50%;border:3px solid #c9b4ff;margin:10px auto 14px">
+            <input id="avatarUpload" type="file" accept="image/jpeg,image/png,image/webp">
+            <p class="muted">اختَر صورة من الهاتف. سيُعاد تحجيمها وضغطها قبل حفظها في إعدادات التطبيق.</p>
+            <div class="actions left-actions">
+              <button id="uploadAvatarBtn" class="btn primary" type="button" disabled>حفظ صورة ونس</button>
+              <button id="resetAvatarBtn" class="btn secondary" type="button">استعادة الصورة الافتراضية</button>
+            </div>
+            <p id="avatarStatus" class="status-line" role="status" aria-live="polite"></p>
+          </div>
         </section>
         <section class="tab-page" id="tab-assistant">
           <h2>الصوت والمساعدة</h2>
