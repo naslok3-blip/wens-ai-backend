@@ -6,7 +6,7 @@ const defaults = {
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
   voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "coral"
+  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
