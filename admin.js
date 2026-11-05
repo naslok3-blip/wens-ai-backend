@@ -45,7 +45,7 @@ function normalize(data) {
     }
   }
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
-  if (!["ar-EG", "ar-SA", "en-US"].includes(next.voiceLocale)) next.voiceLocale = defaults.voiceLocale;
+  if (next.voiceLocale !== "ar-EG") next.voiceLocale = "ar-EG";
   if (next.voiceEngine !== "cloud") next.voiceEngine = "cloud";
   if (!["coral", "shimmer", "marin", "cedar", "sage"].includes(next.voiceName)) next.voiceName = defaults.voiceName;
   return next;
