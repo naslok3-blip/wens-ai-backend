@@ -575,8 +575,9 @@ $("clearBtn").addEventListener("click", () => {
   $("messages").replaceChildren();
   addMessage("تم مسح عرض المحادثة من الشاشة. سجل الرسائل المحفوظ في الحساب لم يُحذف.");
 });
-let activeCloudSpeech = null;
-let activeCloudSpeechUrl = "";
+let activeVoicePeer = null;
+let activeVoiceDataChannel = null;
+let activeVoiceAudio = null;
 function setAvatarSpeaking(active) {
   document.querySelector(".orb")?.classList.toggle("talking", active);
   document.querySelector(".face")?.classList.toggle("talking", active);
@@ -599,44 +600,106 @@ function speakOnDevice(text) {
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
 }
-async function speak(text) {
+function stopRealtimeVoice() {
+  try { activeVoiceDataChannel?.close(); } catch {}
+  try { activeVoicePeer?.close(); } catch {}
+  try { activeVoiceAudio?.pause(); } catch {}
+  if (activeVoiceAudio) { activeVoiceAudio.srcObject = null; activeVoiceAudio.remove(); }
+  activeVoicePeer = null;
+  activeVoiceDataChannel = null;
+  activeVoiceAudio = null;
+  setAvatarSpeaking(false);
+}
+function waitForIce(peer) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error("انتهت مهلة تجهيز الصوت.")); }, 12000);
+    const onChange = () => { if (peer.iceGatheringState === "complete") { cleanup(); resolve(); } };
+    const cleanup = () => { clearTimeout(timer); peer.removeEventListener("icegatheringstatechange", onChange); };
+    peer.addEventListener("icegatheringstatechange", onChange);
+  });
+}
+async function speakRealtime(text, voiceName) {
+  if (!("RTCPeerConnection" in window)) throw new Error("متصفح الهاتف لا يدعم الصوت الحديث.");
+  stopRealtimeVoice();
+  const peer = new RTCPeerConnection();
+  activeVoicePeer = peer;
+  peer.addTransceiver("audio", { direction: "recvonly" });
+  const channel = peer.createDataChannel("oai-events");
+  activeVoiceDataChannel = channel;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    setTimeout(stopRealtimeVoice, 1400);
+  };
+  peer.ontrack = event => {
+    const stream = event.streams[0] || new MediaStream([event.track]);
+    const audio = document.createElement("audio");
+    audio.autoplay = true;
+    audio.playsInline = true;
+    audio.srcObject = stream;
+    audio.style.position = "fixed";
+    audio.style.width = "1px";
+    audio.style.height = "1px";
+    audio.style.opacity = "0.01";
+    document.body.appendChild(audio);
+    activeVoiceAudio = audio;
+    setAvatarSpeaking(true);
+    audio.play().catch(() => { $("voiceStatus").textContent = "الصوت جاهز؛ اضغط تشغيل الصوت في المتصفح."; });
+  };
+  channel.addEventListener("message", event => {
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (data.type === "response.output_audio.delta") setAvatarSpeaking(true);
+    if (data.type === "response.done") finish();
+    if (data.type === "error") finish();
+  });
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  await waitForIce(peer);
+  const response = await fetch("/api/voice/connect", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sdp: peer.localDescription.sdp, voice: voiceName || "coral" })
+  });
+  if (!response.ok) {
+    let data = {};
+    try { data = await response.json(); } catch {}
+    throw new Error(data.error || "تعذّر فتح قناة الصوت.");
+  }
+  const answer = await response.text();
+  if (!answer.startsWith("v=0")) throw new Error("رد اتصال الصوت غير صالح.");
+  await peer.setRemoteDescription({ type: "answer", sdp: answer });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("لم تفتح قناة الصوت.")), 15000);
+    channel.addEventListener("open", () => {
+      clearTimeout(timer);
+      channel.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "message", role: "user", content: [{ type: "input_text", text: String(text).slice(0, 2000) }] }
+      }));
+      channel.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio"] } }));
+      resolve();
+    }, { once: true });
+    channel.addEventListener("error", () => { clearTimeout(timer); reject(new Error("فشل فتح قناة الصوت.")); }, { once: true });
+  });
+  setTimeout(() => { if (activeVoicePeer === peer && !finished) finish(); }, 45000);
+}
+async function speak(text, voiceOverride) {
   const message = String(text || "").slice(0, 2000);
   if (!message) return;
-  if (appSettings.voiceEngine !== "cloud") {
-    speakOnDevice(message);
-    return;
-  }
+  if (appSettings.voiceEngine !== "cloud") { speakOnDevice(message); return; }
   try {
-    if (activeCloudSpeech) {
-      activeCloudSpeech.pause();
-      activeCloudSpeech = null;
-    }
-    if (activeCloudSpeechUrl) URL.revokeObjectURL(activeCloudSpeechUrl);
-    const response = await fetch("/api/voice/speech", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: message, voice: appSettings.voiceName || "coral" })
-    });
-    if (!response.ok) {
-      let detail = {};
-      try { detail = await response.json(); } catch {}
-      throw new Error(detail.error || "تعذّر إنشاء الصوت الطبيعي.");
-    }
-    const blob = await response.blob();
-    if (!blob.size || !blob.type.includes("audio")) throw new Error("خدمة الصوت لم تُرجع ملفًا صوتيًا صالحًا.");
-    activeCloudSpeechUrl = URL.createObjectURL(blob);
-    activeCloudSpeech = new Audio(activeCloudSpeechUrl);
-    activeCloudSpeech.onplay = () => setAvatarSpeaking(true);
-    activeCloudSpeech.onended = () => { setAvatarSpeaking(false); URL.revokeObjectURL(activeCloudSpeechUrl); activeCloudSpeechUrl = ""; activeCloudSpeech = null; };
-    activeCloudSpeech.onerror = () => { setAvatarSpeaking(false); activeCloudSpeech = null; };
-    await activeCloudSpeech.play();
+    await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral");
   } catch (error) {
-    setAvatarSpeaking(false);
-    $("voiceStatus").textContent = "تعذّر الصوت الطبيعي؛ تم استخدام صوت الهاتف بدلًا منه. " + String(error.message || "").slice(0, 110);
+    stopRealtimeVoice();
+    $("voiceStatus").textContent = "تعذّر الصوت الطبيعي؛ تم استخدام صوت الهاتف. " + String(error.message || "").slice(0, 100);
     speakOnDevice(message);
   }
 }
+window.WensPlayVoicePreview = (text, voice) => speak(text, voice);
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
