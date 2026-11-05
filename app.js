@@ -23,7 +23,7 @@ function loadLocalSettings() {
     return {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && typeof value === typeof defaults[key] && (key !== "voiceEngine" || value === "cloud")
+        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "cloud") && (key !== "voiceLocale" || value === "ar-EG"))
       ))
     };
   } catch { return defaults; }
