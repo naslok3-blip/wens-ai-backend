@@ -15,7 +15,7 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-    enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "coral"
+    enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -696,8 +696,7 @@ async function speak(text, voiceOverride) {
     await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral");
   } catch (error) {
     stopRealtimeVoice();
-    $("voiceStatus").textContent = "تعذّر الصوت الطبيعي؛ تم استخدام صوت الهاتف. " + String(error.message || "").slice(0, 100);
-    speakOnDevice(message);
+    $("voiceStatus").textContent = "الصوت المصري الطبيعي مش متاح دلوقتي، ومش هحوّلك لصوت الهاتف أو الفصحى. " + String(error.message || "").slice(0, 100);
   }
 }
 window.WensPlayVoicePreview = (text, voice) => speak(text, voice);
