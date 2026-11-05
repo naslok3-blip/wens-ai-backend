@@ -6,7 +6,7 @@ const defaults = {
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
   voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: ""
+  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "coral"
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
@@ -46,6 +46,8 @@ function normalize(data) {
   }
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
   if (!["ar-EG", "ar-SA", "en-US"].includes(next.voiceLocale)) next.voiceLocale = defaults.voiceLocale;
+  if (!["device", "cloud"].includes(next.voiceEngine)) next.voiceEngine = defaults.voiceEngine;
+  if (!["coral", "shimmer", "marin", "cedar", "sage"].includes(next.voiceName)) next.voiceName = defaults.voiceName;
   return next;
 }
 function fillSettingsForm() {
@@ -118,6 +120,36 @@ $("adminLoginForm").addEventListener("submit", async event => {
   } catch (error) { gateMessage(error.message, true); }
   finally { $("adminLoginBtn").disabled = false; }
 });
+
+$("showAdminResetBtn").addEventListener("click", () => {
+  $("adminSetupForm").hidden = !$("adminSetupForm").hidden;
+  $("adminSetupBtn").textContent = "إنشاء كلمة مرور المدير المستقلة";
+  gateMessage($("adminSetupForm").hidden ? "" : "أدخل كلمة مرور حساب ونس الحالية. لا تُرسلها لأي شخص.");
+});
+$("adminSetupForm").addEventListener("submit", async event => {
+  event.preventDefault();
+  const ownerPassword = $("ownerPassword").value;
+  $("adminSetupBtn").disabled = true;
+  gateMessage("جاري التحقق من ملكية الحساب وإعادة إعداد كلمة مرور المدير...");
+  try {
+    const result = await request("/api/admin/setup", { ownerPassword }, "POST");
+    $("ownerPassword").value = "";
+    $("adminSetupForm").hidden = true;
+    $("adminLoginForm").hidden = true;
+    $("showAdminResetBtn").hidden = true;
+    if (result.password) {
+      $("adminNewPasswordText").textContent = result.password;
+      $("adminNewPasswordNotice").hidden = false;
+    }
+    await showDashboard();
+    gateMessage("تم إنشاء كلمة مرور مدير مستقلة وتسجيل دخولك بنجاح.");
+  } catch (error) {
+    gateMessage(error.message, true);
+  } finally {
+    $("adminSetupBtn").disabled = false;
+  }
+});
+
 $("adminLogoutBtn").addEventListener("click", async () => {
   try { await request("/api/admin/logout", {}, "POST"); } catch {}
   $("adminApp").hidden = true;
@@ -183,6 +215,22 @@ $("resetBtn").addEventListener("click", async () => {
     config = normalize(result.settings); fillSettingsForm();
     $("backupStatus").textContent = "تمت استعادة الإعدادات الافتراضية على الخادم.";
   } catch (error) { $("backupStatus").textContent = error.message; }
+});
+
+
+$("voicePreviewBtn").addEventListener("click", async () => {
+  $("voicePreviewBtn").disabled = true;
+  $("voicePreviewStatus").textContent = "جاري تشغيل عينة صوت ونس...";
+  try {
+    const play = window.parent && window.parent.WensPlayVoicePreview;
+    if (typeof play !== "function") throw new Error("افتح لوحة الإدارة من داخل صفحة ونس لتشغيل العينة.");
+    await play("أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.", $("voiceName").value);
+    $("voicePreviewStatus").textContent = "تم إرسال عينة الصوت إلى مشغل ونس.";
+  } catch (error) {
+    $("voicePreviewStatus").textContent = error.message || "تعذّر اختبار الصوت.";
+  } finally {
+    $("voicePreviewBtn").disabled = false;
+  }
 });
 
 function compressAvatarFile(file) {
@@ -264,11 +312,56 @@ $("resetAvatarBtn").addEventListener("click", async () => {
   }
 });
 
+$("avatarTestBtn").addEventListener("click", async () => {
+  $("avatarTestBtn").disabled = true;
+  $("avatarTestStatus").textContent = "جاري اختبار الحفظ والاسترجاع...";
+  const original = config.avatarDataUrl || "";
+  let saved = false;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 2;
+    canvas.height = 2;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("تعذّر إنشاء صورة الاختبار.");
+    context.fillStyle = "#a28bff";
+    context.fillRect(0, 0, 2, 2);
+    const sample = canvas.toDataURL("image/jpeg", 0.6);
+    await request("/api/admin/settings", {settings: {...config, avatarDataUrl: sample}}, "PUT");
+    saved = true;
+    const check = await request("/api/admin/settings");
+    if (check.settings?.avatarDataUrl !== sample) throw new Error("لم تُحفظ الصورة التجريبية بصورة مطابقة.");
+    await request("/api/admin/settings", {settings: {...config, avatarDataUrl: original}}, "PUT");
+    saved = false;
+    config.avatarDataUrl = original;
+    $("avatarPreview").src = original || "/avatar.jpg?v=real-jpg-20261105";
+    $("avatarTestStatus").textContent = "نجح الاختبار: تم الحفظ والقراءة واستعادة الصورة الأصلية.";
+  } catch (error) {
+    if (saved) {
+      try {
+        await request("/api/admin/settings", {settings: {...config, avatarDataUrl: original}}, "PUT");
+        config.avatarDataUrl = original;
+        $("avatarPreview").src = original || "/avatar.jpg?v=real-jpg-20261105";
+      } catch {}
+    }
+    $("avatarTestStatus").textContent = error.message || "فشل اختبار الصورة.";
+  } finally {
+    $("avatarTestBtn").disabled = false;
+  }
+});
+
 (async function bootAdmin() {
   try {
     const session = await request("/api/admin/session");
     if (session.authenticated) await showDashboard();
-    else gateMessage("أدخل البريد وكلمة مرور حساب مالك التطبيق.");
+    else if (session.owner) {
+      $("showAdminResetBtn").hidden = false;
+      gateMessage(session.configured
+        ? "حساب المالك الحالي موثّق. يمكنك تسجيل الدخول بكلمة مرور المدير أو إنشاء كلمة مرور جديدة بعد التحقق من كلمة مرور حساب ونس."
+        : "تم التعرف على حساب المالك. أنشئ كلمة مرور المدير المستقلة.");
+      if (!session.configured) $("adminSetupForm").hidden = false;
+    } else {
+      gateMessage("أدخل البريد وكلمة مرور المدير. يجب فتح لوحة الإدارة من حساب المالك داخل ونس.");
+    }
   } catch (error) {
     gateMessage(error.message === "تعذّر تنفيذ الطلب."
       ? "تعذّر الوصول إلى خدمة الإدارة. تأكد من اتصال الإنترنت."
