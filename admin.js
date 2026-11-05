@@ -6,7 +6,7 @@ const defaults = {
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
   voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-  enableVoice: true, voiceLocale: "ar-EG"
+  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: ""
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
@@ -41,7 +41,7 @@ function normalize(data) {
       const min = key === "voiceRate" ? 0.65 : 0.7;
       next[key] = Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : defaults[key];
     } else if (typeof value === "string") {
-      next[key] = value.slice(0, key === "welcomeText" ? 240 : key === "greeting" ? 350 : 120);
+      next[key] = value.slice(0, key === "avatarDataUrl" ? 700000 : key === "welcomeText" ? 240 : key === "greeting" ? 350 : 120);
     }
   }
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
@@ -61,6 +61,8 @@ async function loadSettings() {
   const data = await request("/api/admin/settings");
   config = normalize(data.settings);
   fillSettingsForm();
+  const preview = $("avatarPreview");
+  if (preview) preview.src = config.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
 }
 function readForm() {
   for (const key of keys) {
@@ -182,6 +184,86 @@ $("resetBtn").addEventListener("click", async () => {
     $("backupStatus").textContent = "تمت استعادة الإعدادات الافتراضية على الخادم.";
   } catch (error) { $("backupStatus").textContent = error.message; }
 });
+
+function compressAvatarFile(file) {
+  return new Promise((resolve, reject) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!file || !allowed.includes(file.type)) {
+      reject(new Error("اختَر صورة بصيغة JPG أو PNG أو WebP."));
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const maxSide = 512;
+        const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d", { alpha: false });
+        if (!context) throw new Error("تعذّر تجهيز الصورة.");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+          URL.revokeObjectURL(objectUrl);
+          if (!blob) { reject(new Error("تعذّر ضغط الصورة.")); return; }
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("تعذّرت قراءة الصورة."));
+          reader.readAsDataURL(blob);
+        }, "image/jpeg", 0.84);
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl);
+        reject(error);
+      }
+    };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("ملف الصورة غير صالح.")); };
+    image.src = objectUrl;
+  });
+}
+$("avatarUpload").addEventListener("change", () => {
+  $("uploadAvatarBtn").disabled = !$("avatarUpload").files || !$("avatarUpload").files[0];
+  $("avatarStatus").textContent = $("avatarUpload").files && $("avatarUpload").files[0]
+    ? "الصورة جاهزة. اضغط حفظ صورة ونس لإرسالها."
+    : "";
+});
+$("uploadAvatarBtn").addEventListener("click", async () => {
+  const file = $("avatarUpload").files && $("avatarUpload").files[0];
+  if (!file) return;
+  $("uploadAvatarBtn").disabled = true;
+  $("avatarStatus").textContent = "جاري ضغط الصورة وحفظها على الخادم...";
+  try {
+    const avatarDataUrl = await compressAvatarFile(file);
+    if (avatarDataUrl.length > 700000) throw new Error("الصورة كبيرة بعد الضغط. اختَر صورة أصغر.");
+    const result = await request("/api/admin/settings", { settings: { ...config, avatarDataUrl } }, "PUT");
+    config = normalize(result.settings);
+    $("avatarPreview").src = config.avatarDataUrl;
+    $("avatarStatus").textContent = "تم حفظ صورة ونس على الخادم. ستظهر للمستخدمين بعد تحديث التطبيق.";
+    $("avatarUpload").value = "";
+  } catch (error) {
+    $("avatarStatus").textContent = error.message || "تعذّر حفظ الصورة.";
+  } finally {
+    $("uploadAvatarBtn").disabled = false;
+  }
+});
+$("resetAvatarBtn").addEventListener("click", async () => {
+  $("resetAvatarBtn").disabled = true;
+  try {
+    const result = await request("/api/admin/settings", { settings: { ...config, avatarDataUrl: "" } }, "PUT");
+    config = normalize(result.settings);
+    $("avatarPreview").src = "/avatar.jpg?v=real-jpg-20261105";
+    $("avatarUpload").value = "";
+    $("uploadAvatarBtn").disabled = true;
+    $("avatarStatus").textContent = "تمت استعادة الصورة الافتراضية.";
+  } catch (error) {
+    $("avatarStatus").textContent = error.message;
+  } finally {
+    $("resetAvatarBtn").disabled = false;
+  }
+});
+
 (async function bootAdmin() {
   try {
     const session = await request("/api/admin/session");
