@@ -203,7 +203,7 @@ const DEFAULT_APP_SETTINGS = {
   welcomeText: "اتكلم معايا واسألني اللي في بالك.",
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا", voiceRate: 0.96, voicePitch: 1.12,
-  theme: "purple", enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: ""
+  theme: "purple", enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "coral"
 };
 const APP_SETTING_LIMITS = {
   appName: 45, assistantName: 35, eyebrow: 80, welcomeTitle: 100,
@@ -222,6 +222,8 @@ function normalizeAppSettings(input) {
   if (Number.isFinite(Number(input.voicePitch))) next.voicePitch = Math.min(1.5, Math.max(0.7, Number(input.voicePitch)));
   if (["purple", "blue", "green", "rose"].includes(input.theme)) next.theme = input.theme;
   if (["ar-EG", "ar-SA", "en-US"].includes(input.voiceLocale)) next.voiceLocale = input.voiceLocale;
+  if (["device", "cloud"].includes(input.voiceEngine)) next.voiceEngine = input.voiceEngine;
+  if (["coral", "shimmer", "nova", "marin", "sage"].includes(input.voiceName)) next.voiceName = input.voiceName;
   if (typeof input.avatarDataUrl === "string") {
     const avatar = input.avatarDataUrl.trim();
     if (!avatar) next.avatarDataUrl = "";
@@ -1084,6 +1086,64 @@ async function executeAgentTool(name, args, env, user) {
 
   return { error: "الأداة غير مسموح بها." };
 }
+async function extractDocumentAttachments(env, documents, userRequest) {
+  if (!env.OPENAI_API_KEY) {
+    return { error: "قراءة ملفات PDF وWord وExcel تحتاج تفعيل مفتاح OpenAI على الخادم. لم يُرسل الملف إلى أي خدمة." };
+  }
+  const content = [];
+  for (const file of documents) {
+    content.push({
+      type: "input_file",
+      filename: file.name,
+      file_data: "data:" + file.type + ";base64," + file.data,
+      ...(file.type === "application/pdf" ? { detail: "low" } : {})
+    });
+  }
+  content.push({
+    type: "input_text",
+    text: "اقرأ الملفات المرفقة بدقة واستخرج النص والمعلومات والجداول والأرقام والعناوين المهمة. حافظ على أسماء الأعمدة وترتيب الصفوف والقيم كما وردت، ولا تخمّن المحتوى غير الواضح. أعد نصًا منظمًا يستطيع مساعد آخر استخدامه للإجابة عن سؤال المستخدم. سؤال المستخدم: " + String(userRequest || "اقرأ الملفات واشرح محتواها.").slice(0, 4000)
+  });
+  let response;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.OPENAI_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: env.WENS_DOCUMENT_MODEL || "gpt-4.1-mini",
+        store: false,
+        max_output_tokens: 6000,
+        input: [{ role: "user", content }]
+      }),
+      signal: AbortSignal.timeout(90000)
+    });
+  } catch (error) {
+    return { error: "تعذّر الاتصال بخدمة قراءة المستندات: " + String(error?.message || error).slice(0, 120) };
+  }
+  let payload = {};
+  try { payload = await response.json(); } catch {}
+  if (!response.ok) {
+    const apiMessage = String(payload?.error?.message || "").slice(0, 180);
+    if (response.status === 401 || response.status === 403) return { error: "مفتاح OpenAI غير صالح أو لا يملك صلاحية قراءة الملفات." };
+    if (response.status === 429) return { error: "وصلت خدمة قراءة الملفات إلى حد الاستخدام أو الرصيد المتاح. جرّب لاحقًا." };
+    return { error: "فشلت قراءة المستند (" + response.status + "). " + apiMessage };
+  }
+  let extracted = typeof payload.output_text === "string" ? payload.output_text : "";
+  if (!extracted && Array.isArray(payload.output)) {
+    extracted = payload.output
+      .filter(item => item?.type === "message")
+      .flatMap(item => Array.isArray(item.content) ? item.content : [])
+      .filter(item => item?.type === "output_text" && typeof item.text === "string")
+      .map(item => item.text)
+      .join("\\n");
+  }
+  extracted = extracted.trim().slice(0, 50000);
+  if (!extracted) return { error: "الخدمة استلمت الملفات لكنها لم تُرجع نصًا قابلًا للقراءة. قد يكون الملف محميًا أو تالفًا." };
+  return { text: extracted, model: payload.model || env.WENS_DOCUMENT_MODEL || "gpt-4.1-mini" };
+}
+
 async function handleAgent(request, env, user, options = {}) {
   if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
   let body;
@@ -1098,6 +1158,8 @@ async function handleAgent(request, env, user, options = {}) {
   let imageMimeType = "";
   let textAttachmentContext = "";
   const attachmentNames = [];
+  const documentFiles = [];
+  let documentBytesTotal = 0;
   let textAttachmentLength = 0;
   for (const item of attachments) {
     const name = String(item?.name || "ملف مرفق").replace(/[\\r\\n]/g, " ").slice(0, 120);
@@ -1122,9 +1184,37 @@ async function handleAgent(request, env, user, options = {}) {
       }
       textAttachmentLength += content.length;
       textAttachmentContext += "\\n\\n--- ملف: " + name + " ---\\n" + content;
+    } else if (kind === "document") {
+      const extension = String(name.split(".").pop() || "").toLowerCase();
+      const documentMimes = {
+        pdf: "application/pdf",
+        doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ppt: "application/vnd.ms-powerpoint",
+        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      };
+      const expectedType = documentMimes[extension];
+      const data = String(item?.data || "");
+      if (!expectedType || type !== expectedType || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) {
+        return json({ error: "نوع المستند أو بياناته غير صالحة: " + name }, 415);
+      }
+      if (data.length > 11 * 1024 * 1024 || documentBytesTotal + data.length > 14 * 1024 * 1024) {
+        return json({ error: "حجم ملفات المستندات كبير جدًا. الحد 8 ميجابايت للملف و10 ميجابايت إجماليًا تقريبًا." }, 413);
+      }
+      documentBytesTotal += data.length;
+      documentFiles.push({ name, type: expectedType, data });
     } else {
       textAttachmentContext += "\\n\\n[مرفق ملف باسم " + name + " ونوع " + (type || "غير معروف") + ". محتوى هذا النوع لم يتم استخراجه؛ لا تدّعي قراءته.]";
     }
+  }
+  let documentsWereRead = false;
+  if (documentFiles.length) {
+    const extraction = await extractDocumentAttachments(env, documentFiles, message);
+    if (extraction.error) return json({ error: extraction.error }, 502);
+    textAttachmentContext += "\\n\\n--- محتوى المستندات المستخرج ---\\n" + extraction.text;
+    documentsWereRead = true;
   }
   const imageName = attachmentNames.find((name, index) => attachments[index]?.kind === "image") || "صورة";
   const promptMessage = [
@@ -1132,9 +1222,10 @@ async function handleAgent(request, env, user, options = {}) {
     imageBase64 ? "[تم إرفاق صورة باسم " + imageName + ". افحص الصورة وأجب عنها.]" : "",
     textAttachmentContext
   ].filter(Boolean).join("\\n\\n") || "افحص المرفقات المرسلة ووضّح ما يمكن قراءته منها.";
-  const storedMessage = promptMessage +
+  const storedMessage = (documentFiles.length ? message : promptMessage) +
     (attachmentNames.length ? "\\n\\n[أسماء المرفقات: " + attachmentNames.join("، ") + "]" : "");
   const steps = [];
+  if (documentsWereRead) steps.push("قراءة محتوى PDF / Word / Excel");
   const generatedImages = [];
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
@@ -1394,6 +1485,56 @@ async function handleChat(request, env, user) {
   }
 }
 
+async function handleVoiceSpeech(request, env) {
+  if (!env.OPENAI_API_KEY) return json({ error: "خدمة الصوت الطبيعي غير مفعّلة على الخادم." }, 503);
+  if (env.DB) {
+    const user = await currentUser(request, env) || await adminUser(request, env);
+    if (!user) return json({ error: "سجّل الدخول إلى ونس أو لوحة المدير لاستخدام الصوت." }, 401);
+  }
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "طلب الصوت غير صالح." }, 400); }
+  const input = typeof body.text === "string" ? body.text.trim().slice(0, 2000) : "";
+  if (!input) return json({ error: "لا يوجد نص لتحويله إلى صوت." }, 400);
+  const allowedVoices = ["coral", "shimmer", "nova", "marin", "sage"];
+  const voice = allowedVoices.includes(body.voice) ? body.voice : "coral";
+  let response;
+  try {
+    response = await fetch("https://api.openai.com/v1/audio/speech", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.OPENAI_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: env.WENS_TTS_MODEL || "gpt-4o-mini-tts",
+        voice,
+        input,
+        instructions: "Speak clearly in natural Egyptian Arabic (Masri), with a warm, gentle, feminine-sounding delivery. Use Egyptian pronunciation and natural conversational rhythm. Keep the tone friendly and calm. Do not translate or add words.",
+        response_format: "mp3"
+      }),
+      signal: AbortSignal.timeout(60000)
+    });
+  } catch (error) {
+    return json({ error: "تعذّر الاتصال بخدمة الصوت الطبيعي: " + String(error?.message || error).slice(0, 120) }, 502);
+  }
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    if (response.status === 401 || response.status === 403) return json({ error: "مفتاح OpenAI غير صالح أو لا يملك صلاحية تحويل النص إلى صوت." }, 502);
+    if (response.status === 429) return json({ error: "رصيد أو حد استخدام خدمة الصوت الطبيعي غير كافٍ حاليًا." }, 429);
+    return json({ error: "فشل إنشاء الصوت الطبيعي (" + response.status + "). " + detail.slice(0, 140) }, 502);
+  }
+  const audio = await response.arrayBuffer();
+  if (!audio.byteLength) return json({ error: "خدمة الصوت لم تُرجع ملفًا صالحًا." }, 502);
+  return new Response(audio, {
+    headers: {
+      "Content-Type": "audio/mpeg",
+      "Content-Length": String(audio.byteLength),
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff"
+    }
+  });
+}
+
 export default {
   async fetch(request, env) {
     const requestId = crypto.randomUUID();
@@ -1409,6 +1550,8 @@ export default {
           workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
           browser: Boolean(env.BROWSER),
+          naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
+          documentReadingConfigured: Boolean(env.OPENAI_API_KEY),
           adminProtectionConfigured: Boolean(env.DB)
         },
         diagnostics: {
@@ -1420,6 +1563,7 @@ export default {
     }
     try {
       if (path === "/api/settings" && request.method === "GET") return json({ settings: await readAppSettings(env) });
+      if (path === "/api/voice/speech" && request.method === "POST") return await handleVoiceSpeech(request, env);
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
       if (path === "/api/chat/history" && request.method === "GET") {
