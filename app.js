@@ -107,12 +107,13 @@ function openAdminInsideWens() {
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
-function returnToWensChat() {
+async function returnToWensChat() {
   $("adminInlinePanel").hidden = true;
   $("appRoot").hidden = false;
   $("openAdminBtn").hidden = true;
   $("backToAppBtn").hidden = true;
   window.scrollTo({ top: 0, behavior: "smooth" });
+  await loadServerSettings();
 }
 $("openAdminBtn").addEventListener("click", openAdminInsideWens);
 $("backToAppBtn").addEventListener("click", returnToWensChat);
