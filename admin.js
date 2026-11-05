@@ -47,7 +47,7 @@ function normalize(data) {
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
   if (!["ar-EG", "ar-SA", "en-US"].includes(next.voiceLocale)) next.voiceLocale = defaults.voiceLocale;
   if (!["device", "cloud"].includes(next.voiceEngine)) next.voiceEngine = defaults.voiceEngine;
-  if (!["coral", "shimmer", "nova", "marin", "sage"].includes(next.voiceName)) next.voiceName = defaults.voiceName;
+  if (!["coral", "shimmer", "marin", "cedar", "sage"].includes(next.voiceName)) next.voiceName = defaults.voiceName;
   return next;
 }
 function fillSettingsForm() {
@@ -218,71 +218,18 @@ $("resetBtn").addEventListener("click", async () => {
 });
 
 
-let voicePreviewAudioUrl = "";
 $("voicePreviewBtn").addEventListener("click", async () => {
   $("voicePreviewBtn").disabled = true;
-  $("voicePreviewStatus").textContent = "جاري إنشاء عينة صوتية قصيرة...";
+  $("voicePreviewStatus").textContent = "جاري تشغيل عينة صوت ونس...";
   try {
-    const response = await fetch("/api/voice/speech", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: "أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.",
-        voice: $("voiceName").value
-      })
-    });
-    if (!response.ok) {
-      let data = {};
-      try { data = await response.json(); } catch {}
-      throw new Error(data.error || "تعذّر اختبار الصوت.");
-    }
-    const blob = await response.blob();
-    if (!blob.size || !blob.type.includes("audio")) throw new Error("الخدمة لم تُرجع صوتًا صالحًا.");
-    if (voicePreviewAudioUrl) URL.revokeObjectURL(voicePreviewAudioUrl);
-    voicePreviewAudioUrl = URL.createObjectURL(blob);
-    const audio = new Audio(voicePreviewAudioUrl);
-    await audio.play();
-    $("voicePreviewStatus").textContent = "تم إنشاء العينة وتشغيلها. اختر الصوت الذي يناسبك ثم احفظ الإعدادات.";
+    const play = window.parent && window.parent.WensPlayVoicePreview;
+    if (typeof play !== "function") throw new Error("افتح لوحة الإدارة من داخل صفحة ونس لتشغيل العينة.");
+    await play("أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.", $("voiceName").value);
+    $("voicePreviewStatus").textContent = "تم إرسال عينة الصوت إلى مشغل ونس.";
   } catch (error) {
-    $("voicePreviewStatus").textContent = error.message || "تعذّر اختبار الصوت الطبيعي.";
+    $("voicePreviewStatus").textContent = error.message || "تعذّر اختبار الصوت.";
   } finally {
     $("voicePreviewBtn").disabled = false;
-  }
-});
-
-
-$("avatarTestBtn").addEventListener("click", async () => {
-  $("avatarTestBtn").disabled = true;
-  $("avatarTestStatus").textContent = "جاري اختبار حفظ صورة تجريبية ثم استعادة الصورة الأصلية...";
-  const originalAvatar = config.avatarDataUrl || "";
-  const testAvatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/1fkAAAAASUVORK5CYII=";
-  let temporarySaved = false;
-  try {
-    await request("/api/admin/settings", { settings: { ...config, avatarDataUrl: testAvatar } }, "PUT");
-    temporarySaved = true;
-    const verify = await request("/api/admin/settings");
-    if (verify.settings?.avatarDataUrl !== testAvatar) throw new Error("تم الحفظ لكن لم تتطابق الصورة عند قراءتها من قاعدة البيانات.");
-    await request("/api/admin/settings", { settings: { ...config, avatarDataUrl: originalAvatar } }, "PUT");
-    temporarySaved = false;
-    config.avatarDataUrl = originalAvatar;
-    $("avatarPreview").src = originalAvatar || "/avatar.jpg?v=real-jpg-20261105";
-    $("avatarTestStatus").textContent = "نجح الاختبار: حفظ الصورة التجريبية وقراءتها ثم استعادة الصورة الأصلية. لم تتغير صورتك.";
-  } catch (error) {
-    if (temporarySaved) {
-      try {
-        await request("/api/admin/settings", { settings: { ...config, avatarDataUrl: originalAvatar } }, "PUT");
-        config.avatarDataUrl = originalAvatar;
-        $("avatarPreview").src = originalAvatar || "/avatar.jpg?v=real-jpg-20261105";
-      } catch {
-        $("avatarTestStatus").textContent = "تعذّر إكمال الاختبار واستعادة الصورة تلقائيًا. استخدم زر استعادة الصورة الافتراضية أو ارفع صورتك المحفوظة.";
-        $("avatarTestBtn").disabled = false;
-        return;
-      }
-    }
-    $("avatarTestStatus").textContent = error.message || "فشل اختبار حفظ الصورة.";
-  } finally {
-    $("avatarTestBtn").disabled = false;
   }
 });
 
