@@ -15,7 +15,7 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-    enableVoice: true, voiceLocale: "ar-EG"
+    enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: ""
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -37,6 +37,10 @@ function applyLocalSettings() {
   $("welcomeText").textContent = appSettings.welcomeText;
   $("voiceButtonText").textContent = appSettings.voiceButton;
   $("voiceBtn").hidden = !appSettings.enableVoice;
+  const avatarSrc = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
+  const portrait = $("heroPortrait");
+  if (portrait) portrait.src = avatarSrc;
+  document.querySelectorAll(".mini-avatar").forEach(image => { image.src = avatarSrc; });
   const themes = {
     purple: ["#b49aff", "#ffacd6"],
     blue: ["#83baff", "#8ce8ef"],
@@ -87,12 +91,8 @@ function showApp(user) {
   loadChatHistory();
 }
 async function updateAdminShortcut() {
-  try {
-    const result = await api("/api/admin/session", undefined, "GET");
-    $("openAdminBtn").hidden = !result.owner;
-  } catch {
-    $("openAdminBtn").hidden = true;
-  }
+  // الإدارة لا تظهر كزر عام؛ مدخلها المخفي هو الضغط خمس مرات على صورة ونس.
+  $("openAdminBtn").hidden = true;
 }
 function openAdminInsideWens() {
   $("appRoot").hidden = true;
@@ -110,12 +110,43 @@ function openAdminInsideWens() {
 function returnToWensChat() {
   $("adminInlinePanel").hidden = true;
   $("appRoot").hidden = false;
-  $("openAdminBtn").hidden = false;
+  $("openAdminBtn").hidden = true;
   $("backToAppBtn").hidden = true;
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 $("openAdminBtn").addEventListener("click", openAdminInsideWens);
 $("backToAppBtn").addEventListener("click", returnToWensChat);
+
+let adminAvatarTapCount = 0;
+let adminAvatarTapTimer = null;
+async function handleAdminAvatarTap() {
+  if (!currentUser || currentUser.id === "guest") return;
+  adminAvatarTapCount += 1;
+  if (adminAvatarTapTimer) clearTimeout(adminAvatarTapTimer);
+  adminAvatarTapTimer = setTimeout(() => { adminAvatarTapCount = 0; }, 3000);
+  if (adminAvatarTapCount < 5) return;
+  adminAvatarTapCount = 0;
+  clearTimeout(adminAvatarTapTimer);
+  adminAvatarTapTimer = null;
+  try {
+    const session = await api("/api/admin/session", undefined, "GET");
+    if (session.owner) openAdminInsideWens();
+    else $("voiceStatus").textContent = "هذا المدخل مخصص لمالك التطبيق فقط.";
+  } catch {
+    $("voiceStatus").textContent = "تعذّر التحقق من صلاحية الإدارة الآن.";
+  }
+}
+const adminPortrait = $("heroPortrait");
+if (adminPortrait) {
+  adminPortrait.addEventListener("click", handleAdminAvatarTap);
+  adminPortrait.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleAdminAvatarTap();
+    }
+  });
+}
+
 function updateAuthMode() {
   const registering = authMode === "register";
   $("nameField").hidden = !registering;
@@ -203,7 +234,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   if (who === "assistant") {
     const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
-    avatar.src = "/avatar.jpg?v=real-jpg-20261104";
+    avatar.src = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
     avatar.alt = "ونس";
     avatar.width = 30;
     avatar.height = 30;
