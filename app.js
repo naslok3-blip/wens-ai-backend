@@ -691,7 +691,7 @@ async function speakRealtime(text, voiceName) {
 async function speak(text, voiceOverride) {
   const message = String(text || "").slice(0, 2000);
   if (!message) return;
-  if (appSettings.voiceEngine !== "cloud") { speakOnDevice(message); return; }
+  if (appSettings.voiceEngine !== "cloud" && !voiceOverride) { speakOnDevice(message); return; }
   try {
     await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral");
   } catch (error) {
