@@ -15,7 +15,7 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-    enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: ""
+    enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "coral"
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -354,11 +354,11 @@ function renderAttachmentPreview() {
       chip.appendChild(img);
     } else {
       const icon = document.createElement("b");
-      icon.textContent = item.kind === "text" ? "TXT" : "📎";
+      icon.textContent = item.kind === "text" ? "TXT" : item.kind === "document" ? "DOC" : "📎";
       chip.appendChild(icon);
     }
     const label = document.createElement("span");
-    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : "");
+    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : item.kind === "document" ? " (جاهز للقراءة)" : "");
     chip.appendChild(label);
     const remove = document.createElement("button");
     remove.type = "button";
@@ -436,11 +436,37 @@ async function addSelectedFile(file) {
         setAttachmentStatus("تم إرفاق الملف النصي وقراءته.");
       } catch (error) { setAttachmentStatus("تعذّرت قراءة الملف النصي.", true); }
     } else {
-      pendingAttachments.push({
-        kind: "file", name: file.name, type: file.type || "application/octet-stream",
-        size: file.size
-      });
-      setAttachmentStatus("تم إرفاق اسم الملف. قراءة محتوى PDF وWord وExcel غير مفعّلة بعد.");
+      const documentTypes = {
+        pdf: "application/pdf",
+        doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ppt: "application/vnd.ms-powerpoint",
+        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      };
+      if (Object.prototype.hasOwnProperty.call(documentTypes, extension)) {
+        if (file.size > 8 * 1024 * 1024) {
+          setAttachmentStatus("حجم الملف يتجاوز 8 ميجابايت. اختَر نسخة أصغر.", true);
+          return;
+        }
+        try {
+          const dataUrl = await readAsDataUrl(file);
+          pendingAttachments.push({
+            kind: "document", name: file.name, type: documentTypes[extension],
+            size: file.size, data: dataUrl.split(",")[1]
+          });
+          setAttachmentStatus("تم تجهيز الملف. سيُقرأ محتواه عند الإرسال باستخدام خدمة المستندات.");
+        } catch {
+          setAttachmentStatus("تعذّرت قراءة الملف من الهاتف.", true);
+        }
+      } else {
+        pendingAttachments.push({
+          kind: "file", name: file.name, type: file.type || "application/octet-stream",
+          size: file.size
+        });
+        setAttachmentStatus("هذا النوع غير مدعوم للقراءة حتى الآن؛ أُرفق اسم الملف فقط.", true);
+      }
     }
   }
   renderAttachmentPreview();
@@ -511,6 +537,9 @@ function attachmentPayload() {
     if (item.kind === "text") return {
       kind: item.kind, name: item.name, type: item.type, text: item.text
     };
+    if (item.kind === "document") return {
+      kind: item.kind, name: item.name, type: item.type, size: item.size, data: item.data
+    };
     return { kind: "file", name: item.name, type: item.type, size: item.size };
   });
 }
@@ -546,7 +575,13 @@ $("clearBtn").addEventListener("click", () => {
   $("messages").replaceChildren();
   addMessage("تم مسح عرض المحادثة من الشاشة. سجل الرسائل المحفوظ في الحساب لم يُحذف.");
 });
-function speak(text) {
+let activeCloudSpeech = null;
+let activeCloudSpeechUrl = "";
+function setAvatarSpeaking(active) {
+  document.querySelector(".orb")?.classList.toggle("talking", active);
+  document.querySelector(".face")?.classList.toggle("talking", active);
+}
+function speakOnDevice(text) {
   if (window.WensNative && typeof window.WensNative.speak === "function") {
     window.WensNative.speak(String(text));
     return;
@@ -558,12 +593,49 @@ function speak(text) {
   utterance.pitch = Math.min(1.5, Math.max(0.7, Number(appSettings.voicePitch) || 1.12));
   const voices = speechSynthesis.getVoices();
   utterance.voice = voices.find(v => v.lang.toLowerCase().startsWith("ar-eg")) || voices.find(v => v.lang.toLowerCase().startsWith("ar")) || null;
-  utterance.onstart = () => { document.querySelector(".orb")?.classList.add("talking"); document.querySelector(".face")?.classList.add("talking"); };
-  const stopAvatarSpeech = () => { document.querySelector(".orb")?.classList.remove("talking"); document.querySelector(".face")?.classList.remove("talking"); };
-  utterance.onend = stopAvatarSpeech;
-  utterance.onerror = stopAvatarSpeech;
+  utterance.onstart = () => setAvatarSpeaking(true);
+  utterance.onend = () => setAvatarSpeaking(false);
+  utterance.onerror = () => setAvatarSpeaking(false);
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
+}
+async function speak(text) {
+  const message = String(text || "").slice(0, 2000);
+  if (!message) return;
+  if (appSettings.voiceEngine !== "cloud") {
+    speakOnDevice(message);
+    return;
+  }
+  try {
+    if (activeCloudSpeech) {
+      activeCloudSpeech.pause();
+      activeCloudSpeech = null;
+    }
+    if (activeCloudSpeechUrl) URL.revokeObjectURL(activeCloudSpeechUrl);
+    const response = await fetch("/api/voice/speech", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message, voice: appSettings.voiceName || "coral" })
+    });
+    if (!response.ok) {
+      let detail = {};
+      try { detail = await response.json(); } catch {}
+      throw new Error(detail.error || "تعذّر إنشاء الصوت الطبيعي.");
+    }
+    const blob = await response.blob();
+    if (!blob.size || !blob.type.includes("audio")) throw new Error("خدمة الصوت لم تُرجع ملفًا صوتيًا صالحًا.");
+    activeCloudSpeechUrl = URL.createObjectURL(blob);
+    activeCloudSpeech = new Audio(activeCloudSpeechUrl);
+    activeCloudSpeech.onplay = () => setAvatarSpeaking(true);
+    activeCloudSpeech.onended = () => { setAvatarSpeaking(false); URL.revokeObjectURL(activeCloudSpeechUrl); activeCloudSpeechUrl = ""; activeCloudSpeech = null; };
+    activeCloudSpeech.onerror = () => { setAvatarSpeaking(false); activeCloudSpeech = null; };
+    await activeCloudSpeech.play();
+  } catch (error) {
+    setAvatarSpeaking(false);
+    $("voiceStatus").textContent = "تعذّر الصوت الطبيعي؛ تم استخدام صوت الهاتف بدلًا منه. " + String(error.message || "").slice(0, 110);
+    speakOnDevice(message);
+  }
 }
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
