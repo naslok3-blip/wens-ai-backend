@@ -6,7 +6,7 @@ const defaults = {
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
   voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "coral"
+  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
@@ -45,8 +45,8 @@ function normalize(data) {
     }
   }
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
-  if (!["ar-EG", "ar-SA", "en-US"].includes(next.voiceLocale)) next.voiceLocale = defaults.voiceLocale;
-  if (!["device", "cloud"].includes(next.voiceEngine)) next.voiceEngine = defaults.voiceEngine;
+  if (next.voiceLocale !== "ar-EG") next.voiceLocale = "ar-EG";
+  if (next.voiceEngine !== "cloud") next.voiceEngine = "cloud";
   if (!["coral", "shimmer", "marin", "cedar", "sage"].includes(next.voiceName)) next.voiceName = defaults.voiceName;
   return next;
 }
