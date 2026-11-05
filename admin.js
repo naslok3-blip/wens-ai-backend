@@ -312,6 +312,43 @@ $("resetAvatarBtn").addEventListener("click", async () => {
   }
 });
 
+$("avatarTestBtn").addEventListener("click", async () => {
+  $("avatarTestBtn").disabled = true;
+  $("avatarTestStatus").textContent = "جاري اختبار الحفظ والاسترجاع...";
+  const original = config.avatarDataUrl || "";
+  let saved = false;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 2;
+    canvas.height = 2;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("تعذّر إنشاء صورة الاختبار.");
+    context.fillStyle = "#a28bff";
+    context.fillRect(0, 0, 2, 2);
+    const sample = canvas.toDataURL("image/jpeg", 0.6);
+    await request("/api/admin/settings", {settings: {...config, avatarDataUrl: sample}}, "PUT");
+    saved = true;
+    const check = await request("/api/admin/settings");
+    if (check.settings?.avatarDataUrl !== sample) throw new Error("لم تُحفظ الصورة التجريبية بصورة مطابقة.");
+    await request("/api/admin/settings", {settings: {...config, avatarDataUrl: original}}, "PUT");
+    saved = false;
+    config.avatarDataUrl = original;
+    $("avatarPreview").src = original || "/avatar.jpg?v=real-jpg-20261105";
+    $("avatarTestStatus").textContent = "نجح الاختبار: تم الحفظ والقراءة واستعادة الصورة الأصلية.";
+  } catch (error) {
+    if (saved) {
+      try {
+        await request("/api/admin/settings", {settings: {...config, avatarDataUrl: original}}, "PUT");
+        config.avatarDataUrl = original;
+        $("avatarPreview").src = original || "/avatar.jpg?v=real-jpg-20261105";
+      } catch {}
+    }
+    $("avatarTestStatus").textContent = error.message || "فشل اختبار الصورة.";
+  } finally {
+    $("avatarTestBtn").disabled = false;
+  }
+});
+
 (async function bootAdmin() {
   try {
     const session = await request("/api/admin/session");
