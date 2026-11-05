@@ -221,7 +221,7 @@ function normalizeAppSettings(input) {
   if (Number.isFinite(Number(input.voiceRate))) next.voiceRate = Math.min(1.35, Math.max(0.65, Number(input.voiceRate)));
   if (Number.isFinite(Number(input.voicePitch))) next.voicePitch = Math.min(1.5, Math.max(0.7, Number(input.voicePitch)));
   if (["purple", "blue", "green", "rose"].includes(input.theme)) next.theme = input.theme;
-  if (["ar-EG", "ar-SA", "en-US"].includes(input.voiceLocale)) next.voiceLocale = input.voiceLocale;
+  if (input.voiceLocale === "ar-EG") next.voiceLocale = "ar-EG";
   if (input.voiceEngine === "cloud") next.voiceEngine = "cloud";
   if (["coral", "shimmer", "marin", "cedar", "sage"].includes(input.voiceName)) next.voiceName = input.voiceName;
   if (typeof input.avatarDataUrl === "string") {
