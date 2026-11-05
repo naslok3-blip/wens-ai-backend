@@ -15,7 +15,7 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-    enableVoice: true, voiceLocale: "ar-EG"
+    enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -23,7 +23,7 @@ function loadLocalSettings() {
     return {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && typeof value === typeof defaults[key]
+        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "cloud") && (key !== "voiceLocale" || value === "ar-EG"))
       ))
     };
   } catch { return defaults; }
@@ -37,6 +37,10 @@ function applyLocalSettings() {
   $("welcomeText").textContent = appSettings.welcomeText;
   $("voiceButtonText").textContent = appSettings.voiceButton;
   $("voiceBtn").hidden = !appSettings.enableVoice;
+  const avatarSrc = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
+  const portrait = $("heroPortrait");
+  if (portrait) portrait.src = avatarSrc;
+  document.querySelectorAll(".mini-avatar").forEach(image => { image.src = avatarSrc; });
   const themes = {
     purple: ["#b49aff", "#ffacd6"],
     blue: ["#83baff", "#8ce8ef"],
@@ -87,12 +91,8 @@ function showApp(user) {
   loadChatHistory();
 }
 async function updateAdminShortcut() {
-  try {
-    const result = await api("/api/admin/session", undefined, "GET");
-    $("openAdminBtn").hidden = !result.owner;
-  } catch {
-    $("openAdminBtn").hidden = true;
-  }
+  // الإدارة لا تظهر كزر عام؛ مدخلها المخفي هو الضغط خمس مرات على صورة ونس.
+  $("openAdminBtn").hidden = true;
 }
 function openAdminInsideWens() {
   $("appRoot").hidden = true;
@@ -107,15 +107,47 @@ function openAdminInsideWens() {
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
-function returnToWensChat() {
+async function returnToWensChat() {
   $("adminInlinePanel").hidden = true;
   $("appRoot").hidden = false;
-  $("openAdminBtn").hidden = false;
+  $("openAdminBtn").hidden = true;
   $("backToAppBtn").hidden = true;
   window.scrollTo({ top: 0, behavior: "smooth" });
+  await loadServerSettings();
 }
 $("openAdminBtn").addEventListener("click", openAdminInsideWens);
 $("backToAppBtn").addEventListener("click", returnToWensChat);
+
+let adminAvatarTapCount = 0;
+let adminAvatarTapTimer = null;
+async function handleAdminAvatarTap() {
+  if (!currentUser || currentUser.id === "guest") return;
+  adminAvatarTapCount += 1;
+  if (adminAvatarTapTimer) clearTimeout(adminAvatarTapTimer);
+  adminAvatarTapTimer = setTimeout(() => { adminAvatarTapCount = 0; }, 3000);
+  if (adminAvatarTapCount < 5) return;
+  adminAvatarTapCount = 0;
+  clearTimeout(adminAvatarTapTimer);
+  adminAvatarTapTimer = null;
+  try {
+    const session = await api("/api/admin/session", undefined, "GET");
+    if (session.owner) openAdminInsideWens();
+    else $("voiceStatus").textContent = "هذا المدخل مخصص لمالك التطبيق فقط.";
+  } catch {
+    $("voiceStatus").textContent = "تعذّر التحقق من صلاحية الإدارة الآن.";
+  }
+}
+const adminPortrait = $("heroPortrait");
+if (adminPortrait) {
+  adminPortrait.addEventListener("click", handleAdminAvatarTap);
+  adminPortrait.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleAdminAvatarTap();
+    }
+  });
+}
+
 function updateAuthMode() {
   const registering = authMode === "register";
   $("nameField").hidden = !registering;
@@ -203,7 +235,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   if (who === "assistant") {
     const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
-    avatar.src = "/avatar.jpg?v=real-jpg-20261104";
+    avatar.src = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
     avatar.alt = "ونس";
     avatar.width = 30;
     avatar.height = 30;
@@ -323,11 +355,11 @@ function renderAttachmentPreview() {
       chip.appendChild(img);
     } else {
       const icon = document.createElement("b");
-      icon.textContent = item.kind === "text" ? "TXT" : "📎";
+      icon.textContent = item.kind === "text" ? "TXT" : item.kind === "document" ? "DOC" : "📎";
       chip.appendChild(icon);
     }
     const label = document.createElement("span");
-    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : "");
+    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : item.kind === "document" ? " (جاهز للقراءة)" : "");
     chip.appendChild(label);
     const remove = document.createElement("button");
     remove.type = "button";
@@ -405,11 +437,37 @@ async function addSelectedFile(file) {
         setAttachmentStatus("تم إرفاق الملف النصي وقراءته.");
       } catch (error) { setAttachmentStatus("تعذّرت قراءة الملف النصي.", true); }
     } else {
-      pendingAttachments.push({
-        kind: "file", name: file.name, type: file.type || "application/octet-stream",
-        size: file.size
-      });
-      setAttachmentStatus("تم إرفاق اسم الملف. قراءة محتوى PDF وWord وExcel غير مفعّلة بعد.");
+      const documentTypes = {
+        pdf: "application/pdf",
+        doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ppt: "application/vnd.ms-powerpoint",
+        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      };
+      if (Object.prototype.hasOwnProperty.call(documentTypes, extension)) {
+        if (file.size > 8 * 1024 * 1024) {
+          setAttachmentStatus("حجم الملف يتجاوز 8 ميجابايت. اختَر نسخة أصغر.", true);
+          return;
+        }
+        try {
+          const dataUrl = await readAsDataUrl(file);
+          pendingAttachments.push({
+            kind: "document", name: file.name, type: documentTypes[extension],
+            size: file.size, data: dataUrl.split(",")[1]
+          });
+          setAttachmentStatus("تم تجهيز الملف. سيُقرأ محتواه عند الإرسال باستخدام خدمة المستندات.");
+        } catch {
+          setAttachmentStatus("تعذّرت قراءة الملف من الهاتف.", true);
+        }
+      } else {
+        pendingAttachments.push({
+          kind: "file", name: file.name, type: file.type || "application/octet-stream",
+          size: file.size
+        });
+        setAttachmentStatus("هذا النوع غير مدعوم للقراءة حتى الآن؛ أُرفق اسم الملف فقط.", true);
+      }
     }
   }
   renderAttachmentPreview();
@@ -480,6 +538,9 @@ function attachmentPayload() {
     if (item.kind === "text") return {
       kind: item.kind, name: item.name, type: item.type, text: item.text
     };
+    if (item.kind === "document") return {
+      kind: item.kind, name: item.name, type: item.type, size: item.size, data: item.data
+    };
     return { kind: "file", name: item.name, type: item.type, size: item.size };
   });
 }
@@ -515,7 +576,14 @@ $("clearBtn").addEventListener("click", () => {
   $("messages").replaceChildren();
   addMessage("تم مسح عرض المحادثة من الشاشة. سجل الرسائل المحفوظ في الحساب لم يُحذف.");
 });
-function speak(text) {
+let activeVoicePeer = null;
+let activeVoiceDataChannel = null;
+let activeVoiceAudio = null;
+function setAvatarSpeaking(active) {
+  document.querySelector(".orb")?.classList.toggle("talking", active);
+  document.querySelector(".face")?.classList.toggle("talking", active);
+}
+function speakOnDevice(text) {
   if (window.WensNative && typeof window.WensNative.speak === "function") {
     window.WensNative.speak(String(text));
     return;
@@ -527,13 +595,111 @@ function speak(text) {
   utterance.pitch = Math.min(1.5, Math.max(0.7, Number(appSettings.voicePitch) || 1.12));
   const voices = speechSynthesis.getVoices();
   utterance.voice = voices.find(v => v.lang.toLowerCase().startsWith("ar-eg")) || voices.find(v => v.lang.toLowerCase().startsWith("ar")) || null;
-  utterance.onstart = () => { document.querySelector(".orb")?.classList.add("talking"); document.querySelector(".face")?.classList.add("talking"); };
-  const stopAvatarSpeech = () => { document.querySelector(".orb")?.classList.remove("talking"); document.querySelector(".face")?.classList.remove("talking"); };
-  utterance.onend = stopAvatarSpeech;
-  utterance.onerror = stopAvatarSpeech;
+  utterance.onstart = () => setAvatarSpeaking(true);
+  utterance.onend = () => setAvatarSpeaking(false);
+  utterance.onerror = () => setAvatarSpeaking(false);
   speechSynthesis.cancel();
   speechSynthesis.speak(utterance);
 }
+function stopRealtimeVoice() {
+  try { activeVoiceDataChannel?.close(); } catch {}
+  try { activeVoicePeer?.close(); } catch {}
+  try { activeVoiceAudio?.pause(); } catch {}
+  if (activeVoiceAudio) { activeVoiceAudio.srcObject = null; activeVoiceAudio.remove(); }
+  activeVoicePeer = null;
+  activeVoiceDataChannel = null;
+  activeVoiceAudio = null;
+  setAvatarSpeaking(false);
+}
+function waitForIce(peer) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error("انتهت مهلة تجهيز الصوت.")); }, 12000);
+    const onChange = () => { if (peer.iceGatheringState === "complete") { cleanup(); resolve(); } };
+    const cleanup = () => { clearTimeout(timer); peer.removeEventListener("icegatheringstatechange", onChange); };
+    peer.addEventListener("icegatheringstatechange", onChange);
+  });
+}
+async function speakRealtime(text, voiceName) {
+  if (!("RTCPeerConnection" in window)) throw new Error("متصفح الهاتف لا يدعم الصوت الحديث.");
+  stopRealtimeVoice();
+  const peer = new RTCPeerConnection();
+  activeVoicePeer = peer;
+  peer.addTransceiver("audio", { direction: "recvonly" });
+  const channel = peer.createDataChannel("oai-events");
+  activeVoiceDataChannel = channel;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    setTimeout(stopRealtimeVoice, 1400);
+  };
+  peer.ontrack = event => {
+    const stream = event.streams[0] || new MediaStream([event.track]);
+    const audio = document.createElement("audio");
+    audio.autoplay = true;
+    audio.playsInline = true;
+    audio.srcObject = stream;
+    audio.style.position = "fixed";
+    audio.style.width = "1px";
+    audio.style.height = "1px";
+    audio.style.opacity = "0.01";
+    document.body.appendChild(audio);
+    activeVoiceAudio = audio;
+    setAvatarSpeaking(true);
+    audio.play().catch(() => { $("voiceStatus").textContent = "الصوت جاهز؛ اضغط تشغيل الصوت في المتصفح."; });
+  };
+  channel.addEventListener("message", event => {
+    let data;
+    try { data = JSON.parse(event.data); } catch { return; }
+    if (data.type === "response.output_audio.delta") setAvatarSpeaking(true);
+    if (data.type === "response.done") finish();
+    if (data.type === "error") finish();
+  });
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  await waitForIce(peer);
+  const response = await fetch("/api/voice/connect", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sdp: peer.localDescription.sdp, voice: voiceName || "coral" })
+  });
+  if (!response.ok) {
+    let data = {};
+    try { data = await response.json(); } catch {}
+    throw new Error(data.error || "تعذّر فتح قناة الصوت.");
+  }
+  const answer = await response.text();
+  if (!answer.startsWith("v=0")) throw new Error("رد اتصال الصوت غير صالح.");
+  await peer.setRemoteDescription({ type: "answer", sdp: answer });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("لم تفتح قناة الصوت.")), 15000);
+    channel.addEventListener("open", () => {
+      clearTimeout(timer);
+      channel.send(JSON.stringify({
+        type: "conversation.item.create",
+        item: { type: "message", role: "user", content: [{ type: "input_text", text: String(text).slice(0, 2000) }] }
+      }));
+      channel.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio"] } }));
+      resolve();
+    }, { once: true });
+    channel.addEventListener("error", () => { clearTimeout(timer); reject(new Error("فشل فتح قناة الصوت.")); }, { once: true });
+  });
+  setTimeout(() => { if (activeVoicePeer === peer && !finished) finish(); }, 45000);
+}
+async function speak(text, voiceOverride) {
+  const message = String(text || "").slice(0, 2000);
+  if (!message) return;
+  if (appSettings.voiceEngine !== "cloud" && !voiceOverride) { speakOnDevice(message); return; }
+  try {
+    await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral");
+  } catch (error) {
+    stopRealtimeVoice();
+    $("voiceStatus").textContent = "الصوت المصري الطبيعي مش متاح دلوقتي، ومش هحوّلك لصوت الهاتف أو الفصحى. " + String(error.message || "").slice(0, 100);
+  }
+}
+window.WensPlayVoicePreview = (text, voice) => speak(text, voice);
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
