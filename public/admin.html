@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#111124">
 <meta name="robots" content="noindex,nofollow">
 <link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="/owner-panel.css">
+<link rel="stylesheet" href="/admin.css">
 <title>مركز إدارة ونس AI</title>
 </head>
 <body>
@@ -84,13 +84,30 @@
           <div class="field"><label for="appName">اسم التطبيق</label><input id="appName" maxlength="45" value="ونس AI"></div>
           <div class="field"><label for="assistantName">اسم الشخصية</label><input id="assistantName" maxlength="35" value="ونس"></div>
           <div class="field"><label for="theme">لون التصميم</label><select id="theme"><option value="purple">بنفسجي ووردي</option><option value="blue">أزرق وسماوي</option><option value="green">أخضر هادئ</option><option value="rose">وردي دافئ</option></select></div>
+          <div class="field">
+            <label for="avatarUpload">الصورة الشخصية لونس</label>
+            <img id="avatarPreview" src="/avatar.jpg?v=real-jpg-20261105" alt="معاينة صورة ونس" width="132" height="132" style="display:block;width:132px;height:132px;object-fit:cover;border-radius:50%;border:3px solid #c9b4ff;margin:10px auto 14px">
+            <input id="avatarUpload" type="file" accept="image/jpeg,image/png,image/webp">
+            <p class="muted">اختَر صورة من الهاتف. سيُعاد تحجيمها وضغطها قبل حفظها في إعدادات التطبيق.</p>
+            <div class="actions left-actions">
+              <button id="uploadAvatarBtn" class="btn primary" type="button" disabled>حفظ صورة ونس</button>
+              <button id="resetAvatarBtn" class="btn secondary" type="button">استعادة الصورة الافتراضية</button>
+              <button id="avatarTestBtn" class="btn secondary" type="button">اختبار الحفظ والاسترجاع</button>
+            </div>
+            <p id="avatarStatus" class="status-line" role="status" aria-live="polite"></p>
+            <p id="avatarTestStatus" class="status-line" role="status" aria-live="polite"></p>
+          </div>
         </section>
         <section class="tab-page" id="tab-assistant">
           <h2>الصوت والمساعدة</h2>
-          <div class="field"><label for="voiceLocale">لغة الصوت والتعرّف</label><select id="voiceLocale"><option value="ar-EG">العربية - مصر</option><option value="ar-SA">العربية - السعودية</option><option value="en-US">English - US</option></select></div>
+          <div class="field"><label for="voiceLocale">لهجة الميكروفون</label><select id="voiceLocale"><option value="ar-EG">المصرية – مصر</option></select></div>
           <div class="field"><label for="voiceRate">سرعة الصوت: <output id="rateOut">0.96</output></label><input id="voiceRate" type="range" min="0.65" max="1.35" step="0.05" value="0.96"></div>
           <div class="field"><label for="voicePitch">حدة الصوت: <output id="pitchOut">1.12</output></label><input id="voicePitch" type="range" min="0.7" max="1.5" step="0.05" value="1.12"></div>
-          <p class="muted">الصوت المتاح يعتمد على الأصوات المثبتة في الجهاز. هذه الإعدادات تضبط صوت النظام ولا تنشئ صوتًا بشريًا جديدًا.</p>
+          <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="cloud">الصوت المصري الطبيعي – مفعّل</option></select></div>
+          <div class="field"><label for="voiceName">اختيار نبرة ونس</label><select id="voiceName"><option value="coral">Coral – دافئة</option><option value="shimmer">Shimmer – ناعمة</option><option value="marin">Marin – طبيعية</option><option value="cedar">Cedar – واضحة</option><option value="sage">Sage – هادئة</option></select></div>
+          <div class="notice">ونس تستخدم صوتًا طبيعيًا عبر OpenAI Realtime. تعليمات الصوت مثبتة على اللهجة المصرية القاهرية العامية، وتمنع الفصحى واللهجات الأخرى. استهلاك الصوت يُحسب على رصيد OpenAI API. جرّب عينة الصوت من هنا قبل الاعتماد عليه.</div>
+          <div class="actions left-actions"><button id="voicePreviewBtn" class="btn secondary" type="button">تجربة صوت ونس</button></div>
+          <p id="voicePreviewStatus" class="status-line" role="status" aria-live="polite"></p>
         </section>
         <section class="tab-page" id="tab-features">
           <h2>الميزات</h2>
