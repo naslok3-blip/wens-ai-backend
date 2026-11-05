@@ -100,12 +100,12 @@
         </section>
         <section class="tab-page" id="tab-assistant">
           <h2>الصوت والمساعدة</h2>
-          <div class="field"><label for="voiceLocale">لغة الصوت والتعرّف</label><select id="voiceLocale"><option value="ar-EG">العربية - مصر</option><option value="ar-SA">العربية - السعودية</option><option value="en-US">English - US</option></select></div>
+          <div class="field"><label for="voiceLocale">لهجة الميكروفون</label><select id="voiceLocale"><option value="ar-EG">المصرية – مصر</option></select></div>
           <div class="field"><label for="voiceRate">سرعة الصوت: <output id="rateOut">0.96</output></label><input id="voiceRate" type="range" min="0.65" max="1.35" step="0.05" value="0.96"></div>
           <div class="field"><label for="voicePitch">حدة الصوت: <output id="pitchOut">1.12</output></label><input id="voicePitch" type="range" min="0.7" max="1.5" step="0.05" value="1.12"></div>
-          <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="cloud">صوت ونس المصري الطبيعي (ذكاء اصطناعي)</option><option value="device">صوت الهاتف (اختياري)</option></select></div>
+          <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="cloud">الصوت المصري الطبيعي – مفعّل</option></select></div>
           <div class="field"><label for="voiceName">اختيار نبرة ونس</label><select id="voiceName"><option value="coral">Coral – دافئة</option><option value="shimmer">Shimmer – ناعمة</option><option value="marin">Marin – طبيعية</option><option value="cedar">Cedar – واضحة</option><option value="sage">Sage – هادئة</option></select></div>
-          <div class="notice">الصوت الطبيعي يولّد ملفًا صوتيًا باستخدام مفتاح OpenAI المحفوظ على الخادم، ويستهلك من رصيد API عند اختيار هذا الوضع. الأصوات تدعم العربية، لكنها مُحسّنة أساسًا للإنجليزية؛ جرّب العينة قبل الاعتماد عليها.</div>
+          <div class="notice">ونس تستخدم صوتًا طبيعيًا عبر OpenAI Realtime. تعليمات الصوت مثبتة على اللهجة المصرية القاهرية العامية، وتمنع الفصحى واللهجات الأخرى. استهلاك الصوت يُحسب على رصيد OpenAI API. جرّب عينة الصوت من هنا قبل الاعتماد عليه.</div>
           <div class="actions left-actions"><button id="voicePreviewBtn" class="btn secondary" type="button">تجربة صوت ونس</button></div>
           <p id="voicePreviewStatus" class="status-line" role="status" aria-live="polite"></p>
         </section>
