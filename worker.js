@@ -223,7 +223,7 @@ function normalizeAppSettings(input) {
   if (["purple", "blue", "green", "rose"].includes(input.theme)) next.theme = input.theme;
   if (["ar-EG", "ar-SA", "en-US"].includes(input.voiceLocale)) next.voiceLocale = input.voiceLocale;
   if (["device", "cloud"].includes(input.voiceEngine)) next.voiceEngine = input.voiceEngine;
-  if (["coral", "shimmer", "nova", "marin", "sage"].includes(input.voiceName)) next.voiceName = input.voiceName;
+  if (["coral", "shimmer", "marin", "cedar", "sage"].includes(input.voiceName)) next.voiceName = input.voiceName;
   if (typeof input.avatarDataUrl === "string") {
     const avatar = input.avatarDataUrl.trim();
     if (!avatar) next.avatarDataUrl = "";
@@ -1112,7 +1112,7 @@ async function extractDocumentAttachments(env, documents, userRequest) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: env.WENS_DOCUMENT_MODEL || "gpt-4.1-mini",
+        model: env.WENS_DOCUMENT_MODEL || "gpt-6-luna",
         store: false,
         max_output_tokens: 6000,
         input: [{ role: "user", content }]
@@ -1141,7 +1141,7 @@ async function extractDocumentAttachments(env, documents, userRequest) {
   }
   extracted = extracted.trim().slice(0, 50000);
   if (!extracted) return { error: "الخدمة استلمت الملفات لكنها لم تُرجع نصًا قابلًا للقراءة. قد يكون الملف محميًا أو تالفًا." };
-  return { text: extracted, model: payload.model || env.WENS_DOCUMENT_MODEL || "gpt-4.1-mini" };
+  return { text: extracted, model: payload.model || env.WENS_DOCUMENT_MODEL || "gpt-6-luna" };
 }
 
 async function handleAgent(request, env, user, options = {}) {
@@ -1485,55 +1485,61 @@ async function handleChat(request, env, user) {
   }
 }
 
-async function handleVoiceSpeech(request, env) {
-  if (!env.OPENAI_API_KEY) return json({ error: "خدمة الصوت الطبيعي غير مفعّلة على الخادم." }, 503);
+async function handleRealtimeVoice(request, env) {
+  if (!env.OPENAI_API_KEY) return json({ error: "خدمة الصوت الطبيعي تحتاج مفتاح OpenAI صالحًا على الخادم." }, 503);
+  let user = null;
   if (env.DB) {
-    const user = await currentUser(request, env) || await adminUser(request, env);
+    user = await currentUser(request, env) || await adminUser(request, env);
     if (!user) return json({ error: "سجّل الدخول إلى ونس أو لوحة المدير لاستخدام الصوت." }, 401);
   }
   let body;
   try { body = await request.json(); } catch { return json({ error: "طلب الصوت غير صالح." }, 400); }
-  const input = typeof body.text === "string" ? body.text.trim().slice(0, 2000) : "";
-  if (!input) return json({ error: "لا يوجد نص لتحويله إلى صوت." }, 400);
-  const allowedVoices = ["coral", "shimmer", "nova", "marin", "sage"];
+  const sdp = typeof body.sdp === "string" ? body.sdp : "";
+  if (!sdp.startsWith("v=0") || sdp.length > 100000) {
+    return json({ error: "بيانات اتصال الصوت غير صالحة." }, 400);
+  }
+  const allowedVoices = ["coral", "shimmer", "marin", "cedar", "sage"];
   const voice = allowedVoices.includes(body.voice) ? body.voice : "coral";
+  const session = {
+    type: "realtime",
+    model: env.WENS_REALTIME_MODEL || "gpt-realtime-2.1-mini",
+    instructions: "You are Wens, a warm, friendly Egyptian Arabic female-sounding voice assistant. Speak naturally in Egyptian Arabic (Masri), with clear Egyptian pronunciation and a gentle feminine delivery. Read the supplied text faithfully; do not add, omit, translate, or summarize it.",
+    output_modalities: ["audio"],
+    audio: { output: { voice } }
+  };
+  const form = new FormData();
+  form.set("sdp", sdp);
+  form.set("session", JSON.stringify(session));
+  const headers = { "Authorization": "Bearer " + env.OPENAI_API_KEY };
+  if (user?.id) headers["OpenAI-Safety-Identifier"] = await digest(user.id);
   let response;
   try {
-    response = await fetch("https://api.openai.com/v1/audio/speech", {
+    response = await fetch("https://api.openai.com/v1/realtime/calls", {
       method: "POST",
-      headers: {
-        "Authorization": "Bearer " + env.OPENAI_API_KEY,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: env.WENS_TTS_MODEL || "gpt-4o-mini-tts",
-        voice,
-        input,
-        instructions: "Speak clearly in natural Egyptian Arabic (Masri), with a warm, gentle, feminine-sounding delivery. Use Egyptian pronunciation and natural conversational rhythm. Keep the tone friendly and calm. Do not translate or add words.",
-        response_format: "mp3"
-      }),
-      signal: AbortSignal.timeout(60000)
+      headers,
+      body: form,
+      signal: AbortSignal.timeout(30000)
     });
   } catch (error) {
-    return json({ error: "تعذّر الاتصال بخدمة الصوت الطبيعي: " + String(error?.message || error).slice(0, 120) }, 502);
+    return json({ error: "تعذّر الاتصال بخدمة الصوت: " + String(error?.message || error).slice(0, 120) }, 502);
   }
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    if (response.status === 401 || response.status === 403) return json({ error: "مفتاح OpenAI غير صالح أو لا يملك صلاحية تحويل النص إلى صوت." }, 502);
-    if (response.status === 429) return json({ error: "رصيد أو حد استخدام خدمة الصوت الطبيعي غير كافٍ حاليًا." }, 429);
-    return json({ error: "فشل إنشاء الصوت الطبيعي (" + response.status + "). " + detail.slice(0, 140) }, 502);
+    const detail = (await response.text().catch(() => "")).slice(0, 180);
+    if (response.status === 401 || response.status === 403) return json({ error: "مفتاح OpenAI غير صالح أو لا يملك صلاحية Realtime." }, 502);
+    if (response.status === 429) return json({ error: "رصيد أو حد استخدام OpenAI غير كافٍ للصوت الطبيعي حاليًا." }, 429);
+    return json({ error: "فشل بدء جلسة الصوت (" + response.status + "). " + detail }, 502);
   }
-  const audio = await response.arrayBuffer();
-  if (!audio.byteLength) return json({ error: "خدمة الصوت لم تُرجع ملفًا صالحًا." }, 502);
-  return new Response(audio, {
+  const answer = await response.text();
+  if (!answer.startsWith("v=0")) return json({ error: "خدمة الصوت لم تُرجع وصف اتصال صالحًا." }, 502);
+  return new Response(answer, {
     headers: {
-      "Content-Type": "audio/mpeg",
-      "Content-Length": String(audio.byteLength),
+      "Content-Type": "application/sdp",
       "Cache-Control": "no-store",
       "X-Content-Type-Options": "nosniff"
     }
   });
 }
+
 
 export default {
   async fetch(request, env) {
@@ -1563,7 +1569,7 @@ export default {
     }
     try {
       if (path === "/api/settings" && request.method === "GET") return json({ settings: await readAppSettings(env) });
-      if (path === "/api/voice/speech" && request.method === "POST") return await handleVoiceSpeech(request, env);
+      if (path === "/api/voice/connect" && request.method === "POST") return await handleRealtimeVoice(request, env);
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
       if (path === "/api/chat/history" && request.method === "GET") {
