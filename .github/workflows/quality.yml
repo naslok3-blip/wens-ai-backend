@@ -218,7 +218,8 @@ jobs:
           grep -q 'id="adminSetupForm"' /tmp/wens-admin.html
           grep -q 'id="showAdminResetBtn"' /tmp/wens-admin.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js" -o /tmp/wens-admin.js
-          grep -q '/api/auth/me' /tmp/wens-admin.js
+          grep -q '/api/admin/session' /tmp/wens-admin.js
+          grep -q '/api/admin/settings' /tmp/wens-admin.js
           echo "Production Wens portrait, chat and same-page admin assets: OK"
       - name: Verify owner-only admin and shared settings API
         run: |
