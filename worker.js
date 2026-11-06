@@ -30,6 +30,12 @@ function fromB64url(value) {
 async function digest(value) {
   return b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(value))));
 }
+function base64DecodedSize(value) {
+  if (typeof value !== "string" || !value || value.length % 4 !== 0 ||
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) return -1;
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  return (value.length / 4) * 3 - padding;
+}
 async function passwordHash(password, salt) {
   const derivedKey = await new Promise((resolve, reject) => {
     scrypt(password, fromB64url(salt), 32, {
@@ -480,20 +486,33 @@ async function adminRoute(request, env, path) {
         message: "استخدمي أداة calculate إلزاميًا لحساب 19 * 23. لا تحسبي ذهنيًا ولا تستخدمي أي أداة أخرى، ثم اذكري الناتج فقط."
       })
     });
-    const response = await handleAgent(probe, env, manager);
+    const response = await handleAgent(probe, env, manager, { auditTools: true });
     let result = {};
     try { result = await response.json(); } catch {}
     if (!response.ok || result.ok !== true) {
       return json({ ok: false, error: result.error || "فشل اختبار الوكيل.", steps: result.steps || [] }, 502);
     }
     const steps = Array.isArray(result.steps) ? result.steps : [];
-    const calculatorToolUsed = steps.some(step =>
-      String(step).includes("إجراء حساب") && /— تم$/.test(String(step))
+    const calculatorRun = (Array.isArray(result.toolAudit) ? result.toolAudit : []).find(item =>
+      String(item.expression || "").replace(/\\s+/g, "") === "19*23" &&
+      item.result === 437 && !item.error
     );
+    const calculatorToolUsed = Boolean(calculatorRun) &&
+      steps.some(step => String(step).includes("إجراء حساب") && /— تم$/.test(String(step)));
+    if (!calculatorToolUsed) {
+      return json({
+        ok: false,
+        calculatorToolUsed: false,
+        error: "لم يثبت تنفيذ أداة الحساب بالعملية 19 × 23 وإرجاع 437. لا يُعتمد اختبار الوكيل.",
+        steps
+      }, 502);
+    }
     return json({
       ok: true,
       model: result.model || "",
-      calculatorToolUsed,
+      calculatorToolUsed: true,
+      calculatorExpression: calculatorRun.expression,
+      calculatorResult: calculatorRun.result,
       steps,
       reply: String(result.reply || "").slice(0, 1000)
     });
@@ -1209,7 +1228,7 @@ async function extractDocumentAttachments(env, documents, userRequest) {
       type: "input_file",
       filename: file.name,
       file_data: "data:" + file.type + ";base64," + file.data,
-      ...(file.type === "application/pdf" ? { detail: "low" } : {})
+      ...(file.type === "application/pdf" ? { detail: "high" } : {})
     });
   }
   content.push({
@@ -1310,13 +1329,14 @@ async function handleAgent(request, env, user, options = {}) {
       };
       const expectedType = documentMimes[extension];
       const data = String(item?.data || "");
-      if (!expectedType || type !== expectedType || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) {
+      const decodedBytes = base64DecodedSize(data);
+      if (!expectedType || type !== expectedType || decodedBytes < 0) {
         return json({ error: "نوع المستند أو بياناته غير صالحة: " + name }, 415);
       }
-      if (data.length > 11 * 1024 * 1024 || documentBytesTotal + data.length > 14 * 1024 * 1024) {
-        return json({ error: "حجم ملفات المستندات كبير جدًا. الحد 8 ميجابايت للملف و10 ميجابايت إجماليًا تقريبًا." }, 413);
+      if (decodedBytes > 8 * 1024 * 1024 || documentBytesTotal + decodedBytes > 10 * 1024 * 1024) {
+        return json({ error: "حجم المستند يتجاوز 8 ميجابايت، أو أن إجمالي المستندات يتجاوز 10 ميجابايت." }, 413);
       }
-      documentBytesTotal += data.length;
+      documentBytesTotal += decodedBytes;
       documentFiles.push({ name, type: expectedType, data });
     } else {
       textAttachmentContext += "\\n\\n[مرفق ملف باسم " + name + " ونوع " + (type || "غير معروف") + ". محتوى هذا النوع لم يتم استخراجه؛ لا تدّعي قراءته.]";
@@ -1327,6 +1347,12 @@ async function handleAgent(request, env, user, options = {}) {
     const extraction = await extractDocumentAttachments(env, documentFiles, message);
     if (extraction.error) return json({ error: extraction.error }, 502);
     textAttachmentContext += "\\n\\n--- محتوى المستندات المستخرج ---\\n" + extraction.text;
+    if (options.auditDocuments) {
+      documentAudit = {
+        extractedCharacters: extraction.text.length,
+        preview: String(extraction.text).slice(0, 4000)
+      };
+    }
     documentsWereRead = true;
   }
   const imageName = attachmentNames.find((name, index) => attachments[index]?.kind === "image") || "صورة";
@@ -1340,6 +1366,8 @@ async function handleAgent(request, env, user, options = {}) {
   const steps = [];
   if (documentsWereRead) steps.push("قراءة محتوى PDF / Word / Excel");
   const generatedImages = [];
+  const toolAudit = options.auditTools ? [] : null;
+  let documentAudit = null;
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
     const prior = await env.DB.prepare(
@@ -1465,6 +1493,13 @@ async function handleAgent(request, env, user, options = {}) {
         } else {
           output = await executeAgentTool(name,args || {},env,user);
         }
+        if (toolAudit && name === "calculate") {
+          toolAudit.push({
+            expression: String(args?.expression || ""),
+            result: typeof output?.result === "number" ? output.result : null,
+            error: output?.error ? String(output.error).slice(0, 180) : ""
+          });
+        }
         const labels = {
           get_current_time: "قراءة التاريخ والوقت",
           calculate: "إجراء حساب",
@@ -1515,7 +1550,10 @@ async function handleAgent(request, env, user, options = {}) {
         "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
       ).bind(crypto.randomUUID(), user.id, "assistant", safeStoredReply, Math.floor(Date.now() / 1000)).run();
     }
-    return json({ ok: true, model, steps, reply: finalText, generatedImages });
+    const payload = { ok: true, model, steps, reply: finalText, generatedImages };
+    if (toolAudit) payload.toolAudit = toolAudit;
+    if (documentAudit) payload.documentAudit = documentAudit;
+    return json(payload);
   } catch (error) {
     const diagnostic = String(error?.message || error || "Unknown AI error")
       .replace(/Bearer\\s+[^\\s]+/gi, "Bearer [redacted]")
@@ -1727,7 +1765,10 @@ export default {
       if (path === "/api/agent" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
         if (env.DB && !user) return json({ error: "سجّل الدخول الأول لاستخدام وكيل ونس." }, 401);
-        return await handleAgent(request, env, user);
+        const auditEnabled = request.headers.get("X-Wens-Diagnostics") === "acceptance-suite";
+        return await handleAgent(request, env, user, auditEnabled
+          ? { auditTools: true, auditDocuments: true }
+          : {});
       }
       if (path === "/api/agent/tasks" && (request.method === "GET" || request.method === "PATCH")) {
         const user = env.DB ? await currentUser(request, env) : null;
