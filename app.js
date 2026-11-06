@@ -669,11 +669,7 @@ async function speakRealtime(text, voiceName, playerTarget) {
   peer.addTransceiver("audio", { direction: "recvonly" });
   const channel = peer.createDataChannel("oai-events");
   activeVoiceDataChannel = channel;
-  let finished = false;
-
-  const finish = (delay = 25000) => {
-    if (finished) return;
-    finished = true;
+  const scheduleStop = (delay = 120000) => {
     if (voiceFinishTimer) clearTimeout(voiceFinishTimer);
     voiceFinishTimer = setTimeout(() => {
       if (activeVoicePeer === peer) stopRealtimeVoice();
@@ -694,7 +690,7 @@ async function speakRealtime(text, voiceName, playerTarget) {
   peer.addEventListener("connectionstatechange", () => {
     if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
       $("voiceStatus").textContent = "اتصال الصوت انقطع. اضغط اسمع رد ونس للمحاولة مرة أخرى.";
-      finish(1500);
+      scheduleStop(3000);
     }
   });
 
@@ -707,16 +703,16 @@ async function speakRealtime(text, voiceName, playerTarget) {
       if (failed) {
         const detail = data.response?.status_details?.error?.message || "خدمة الصوت لم تكمل الرد.";
         $("voiceStatus").textContent = String(detail).slice(0, 180);
-        finish(2500);
+        scheduleStop(3000);
       } else {
         $("voiceStatus").textContent = "تم تجهيز الرد الصوتي. استخدم مشغل الصوت لسماعه مرة أخرى.";
-        finish(25000);
+        scheduleStop(120000);
       }
     }
     if (data.type === "error") {
       const detail = data.error?.message || data.message || "حدث خطأ أثناء توليد الصوت.";
       $("voiceStatus").textContent = String(detail).slice(0, 180);
-      finish(2500);
+      scheduleStop(3000);
     }
   });
 
@@ -755,7 +751,7 @@ async function speakRealtime(text, voiceName, playerTarget) {
       reject(new Error("فشل فتح قناة الصوت."));
     }, { once: true });
   });
-  finish(45000);
+  scheduleStop(120000);
 }
 
 async function speak(text, voiceOverride, playerTarget) {
