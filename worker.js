@@ -419,7 +419,118 @@ async function adminRoute(request, env, path) {
     const owner = Boolean(accountUser && String(accountUser.email || "").trim().toLowerCase() === ADMIN_EMAIL);
     return json({ configured: Boolean(credential), authenticated: Boolean(user), owner });
   }
-  if (!(await adminUser(request, env))) return json({ error: "سجّل الدخول بحساب مالك التطبيق أولًا." }, 401);
+  const manager = await adminUser(request, env);
+  if (!manager) return json({ error: "سجّل الدخول بحساب مالك التطبيق أولًا." }, 401);
+  if (path === "/api/admin/diagnostics" && request.method === "GET") {
+    let databaseConnected = false;
+    const tableNames = new Set();
+    const counts = { users: null, activeSessions: null, messages: null, activeAgentTasks: null };
+    if (env.DB) {
+      try {
+        const probe = await env.DB.prepare("SELECT 1 AS ok").first();
+        databaseConnected = Number(probe?.ok) === 1;
+        if (databaseConnected) {
+          const listed = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+          for (const row of listed.results || []) tableNames.add(String(row.name || ""));
+          const countRows = async (table, where = "", values = []) => {
+            if (!tableNames.has(table)) return null;
+            const statement = env.DB.prepare("SELECT COUNT(*) AS total FROM " + table + " " + where);
+            const row = values.length ? await statement.bind(...values).first() : await statement.first();
+            return Number(row?.total || 0);
+          };
+          const now = Math.floor(Date.now() / 1000);
+          counts.users = await countRows("users");
+          counts.activeSessions = await countRows("sessions", "WHERE expires_at>?", [now]);
+          counts.messages = await countRows("messages");
+          counts.activeAgentTasks = await countRows("agent_tasks", "WHERE archived=0 AND done=0");
+        }
+      } catch {
+        databaseConnected = false;
+      }
+    }
+    const requiredTables = ["users", "sessions", "messages", "app_settings", "admin_credentials", "admin_sessions"];
+    const missingTables = requiredTables.filter(name => !tableNames.has(name));
+    const tools = agentTools();
+    return json({
+      ok: true,
+      checkedAt: new Date().toISOString(),
+      features: {
+        workersAI: Boolean(env.AI),
+        databaseConfigured: Boolean(env.DB),
+        databaseConnected,
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
+        documentReadingConfigured: Boolean(env.OPENAI_API_KEY),
+        browserConfigured: Boolean(env.BROWSER),
+        agentToolingConfigured: Boolean(env.AI && tools.length)
+      },
+      counts,
+      agent: { toolCount: tools.length },
+      tables: {
+        present: [...tableNames].filter(name => requiredTables.includes(name)),
+        missing: missingTables
+      }
+    });
+  }
+  if (path === "/api/admin/test-agent" && request.method === "POST") {
+    if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+    const probe = new Request(new URL("/api/agent", request.url), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "استخدمي أداة calculate إلزاميًا لحساب 19 * 23. لا تحسبي ذهنيًا ولا تستخدمي أي أداة أخرى، ثم اذكري الناتج فقط."
+      })
+    });
+    const response = await handleAgent(probe, env, manager);
+    let result = {};
+    try { result = await response.json(); } catch {}
+    if (!response.ok || result.ok !== true) {
+      return json({ ok: false, error: result.error || "فشل اختبار الوكيل.", steps: result.steps || [] }, 502);
+    }
+    const steps = Array.isArray(result.steps) ? result.steps : [];
+    const calculatorToolUsed = steps.some(step =>
+      String(step).includes("إجراء حساب") && /— تم$/.test(String(step))
+    );
+    return json({
+      ok: true,
+      model: result.model || "",
+      calculatorToolUsed,
+      steps,
+      reply: String(result.reply || "").slice(0, 1000)
+    });
+  }
+  if (path === "/api/admin/test-document" && request.method === "POST") {
+    if (!env.OPENAI_API_KEY) return json({ error: "خدمة قراءة المستندات غير مهيأة على الخادم." }, 503);
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "بيانات الملف غير صالحة." }, 400); }
+    const name = String(body.name || "").replace(/[\\r\\n]/g, " ").trim().slice(0, 120);
+    const extension = String(name.split(".").pop() || "").toLowerCase();
+    const documentTypes = {
+      pdf: "application/pdf",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    };
+    const expectedType = documentTypes[extension];
+    const type = String(body.type || "").toLowerCase();
+    const data = String(body.data || "");
+    if (!expectedType || type !== expectedType || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) {
+      return json({ error: "اختَر ملف PDF أو DOCX أو XLSX صالحًا." }, 415);
+    }
+    if (Math.ceil(data.length * 3 / 4) > 8 * 1024 * 1024) {
+      return json({ error: "حجم الملف يتجاوز 8 ميجابايت." }, 413);
+    }
+    const extraction = await extractDocumentAttachments(env, [{
+      name, type: expectedType, data
+    }], "اختبار قراءة هذا الملف من لوحة إدارة ونس. استخرجي النص والعناوين والجداول والأرقام المهمة، ولا تخمّني.");
+    if (extraction.error) return json({ error: extraction.error }, 502);
+    const extractedText = String(extraction.text || "");
+    return json({
+      ok: true,
+      name,
+      model: extraction.model || "",
+      extractedCharacters: extractedText.length,
+      preview: extractedText.slice(0, 1800)
+    });
+  }
   if (path === "/api/admin/settings" && request.method === "GET") {
     return json({ settings: await readAppSettings(env) });
   }
