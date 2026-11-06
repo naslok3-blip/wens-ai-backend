@@ -1489,8 +1489,12 @@ async function handleChat(request, env, user) {
 async function handleRealtimeVoice(request, env) {
   if (!env.OPENAI_API_KEY) return json({ error: "خدمة الصوت الطبيعي تحتاج مفتاح OpenAI صالحًا على الخادم." }, 503);
   let user = null;
+  let ownerAdminSession = false;
   if (env.DB) {
-    user = await currentUser(request, env) || await adminUser(request, env);
+    const accountUser = await currentUser(request, env);
+    const adminSessionUser = await adminUser(request, env);
+    user = accountUser || adminSessionUser;
+    ownerAdminSession = Boolean(adminSessionUser);
     if (!user) return json({ error: "سجّل الدخول إلى ونس أو لوحة المدير لاستخدام الصوت." }, 401);
   }
   let body;
@@ -1501,7 +1505,10 @@ async function handleRealtimeVoice(request, env) {
   }
   const allowedVoices = ["coral", "shimmer", "marin", "cedar", "sage"];
   const globalSettings = await readAppSettings(env);
-  const voice = allowedVoices.includes(globalSettings.voiceName) ? globalSettings.voiceName : "coral";
+  // Only an authenticated owner-admin session may preview an unsaved voice choice.
+  const voice = ownerAdminSession && allowedVoices.includes(body.voice)
+    ? body.voice
+    : allowedVoices.includes(globalSettings.voiceName) ? globalSettings.voiceName : "coral";
   const speed = Math.min(1.35, Math.max(0.65, Number(globalSettings.voiceRate) || 0.96));
   const session = {
     type: "realtime",
