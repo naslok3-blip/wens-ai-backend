@@ -14,8 +14,8 @@ function loadLocalSettings() {
     welcomeText: "اتكلم معايا واسألني اللي في بالك.",
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
-    voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-    enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
+    voiceRate: 0.96, theme: "purple",
+    enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -578,7 +578,8 @@ $("chatForm").addEventListener("submit", async event => {
     const data = await api("/api/chat", {
       message: text, attachments: payload, deepThink
     });
-    addMessage(data.reply, "assistant", data.steps || [], [], data.generatedImages || []);
+    const assistantRow = addMessage(data.reply, "assistant", data.steps || [], [], data.generatedImages || []);
+    if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
   } catch (error) {
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);
   } finally {
