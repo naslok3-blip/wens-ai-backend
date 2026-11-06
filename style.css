@@ -75,3 +75,52 @@
 .message-attachments img{display:block;width:auto;max-width:min(220px,58vw);max-height:230px;object-fit:contain;border:1px solid #ffffff24;border-radius:13px;background:#080812;margin:0}
 .message-attachment-name{padding:6px 9px;border-radius:9px;background:#ffffff12;color:#e8dfff;font-size:11px}
 @media(max-width:420px){.attachment-menu,.plugin-tools{width:min(300px,calc(100vw - 42px));right:-2px}.attachment-option{min-height:61px}.chat-form{gap:6px}.attach-menu-btn{width:42px;height:42px;flex-basis:42px}.send-btn{padding:0 13px}}
+
+
+/* Wens full-screen mobile app layout */
+html,body{width:100%;height:100%;height:100dvh;overflow:hidden}
+body{min-height:0;display:flex;flex-direction:column}
+.topbar{flex:0 0 auto;min-height:62px;padding-top:max(8px,env(safe-area-inset-top));padding-bottom:8px}
+main.app{width:min(1120px,100%);max-width:100%;height:0;min-height:0;flex:1 1 auto;overflow:hidden;display:flex;flex-direction:column;padding:10px clamp(10px,2vw,24px) max(8px,env(safe-area-inset-bottom));margin:0 auto}
+#appRoot:not([hidden]){display:flex;height:100%;min-height:0;flex:1 1 auto;flex-direction:column;gap:10px;overflow:hidden}
+#appRoot .hero{display:grid;grid-template-columns:72px minmax(0,1fr);grid-template-rows:auto auto auto auto auto;column-gap:12px;row-gap:1px;align-items:center;text-align:right;padding:2px 5px 7px;flex:0 0 auto}
+#appRoot .hero-portrait{grid-column:1;grid-row:1/6;width:68px;height:68px;object-fit:cover;object-position:center 34%;margin:0;border-radius:50%;border:2px solid #d4baff;box-shadow:0 0 0 5px #a28bff14}
+#appRoot .hero .eyebrow{grid-column:2;margin:0;font-size:11px}
+#appRoot .hero h1{grid-column:2;font-size:clamp(17px,4.2vw,22px);margin:0;line-height:1.35}
+#appRoot .hero .hero-text{grid-column:2;font-size:12px;line-height:1.4;margin:0;max-width:none}
+#appRoot .hero .actions{grid-column:2;justify-content:flex-start;gap:7px;margin-top:4px}
+#appRoot .hero .btn{min-height:36px;padding:7px 11px;border-radius:11px;font-size:12px}
+#appRoot .hero .status-line{grid-column:2;min-height:14px;font-size:10px;margin:0;padding:0}
+.voice-player-dock:empty{display:none}
+.voice-player-dock{grid-column:1/-1;width:100%;padding:2px 4px}
+#appRoot>.panel{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;overflow:hidden;margin:0;padding:12px}
+#appRoot>.panel>.section-head{flex:0 0 auto}
+#appRoot .messages{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;max-height:none!important;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding:12px 0}
+#appRoot .chat-composer{flex:0 0 auto;margin-top:4px}
+#appRoot .chat-composer .chat-form{flex:0 0 auto}
+#appRoot .panel>.disclaimer{flex:0 0 auto;margin-top:5px;font-size:9px;line-height:1.35}
+footer{display:none}
+.auth-panel{width:min(520px,100%);max-height:100%;overflow:auto;align-self:center;margin:auto}
+#adminInlinePanel:not([hidden]){display:flex;flex:1 1 auto;flex-direction:column;min-height:0;overflow:hidden;margin:0}
+#adminInlinePanel .adminFrame,#adminInlinePanel iframe{width:100%;height:100%;min-height:0;flex:1;border:1px solid #ffffff18}
+.voice-replay-btn{display:inline-flex;align-items:center;justify-content:center;margin-top:9px;padding:6px 10px;border:1px solid #b49aff55;border-radius:10px;background:#b49aff16;color:#e9ddff;font:inherit;font-size:11px;cursor:pointer}
+.voice-replay-btn:disabled{opacity:.6}
+.voice-player-shell{display:grid;gap:5px;width:100%;margin-top:8px;padding:8px;border:1px solid #b49aff35;border-radius:12px;background:#100f1c}
+.voice-player-label{font-size:10px;color:#d5c9ff}
+.voice-audio-player{display:block;width:100%;height:38px;max-width:100%;margin:0;background:#f3f0fa;border-radius:8px}
+@media(max-width:480px){
+  .topbar{min-height:58px}
+  main.app{padding:7px 8px max(6px,env(safe-area-inset-bottom))}
+  #appRoot:not([hidden]){gap:6px}
+  #appRoot .hero{grid-template-columns:58px minmax(0,1fr);column-gap:9px;padding:0 3px 4px}
+  #appRoot .hero-portrait{width:54px;height:54px}
+  #appRoot .hero h1{font-size:17px}
+  #appRoot .hero .hero-text{font-size:11px}
+  #appRoot .hero .btn{min-height:33px;padding:6px 9px;font-size:11px}
+  #appRoot>.panel{padding:9px;border-radius:16px}
+  #appRoot>.panel>.section-head h2{font-size:15px}
+  #appRoot>.panel>.section-head p{font-size:10px}
+  #appRoot .messages{padding:8px 0;gap:9px}
+  #appRoot .bubble{max-width:91%;font-size:12px;padding:9px 10px}
+}
+@supports not (height:100dvh){html,body{height:100vh}}
