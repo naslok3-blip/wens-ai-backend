@@ -5,8 +5,8 @@ const defaults = {
   welcomeText: "اتكلم معايا واسألني اللي في بالك.",
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
-  voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
+  voiceRate: 0.96, theme: "purple",
+  enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
@@ -75,7 +75,6 @@ function readForm() {
 }
 function updateRanges() {
   $("rateOut").value = Number($("voiceRate").value).toFixed(2);
-  $("pitchOut").value = Number($("voicePitch").value).toFixed(2);
 }
 function setState(id, label, ready) {
   const element = $(id);
@@ -89,6 +88,8 @@ async function refreshStatus() {
     const f = data.features || {};
     setState("workersAiState", f.workersAI ? "متصل ويعمل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
+    setState("voiceState", f.naturalVoiceConfigured ? "المفتاح مربوط — اختبر السماع" : "غير مربوط", !!f.naturalVoiceConfigured);
+    setState("browserState", f.browserConfigured ? "الربط موجود" : "غير مربوط", !!f.browserConfigured);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
     $("databaseDetail").textContent = !f.databaseConfigured ? "لم يتم ربط D1 بعد" : !f.databaseConnected ? "تعذّر الاتصال بقاعدة البيانات" : f.settingsStorageReady ? "الجداول وحفظ الإعدادات جاهزة" : "تخزين الإعدادات يحتاج مراجعة";
     $("checkedAt").textContent = "آخر فحص: " + new Date(data.checkedAt).toLocaleString("ar-EG");
@@ -174,7 +175,7 @@ document.querySelectorAll(".nav-btn").forEach(button => button.addEventListener(
   document.querySelectorAll(".nav-btn").forEach(item => item.classList.toggle("active", item === button));
   document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page.id === "tab-" + button.dataset.tab));
 }));
-["voiceRate", "voicePitch"].forEach(id => $(id).addEventListener("input", updateRanges));
+["voiceRate"].forEach(id => $(id).addEventListener("input", updateRanges));
 $("saveBtn").addEventListener("click", async () => {
   readForm();
   $("saveBtn").disabled = true;
