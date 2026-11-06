@@ -1492,7 +1492,8 @@ async function handleRealtimeVoice(request, env) {
   let ownerAdminSession = false;
   if (env.DB) {
     const accountUser = await currentUser(request, env);
-    const adminSessionUser = await adminUser(request, env);
+    const hasAdminCookie = Boolean(cookieValue(request.headers.get("Cookie"), ADMIN_COOKIE));
+    const adminSessionUser = hasAdminCookie ? await adminUser(request, env) : null;
     user = accountUser || adminSessionUser;
     ownerAdminSession = Boolean(adminSessionUser);
     if (!user) return json({ error: "سجّل الدخول إلى ونس أو لوحة المدير لاستخدام الصوت." }, 401);
