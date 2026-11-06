@@ -463,7 +463,8 @@ async function adminRoute(request, env, path) {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: "اكتبي كلمة واحدة فقط: جاهزة" }
-        ], temperature: 0, max_tokens: 12
+        ], temperature: 0, max_tokens: 48,
+        chat_template_kwargs: { enable_thinking: false }
       });
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const reply = typeof assistantMessage?.content === "string"
@@ -1316,6 +1317,9 @@ async function handleAgent(request, env, user, options = {}) {
         temperature: 0.2,
         max_tokens: deepThink ? 1500 : 1100
       };
+      if (model === "@cf/zai-org/glm-4.7-flash") {
+        runOptions.chat_template_kwargs = { enable_thinking: deepThink };
+      }
       if (model === "@cf/qwen/qwen3.8-27b") {
         runOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
       }
@@ -1385,6 +1389,9 @@ async function handleAgent(request, env, user, options = {}) {
         temperature: 0.2,
         max_tokens: deepThink ? 1500 : 1100
       };
+      if (model === "@cf/zai-org/glm-4.7-flash") {
+        lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
+      }
       if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
       const last = await env.AI.run(model, lastOptions);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
@@ -1459,11 +1466,15 @@ async function handleChat(request, env, user) {
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
     const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
-    const result = await env.AI.run(model, {
+    const runOptions = {
       messages,
       temperature: 0.7,
       max_tokens: 500
-    });
+    };
+    if (model === "@cf/zai-org/glm-4.7-flash") {
+      runOptions.chat_template_kwargs = { enable_thinking: false };
+    }
+    const result = await env.AI.run(model, runOptions);
     const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const reply = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
