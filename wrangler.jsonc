@@ -34,5 +34,20 @@
   ],
   "browser": {
     "binding": "BROWSER"
+  },
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "wens-ai-preview-db",
+        "database_id": "2534995c-e906-4fb0-ba36-b7f52606fbe9"
+      }
+    ],
+    "browser": {
+      "binding": "BROWSER"
+    },
+    "ai": {
+      "binding": "AI"
+    }
   }
 }
