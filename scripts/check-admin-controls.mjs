@@ -4,14 +4,14 @@ const html = await readFile("admin.html", "utf8");
 const js = await readFile("admin.js", "utf8");
 const worker = await readFile("worker.js", "utf8");
 
-const ids = [...html.matchAll(/\\bid="([^"]+)"/g)].map(match => match[1]);
+const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
 if (duplicates.length) {
   throw new Error("Duplicate admin element IDs: " + [...new Set(duplicates)].join(", "));
 }
 
 const available = new Set(ids);
-const referenced = [...js.matchAll(/\\$\\("([^"]+)"\\)/g)].map(match => match[1]);
+const referenced = [...js.matchAll(/\$\("([^"]+)"\)/g)].map(match => match[1]);
 const missing = [...new Set(referenced)].filter(id => !available.has(id));
 if (missing.length) {
   throw new Error("Admin JavaScript references missing HTML IDs: " + missing.join(", "));
