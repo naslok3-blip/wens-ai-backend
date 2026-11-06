@@ -299,6 +299,21 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     trace.append(summary, list);
     bubble.appendChild(trace);
   }
+  if (who === "assistant") {
+    const replay = document.createElement("button");
+    replay.type = "button";
+    replay.className = "voice-replay-btn";
+    replay.textContent = "🔊 اسمع رد ونس";
+    replay.setAttribute("aria-label", "تشغيل رد ونس صوتيًا");
+    replay.addEventListener("click", async () => {
+      replay.disabled = true;
+      replay.textContent = "جاري تجهيز الصوت…";
+      await speak(String(text ?? ""), null, bubble);
+      replay.disabled = false;
+      replay.textContent = "🔊 اسمع رد ونس";
+    });
+    bubble.appendChild(replay);
+  }
   row.appendChild(bubble);
   $("messages").appendChild(row);
   $("messages").scrollTop = $("messages").scrollHeight;
@@ -564,7 +579,6 @@ $("chatForm").addEventListener("submit", async event => {
       message: text, attachments: payload, deepThink
     });
     addMessage(data.reply, "assistant", data.steps || [], [], data.generatedImages || []);
-    speak(data.reply);
   } catch (error) {
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);
   } finally {
@@ -579,83 +593,133 @@ $("clearBtn").addEventListener("click", () => {
 let activeVoicePeer = null;
 let activeVoiceDataChannel = null;
 let activeVoiceAudio = null;
+let voiceFinishTimer = null;
+
 function setAvatarSpeaking(active) {
-  document.querySelector(".orb")?.classList.toggle("talking", active);
-  document.querySelector(".face")?.classList.toggle("talking", active);
+  document.querySelector(".hero-portrait")?.classList.toggle("talking", active);
+  document.querySelector(".mini-avatar")?.classList.toggle("talking", active);
 }
-function speakOnDevice(text) {
-  if (window.WensNative && typeof window.WensNative.speak === "function") {
-    window.WensNative.speak(String(text));
-    return;
-  }
-  if (!("speechSynthesis" in window)) return;
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = appSettings.voiceLocale;
-  utterance.rate = Math.min(1.35, Math.max(0.65, Number(appSettings.voiceRate) || 0.96));
-  utterance.pitch = Math.min(1.5, Math.max(0.7, Number(appSettings.voicePitch) || 1.12));
-  const voices = speechSynthesis.getVoices();
-  utterance.voice = voices.find(v => v.lang.toLowerCase().startsWith("ar-eg")) || voices.find(v => v.lang.toLowerCase().startsWith("ar")) || null;
-  utterance.onstart = () => setAvatarSpeaking(true);
-  utterance.onend = () => setAvatarSpeaking(false);
-  utterance.onerror = () => setAvatarSpeaking(false);
-  speechSynthesis.cancel();
-  speechSynthesis.speak(utterance);
-}
+
 function stopRealtimeVoice() {
+  if (voiceFinishTimer) clearTimeout(voiceFinishTimer);
+  voiceFinishTimer = null;
   try { activeVoiceDataChannel?.close(); } catch {}
   try { activeVoicePeer?.close(); } catch {}
   try { activeVoiceAudio?.pause(); } catch {}
-  if (activeVoiceAudio) { activeVoiceAudio.srcObject = null; activeVoiceAudio.remove(); }
+  if (activeVoiceAudio) {
+    activeVoiceAudio.srcObject = null;
+    activeVoiceAudio.closest(".voice-player-shell")?.remove();
+  }
   activeVoicePeer = null;
   activeVoiceDataChannel = null;
   activeVoiceAudio = null;
   setAvatarSpeaking(false);
 }
+
 function waitForIce(peer) {
   if (peer.iceGatheringState === "complete") return Promise.resolve();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { cleanup(); reject(new Error("انتهت مهلة تجهيز الصوت.")); }, 12000);
-    const onChange = () => { if (peer.iceGatheringState === "complete") { cleanup(); resolve(); } };
-    const cleanup = () => { clearTimeout(timer); peer.removeEventListener("icegatheringstatechange", onChange); };
+    const onChange = () => {
+      if (peer.iceGatheringState === "complete") { cleanup(); resolve(); }
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      peer.removeEventListener("icegatheringstatechange", onChange);
+    };
     peer.addEventListener("icegatheringstatechange", onChange);
   });
 }
-async function speakRealtime(text, voiceName) {
-  if (!("RTCPeerConnection" in window)) throw new Error("متصفح الهاتف لا يدعم الصوت الحديث.");
+
+async function speakRealtime(text, voiceName, playerTarget) {
+  if (!("RTCPeerConnection" in window)) throw new Error("متصفح الهاتف لا يدعم تشغيل الصوت الحديث.");
   stopRealtimeVoice();
+
+  const host = playerTarget && typeof playerTarget.appendChild === "function"
+    ? playerTarget
+    : $("voicePlayerDock");
+  const shell = document.createElement("div");
+  shell.className = "voice-player-shell";
+  const label = document.createElement("span");
+  label.className = "voice-player-label";
+  label.textContent = "صوت ونس — استخدم زر التشغيل لو ما بدأش تلقائيًا";
+  const player = document.createElement("audio");
+  player.className = "voice-audio-player";
+  player.controls = true;
+  player.autoplay = true;
+  player.playsInline = true;
+  player.preload = "none";
+  player.setAttribute("aria-label", "مشغل صوت رد ونس");
+  shell.append(label, player);
+  host.querySelector(".voice-player-shell")?.remove();
+  host.appendChild(shell);
+  activeVoiceAudio = player;
+
+  player.addEventListener("playing", () => {
+    setAvatarSpeaking(true);
+    $("voiceStatus").textContent = "ونس بتتكلم دلوقتي 💜";
+  });
+  player.addEventListener("pause", () => setAvatarSpeaking(false));
+  player.addEventListener("error", () => {
+    $("voiceStatus").textContent = "تعذّر تشغيل ملف الصوت. جرّب زر التشغيل مرة تانية.";
+  });
+
   const peer = new RTCPeerConnection();
   activeVoicePeer = peer;
   peer.addTransceiver("audio", { direction: "recvonly" });
   const channel = peer.createDataChannel("oai-events");
   activeVoiceDataChannel = channel;
   let finished = false;
-  const finish = () => {
+
+  const finish = (delay = 25000) => {
     if (finished) return;
     finished = true;
-    setTimeout(stopRealtimeVoice, 1400);
+    if (voiceFinishTimer) clearTimeout(voiceFinishTimer);
+    voiceFinishTimer = setTimeout(() => {
+      if (activeVoicePeer === peer) stopRealtimeVoice();
+    }, delay);
   };
+
   peer.ontrack = event => {
-    const stream = event.streams[0] || new MediaStream([event.track]);
-    const audio = document.createElement("audio");
-    audio.autoplay = true;
-    audio.playsInline = true;
-    audio.srcObject = stream;
-    audio.style.position = "fixed";
-    audio.style.width = "1px";
-    audio.style.height = "1px";
-    audio.style.opacity = "0.01";
-    document.body.appendChild(audio);
-    activeVoiceAudio = audio;
-    setAvatarSpeaking(true);
-    audio.play().catch(() => { $("voiceStatus").textContent = "الصوت جاهز؛ اضغط تشغيل الصوت في المتصفح."; });
+    const stream = event.streams?.[0] || new MediaStream([event.track]);
+    player.srcObject = stream;
+    player.play().then(() => {
+      $("voiceStatus").textContent = "تم تشغيل صوت ونس 💜";
+    }).catch(() => {
+      $("voiceStatus").textContent = "الصوت اتجهز. اضغط ▶ في مشغل الصوت الظاهر تحت الرد.";
+      player.controls = true;
+    });
   };
+
+  peer.addEventListener("connectionstatechange", () => {
+    if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
+      $("voiceStatus").textContent = "اتصال الصوت انقطع. اضغط اسمع رد ونس للمحاولة مرة أخرى.";
+      finish(1500);
+    }
+  });
+
   channel.addEventListener("message", event => {
     let data;
     try { data = JSON.parse(event.data); } catch { return; }
     if (data.type === "response.output_audio.delta") setAvatarSpeaking(true);
-    if (data.type === "response.done") finish();
-    if (data.type === "error") finish();
+    if (data.type === "response.done") {
+      const failed = data.response?.status && data.response.status !== "completed";
+      if (failed) {
+        const detail = data.response?.status_details?.error?.message || "خدمة الصوت لم تكمل الرد.";
+        $("voiceStatus").textContent = String(detail).slice(0, 180);
+        finish(2500);
+      } else {
+        $("voiceStatus").textContent = "تم تجهيز الرد الصوتي. استخدم مشغل الصوت لسماعه مرة أخرى.";
+        finish(25000);
+      }
+    }
+    if (data.type === "error") {
+      const detail = data.error?.message || data.message || "حدث خطأ أثناء توليد الصوت.";
+      $("voiceStatus").textContent = String(detail).slice(0, 180);
+      finish(2500);
+    }
   });
+
   const offer = await peer.createOffer();
   await peer.setLocalDescription(offer);
   await waitForIce(peer);
@@ -673,8 +737,9 @@ async function speakRealtime(text, voiceName) {
   const answer = await response.text();
   if (!answer.startsWith("v=0")) throw new Error("رد اتصال الصوت غير صالح.");
   await peer.setRemoteDescription({ type: "answer", sdp: answer });
+
   await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("لم تفتح قناة الصوت.")), 15000);
+    const timer = setTimeout(() => reject(new Error("لم تفتح قناة الصوت في الهاتف.")), 15000);
     channel.addEventListener("open", () => {
       clearTimeout(timer);
       channel.send(JSON.stringify({
@@ -682,24 +747,44 @@ async function speakRealtime(text, voiceName) {
         item: { type: "message", role: "user", content: [{ type: "input_text", text: String(text).slice(0, 2000) }] }
       }));
       channel.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio"] } }));
+      $("voiceStatus").textContent = "جاري تجهيز صوت ونس…";
       resolve();
     }, { once: true });
-    channel.addEventListener("error", () => { clearTimeout(timer); reject(new Error("فشل فتح قناة الصوت.")); }, { once: true });
+    channel.addEventListener("error", () => {
+      clearTimeout(timer);
+      reject(new Error("فشل فتح قناة الصوت."));
+    }, { once: true });
   });
-  setTimeout(() => { if (activeVoicePeer === peer && !finished) finish(); }, 45000);
+  finish(45000);
 }
-async function speak(text, voiceOverride) {
-  const message = String(text || "").slice(0, 2000);
-  if (!message) return;
-  if (appSettings.voiceEngine !== "cloud" && !voiceOverride) { speakOnDevice(message); return; }
+
+async function speak(text, voiceOverride, playerTarget) {
+  const message = String(text || "").trim().slice(0, 2000);
+  if (!message) return false;
+  if (appSettings.voiceEngine !== "cloud" && !voiceOverride) {
+    speakOnDevice(message);
+    return true;
+  }
   try {
-    await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral");
+    $("voiceStatus").textContent = "جاري تجهيز صوت ونس…";
+    await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral", playerTarget);
+    return true;
   } catch (error) {
     stopRealtimeVoice();
-    $("voiceStatus").textContent = "الصوت المصري الطبيعي مش متاح دلوقتي، ومش هحوّلك لصوت الهاتف أو الفصحى. " + String(error.message || "").slice(0, 100);
+    $("voiceStatus").textContent = "الصوت الطبيعي لم يبدأ: " + String(error.message || error).slice(0, 150);
+    return false;
   }
 }
-window.WensPlayVoicePreview = (text, voice) => speak(text, voice);
+
+window.WensPlayVoicePreview = (text, voice) => speak(text, voice, $("voicePlayerDock"));
+$("voiceTestBtn").addEventListener("click", async () => {
+  $("voiceTestBtn").disabled = true;
+  $("voiceTestBtn").textContent = "جاري تجهيز الصوت…";
+  await speak("أهلًا بيك، أنا ونس. عامِل إيه؟ خلّينا نتكلم سوا.", null, $("voicePlayerDock"));
+  $("voiceTestBtn").disabled = false;
+  $("voiceTestBtn").textContent = "🔊 اسمع صوت ونس";
+});
+
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
