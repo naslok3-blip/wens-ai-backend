@@ -632,7 +632,7 @@ function waitForIce(peer) {
   });
 }
 
-async function speakRealtime(text, voiceName, playerTarget) {
+async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = false) {
   if (!("RTCPeerConnection" in window)) throw new Error("متصفح الهاتف لا يدعم تشغيل الصوت الحديث.");
   stopRealtimeVoice();
 
@@ -655,14 +655,24 @@ async function speakRealtime(text, voiceName, playerTarget) {
   host.querySelector(".voice-player-shell")?.remove();
   host.appendChild(shell);
   activeVoiceAudio = player;
+  let resolvePlaybackStarted = null;
+  let rejectPlaybackStarted = null;
+  const playbackStarted = waitForPlayback
+    ? new Promise((resolve, reject) => {
+        resolvePlaybackStarted = resolve;
+        rejectPlaybackStarted = reject;
+      })
+    : null;
 
   player.addEventListener("playing", () => {
     setAvatarSpeaking(true);
     $("voiceStatus").textContent = "ونس بتتكلم دلوقتي 💜";
+    resolvePlaybackStarted?.(true);
   });
   player.addEventListener("pause", () => setAvatarSpeaking(false));
   player.addEventListener("error", () => {
     $("voiceStatus").textContent = "تعذّر تشغيل ملف الصوت. جرّب زر التشغيل مرة تانية.";
+    rejectPlaybackStarted?.(new Error("اتصل الصوت لكن تعذّر تشغيل المقطع في مشغل الهاتف."));
   });
 
   const peer = new RTCPeerConnection();
@@ -752,10 +762,25 @@ async function speakRealtime(text, voiceName, playerTarget) {
       reject(new Error("فشل فتح قناة الصوت."));
     }, { once: true });
   });
+  if (waitForPlayback) {
+    let playbackTimer;
+    try {
+      await Promise.race([
+        playbackStarted,
+        new Promise((_, reject) => {
+          playbackTimer = setTimeout(() => reject(new Error(
+            "اتصلت قناة الصوت لكن لم يبدأ تشغيل المقطع خلال 45 ثانية. شغّل المقطع من المشغل الظاهر ثم أعد الاختبار."
+          )), 45000);
+        })
+      ]);
+    } finally {
+      clearTimeout(playbackTimer);
+    }
+  }
   scheduleStop(120000);
 }
 
-async function speak(text, voiceOverride, playerTarget) {
+async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
   if (appSettings.voiceEngine !== "cloud" && !voiceOverride) {
@@ -764,7 +789,7 @@ async function speak(text, voiceOverride, playerTarget) {
   }
   try {
     $("voiceStatus").textContent = "جاري تجهيز صوت ونس…";
-    await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral", playerTarget);
+    await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral", playerTarget, waitForPlayback);
     return true;
   } catch (error) {
     stopRealtimeVoice();
@@ -773,7 +798,27 @@ async function speak(text, voiceOverride, playerTarget) {
   }
 }
 
-window.WensPlayVoicePreview = (text, voice) => speak(text, voice, $("voicePlayerDock"));
+function getAdminVoicePreviewDock() {
+  const panel = $("adminInlinePanel");
+  if (!panel) return $("voicePlayerDock");
+  let dock = $("adminVoicePreviewDock");
+  if (!dock) {
+    dock = document.createElement("section");
+    dock.id = "adminVoicePreviewDock";
+    dock.dir = "rtl";
+    dock.style.cssText = "margin:12px 10px;padding:12px;border:1px solid rgba(180,154,255,.5);border-radius:16px;background:rgba(20,18,40,.97);color:#fff;position:relative;z-index:5";
+    const title = document.createElement("p");
+    title.textContent = "معاينة صوت ونس — اضغط ▶ إذا لم يبدأ التشغيل تلقائيًا";
+    title.style.cssText = "margin:0 0 8px;font-weight:700";
+    dock.appendChild(title);
+    panel.prepend(dock);
+  }
+  dock.hidden = false;
+  dock.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  return dock;
+}
+window.WensPlayVoicePreview = (text, voice) =>
+  speak(text, voice, getAdminVoicePreviewDock(), true);
 $("voiceTestBtn").addEventListener("click", async () => {
   $("voiceTestBtn").disabled = true;
   $("voiceTestBtn").textContent = "جاري تجهيز الصوت…";
