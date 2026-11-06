@@ -202,8 +202,8 @@ const DEFAULT_APP_SETTINGS = {
   welcomeTitle: "أهلًا بيك، أنا ونس 💜",
   welcomeText: "اتكلم معايا واسألني اللي في بالك.",
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
-  voiceButton: "اتكلم معايا", voiceRate: 0.96, voicePitch: 1.12,
-  theme: "purple", enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
+  voiceButton: "اتكلم معايا", voiceRate: 0.96,
+  theme: "purple", enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
 };
 const APP_SETTING_LIMITS = {
   appName: 45, assistantName: 35, eyebrow: 80, welcomeTitle: 100,
@@ -218,8 +218,8 @@ function normalizeAppSettings(input) {
     if (typeof input[key] === "string") next[key] = input[key].trim().slice(0, limit);
   }
   if (typeof input.enableVoice === "boolean") next.enableVoice = input.enableVoice;
+  if (typeof input.autoSpeak === "boolean") next.autoSpeak = input.autoSpeak;
   if (Number.isFinite(Number(input.voiceRate))) next.voiceRate = Math.min(1.35, Math.max(0.65, Number(input.voiceRate)));
-  if (Number.isFinite(Number(input.voicePitch))) next.voicePitch = Math.min(1.5, Math.max(0.7, Number(input.voicePitch)));
   if (["purple", "blue", "green", "rose"].includes(input.theme)) next.theme = input.theme;
   if (input.voiceLocale === "ar-EG") next.voiceLocale = "ar-EG";
   if (input.voiceEngine === "cloud") next.voiceEngine = "cloud";
@@ -450,7 +450,8 @@ async function adminRoute(request, env, path) {
       model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
       features: {
         workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
-        databaseConnected, databaseSchemaReady, settingsStorageReady
+        databaseConnected, databaseSchemaReady, settingsStorageReady,
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
       }
     });
   }
@@ -1499,13 +1500,15 @@ async function handleRealtimeVoice(request, env) {
     return json({ error: "بيانات اتصال الصوت غير صالحة." }, 400);
   }
   const allowedVoices = ["coral", "shimmer", "marin", "cedar", "sage"];
-  const voice = allowedVoices.includes(body.voice) ? body.voice : "coral";
+  const globalSettings = await readAppSettings(env);
+  const voice = allowedVoices.includes(globalSettings.voiceName) ? globalSettings.voiceName : "coral";
+  const speed = Math.min(1.35, Math.max(0.65, Number(globalSettings.voiceRate) || 0.96));
   const session = {
     type: "realtime",
     model: env.WENS_REALTIME_MODEL || "gpt-realtime-2.1-mini",
     instructions: "You are the voice of Wens, a warm, natural, feminine-sounding Egyptian woman from Cairo. Speak in authentic everyday Cairo Egyptian Arabic (Masri, اللهجة المصرية القاهرية العامية) ONLY. Modern Standard Arabic (الفصحى), formal newsreader Arabic, and Gulf/Levantine dialects are not allowed. If the supplied Arabic text sounds formal or is in MSA, naturally rephrase it into spoken Egyptian before speaking, while preserving its exact meaning and all important facts. Prefer everyday Egyptian wording and contractions: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده، عشان. Avoid formal words and constructions such as كيف، ماذا، سوف، يرجى، هل ترغب، بناءً على ذلك. Use a relaxed conversational rhythm, Egyptian pronunciation (hard g for ج and glottal ق where natural), gentle feminine delivery, and normal pauses. Do not exaggerate slang, sound robotic, or read like a formal announcer. The spoken result must sound like a real Egyptian woman chatting naturally with a friend.",
     output_modalities: ["audio"],
-    audio: { output: { voice } }
+    audio: { output: { voice, speed } }
   };
   const form = new FormData();
   form.set("sdp", sdp);
