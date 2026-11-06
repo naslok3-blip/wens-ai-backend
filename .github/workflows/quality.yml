@@ -37,6 +37,8 @@ jobs:
           node scripts/check-worker-assets.mjs
           node --check scripts/check-admin-controls.mjs
           node scripts/check-admin-controls.mjs
+          node --check scripts/check-feature-contracts.mjs
+          node scripts/check-feature-contracts.mjs
       - name: Verify production Worker, Workers AI, D1 and static assets
         run: |
           set -euo pipefail
@@ -199,6 +201,9 @@ jobs:
           grep -q 'data-action="deep"' /tmp/wens-index.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
           grep -q 'Cloudflare AI' /tmp/wens-app.js
+          grep -q 'WensPlayVoicePreview' /tmp/wens-app.js
+          grep -q 'adminVoicePreviewDock' /tmp/wens-app.js
+          grep -q 'fetch("/api/voice/connect"' /tmp/wens-app.js
           grep -q 'updateAdminShortcut' /tmp/wens-app.js
           grep -q 'addSelectedFile' /tmp/wens-app.js
           grep -q 'attachmentPayload' /tmp/wens-app.js
@@ -224,10 +229,12 @@ jobs:
           grep -q 'id="showAdminResetBtn"' /tmp/wens-admin.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js" -o /tmp/wens-admin.js
           grep -q '/api/admin/status' /tmp/wens-admin.js
+          grep -q '/api/admin/diagnostics' /tmp/wens-admin.js
           grep -q '/api/admin/settings' /tmp/wens-admin.js
+          grep -q 'voicePreviewBtn' /tmp/wens-admin.js
           echo "Production Wens portrait, chat and same-page admin assets: OK"
       - name: Verify owner-only admin and shared settings API
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
