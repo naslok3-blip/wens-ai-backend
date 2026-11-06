@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin.html
+Disallow: /owner-panel
+Sitemap: https://wens-ai-backend-b142.naqashy1.workers.dev/sitemap.xml
