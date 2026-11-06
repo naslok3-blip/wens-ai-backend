@@ -188,8 +188,8 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
         env:
           BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
-          CI_EMAIL: wens-accept-\${{ github.run_id }}-\${{ github.run_attempt }}@example.invalid
-          CI_PASSWORD: Wens-Accept-\${{ github.run_id }}-\${{ github.run_attempt }}-Test!
+          CI_EMAIL: wens-accept-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+          CI_PASSWORD: Wens-Accept-${{ github.run_id }}-${{ github.run_attempt }}-Test!
         run: |
           set -euo pipefail
           echo "Registering an isolated acceptance-test account"
