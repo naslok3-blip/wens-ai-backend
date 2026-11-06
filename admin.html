@@ -67,8 +67,11 @@
     <div class="admin-grid">
       <nav class="admin-nav" aria-label="أقسام لوحة الإدارة">
         <button class="nav-btn active" data-tab="overview">▦ نظرة عامة</button>
+        <button class="nav-btn" data-tab="system">⌁ مركز التشغيل</button>
+        <button class="nav-btn" data-tab="agent">✧ الوكيل والأدوات</button>
+        <button class="nav-btn" data-tab="files">▤ اختبار الملفات</button>
         <button class="nav-btn" data-tab="identity">◈ هوية التطبيق</button>
-        <button class="nav-btn" data-tab="assistant">✧ الصوت والمساعدة</button>
+        <button class="nav-btn" data-tab="assistant">🔊 الصوت والمساعدة</button>
         <button class="nav-btn" data-tab="features">⚙ الميزات</button>
         <button class="nav-btn" data-tab="content">☷ رسائل البداية</button>
         <button class="nav-btn" data-tab="backup">⇩ النسخ والاسترجاع</button>
@@ -80,6 +83,55 @@
           <div class="notice">إعدادات التطبيق تُحفظ في قاعدة بيانات D1. دخول الإدارة مخصص لحساب مالك التطبيق فقط.</div>
           <div class="stat-grid"><div class="stat"><b>محمية</b><span>حساب المالك فقط</span></div><div class="stat"><b>D1</b><span>حفظ مركزي</span></div><div class="stat"><b>عام</b><span>تطبيق موحد</span></div></div>
           <a class="btn secondary link-btn" href="index.html">فتح التطبيق</a>
+        </section>
+        <section class="tab-page" id="tab-system">
+          <h2>مركز التشغيل والتشخيص</h2>
+          <p class="muted">أرقام إجمالية فقط؛ لا تعرض هذه الصفحة رسائل المستخدمين أو كلمات المرور أو مفاتيح الخدمات.</p>
+          <div class="metrics-grid">
+            <article class="metric-card"><span>حسابات المستخدمين</span><strong id="metricUsers">—</strong></article>
+            <article class="metric-card"><span>جلسات نشطة</span><strong id="metricSessions">—</strong></article>
+            <article class="metric-card"><span>الرسائل المحفوظة</span><strong id="metricMessages">—</strong></article>
+            <article class="metric-card"><span>المهام النشطة</span><strong id="metricTasks">—</strong></article>
+            <article class="metric-card"><span>أدوات الوكيل</span><strong id="metricTools">—</strong></article>
+          </div>
+          <div class="diagnostic-grid">
+            <div class="diagnostic-item"><b>Workers AI</b><strong id="diagWorkersAI" class="state-pending">لم يُفحص</strong></div>
+            <div class="diagnostic-item"><b>قاعدة D1</b><strong id="diagDatabase" class="state-pending">لم يُفحص</strong></div>
+            <div class="diagnostic-item"><b>الصوت الطبيعي</b><strong id="diagVoice" class="state-pending">لم يُفحص</strong></div>
+            <div class="diagnostic-item"><b>قراءة المستندات</b><strong id="diagDocuments" class="state-pending">لم يُفحص</strong></div>
+            <div class="diagnostic-item"><b>متصفح الوكيل</b><strong id="diagBrowser" class="state-pending">لم يُفحص</strong></div>
+            <div class="diagnostic-item"><b>جداول التشغيل</b><strong id="diagTables" class="state-pending">لم يُفحص</strong></div>
+          </div>
+          <div class="actions left-actions"><button id="refreshDiagnosticsBtn" class="btn secondary" type="button">تحديث التشخيص والأرقام</button></div>
+          <p id="diagnosticsStatus" class="status-line" role="status" aria-live="polite"></p>
+        </section>
+        <section class="tab-page" id="tab-agent">
+          <h2>اختبار وكيل ونس والأدوات</h2>
+          <p class="muted">يشغّل الاختبار طلبًا مؤقتًا باستخدام جلسة المالك، ويطلب من الوكيل استخدام أداة الحساب. لا يُحفظ الطلب في سجل المحادثات ولا ينشئ مهمة.</p>
+          <div class="notice">الاختبار يتحقق من استجابة النموذج وتنفيذ أداة آمنة. لا يثبت وحده نجاح كل أدوات التصفح أو المواقع الخارجية.</div>
+          <div class="actions left-actions"><button id="testAgentBtn" class="btn primary" type="button">اختبار الوكيل الآن</button></div>
+          <p id="agentTestStatus" class="status-line" role="status" aria-live="polite"></p>
+          <div id="agentTestSteps" class="test-steps"></div>
+          <pre id="agentTestReply" class="diagnostic-output" dir="auto"></pre>
+          <h3>الأدوات الموجودة في الخادم</h3>
+          <ul class="tool-list">
+            <li>الحسابات والتاريخ والوقت</li><li>البحث وقراءة صفحات الويب</li>
+            <li>متصفح المواقع والتفاعل مع الحقول والأزرار</li><li>المهام المحفوظة وتعديلها وأرشفتها</li>
+            <li>إنشاء الصور وتعديل الصور المرفقة</li>
+          </ul>
+        </section>
+        <section class="tab-page" id="tab-files">
+          <h2>اختبار قراءة الملفات من الهاتف</h2>
+          <p class="muted">اختر ملف PDF أو Word أو Excel حقيقيًا من هاتفك. سيُرسل الملف إلى خدمة OpenAI لاختبار الاستخراج، ولن يُحفظ في قاعدة بيانات ونس.</p>
+          <div class="field">
+            <label for="documentTestFile">الملف المراد اختباره</label>
+            <input id="documentTestFile" type="file" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+          </div>
+          <label class="toggle-row"><span><b>أوافق على إرسال الملف للاختبار</b><small>قد يستهلك الاختبار رصيد OpenAI API. لا تختَر ملفًا يحتوي على بيانات حساسة.</small></span><input id="documentTestConsent" type="checkbox"></label>
+          <div class="actions left-actions"><button id="testDocumentBtn" class="btn primary" type="button" disabled>اختبار قراءة الملف</button></div>
+          <p id="documentTestStatus" class="status-line" role="status" aria-live="polite"></p>
+          <pre id="documentTestResult" class="diagnostic-output" dir="auto"></pre>
+          <p class="disclaimer">ظهور مقتطف مستخرج يؤكد أن الملف وصل إلى خدمة القراءة وعادت منه بيانات. يجب مراجعة المقتطف يدويًا ومقارنته بالملف الأصلي قبل اعتماد القراءة الكاملة.</p>
         </section>
         <section class="tab-page" id="tab-identity">
           <h2>هوية التطبيق</h2>
@@ -107,8 +159,12 @@
           <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="cloud">الصوت المصري الطبيعي – مفعّل</option></select></div>
           <div class="field"><label for="voiceName">اختيار نبرة ونس</label><select id="voiceName"><option value="coral">Coral – دافئة</option><option value="shimmer">Shimmer – ناعمة</option><option value="marin">Marin – طبيعية</option><option value="cedar">Cedar – واضحة</option><option value="sage">Sage – هادئة</option></select></div>
           <div class="notice">ونس تستخدم صوتًا طبيعيًا عبر OpenAI Realtime. تعليمات الصوت مثبتة على اللهجة المصرية القاهرية العامية، وتمنع الفصحى واللهجات الأخرى. استهلاك الصوت يُحسب على رصيد OpenAI API. جرّب عينة الصوت من هنا قبل الاعتماد عليه.</div>
-          <div class="actions left-actions"><button id="voicePreviewBtn" class="btn secondary" type="button">تجربة صوت ونس</button></div>
+          <div class="actions left-actions">
+            <button id="voicePreviewBtn" class="btn secondary" type="button">بدء اختبار صوت ونس</button>
+            <button id="voiceConfirmBtn" class="btn primary" type="button" hidden>تأكيد أنني سمعت الصوت</button>
+          </div>
           <p id="voicePreviewStatus" class="status-line" role="status" aria-live="polite"></p>
+          <p class="disclaimer">بدء الاتصال وظهور مشغل الصوت لا يعني أنك سمعته؛ شغّل المقطع من المشغل ثم اضغط تأكيد السماع بعد سماعه فعليًا على الهاتف.</p>
         </section>
         <section class="tab-page" id="tab-features">
           <h2>الميزات</h2>
