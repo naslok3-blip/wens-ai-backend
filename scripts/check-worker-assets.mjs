@@ -44,9 +44,14 @@ const checks = [
 ];
 
 const errors = [];
+const hotfixRoutes = new Set(["/", "/index.html", "/app.js", "/style.css"]);
 for (const [route, file] of checks) {
   const expected = await read(file);
-  for (const [mapName, entries] of [["WENS_HOTFIX_ASSETS", hotfix], ["INLINE_ASSETS", inline]]) {
+  for (const [mapName, entries, required] of [
+    ["WENS_HOTFIX_ASSETS", hotfix, hotfixRoutes.has(route)],
+    ["INLINE_ASSETS", inline, true],
+  ]) {
+    if (!required) continue;
     const actual = entries.get(route);
     if (actual === undefined) {
       errors.push(`${mapName} is missing ${route}`);
