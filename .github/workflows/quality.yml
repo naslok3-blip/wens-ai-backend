@@ -31,6 +31,8 @@ jobs:
           cmp admin.html public/admin.html
           cmp admin.js public/admin.js
           cmp admin.css public/admin.css
+          node --check scripts/check-worker-assets.mjs
+          node scripts/check-worker-assets.mjs
       - name: Verify production Worker, Workers AI, D1 and static assets
         run: |
           set -euo pipefail
