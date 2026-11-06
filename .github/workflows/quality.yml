@@ -22,6 +22,8 @@ jobs:
           node --check admin.js
           node --check public/app.js
           node --check public/admin.js
+          node --check owner-panel.js
+          node --check public/owner-panel.js
       - name: Verify published assets are in sync
         run: |
           cmp index.html public/index.html
@@ -33,6 +35,8 @@ jobs:
           cmp admin.css public/admin.css
           node --check scripts/check-worker-assets.mjs
           node scripts/check-worker-assets.mjs
+          node --check scripts/check-admin-controls.mjs
+          node scripts/check-admin-controls.mjs
       - name: Verify production Worker, Workers AI, D1 and static assets
         run: |
           set -euo pipefail
