@@ -50,6 +50,21 @@ const checks = [
   [worker, "generatedProjectRoute(request", "authenticated project preview and download route"],
   [worker, "Content-Security-Policy", "sandboxed project preview security policy"],
   [worker, "generatedProjects", "project result returned to chat"],
+  [worker, "generated_project_revisions", "saved project version history"],
+  [worker, "async function listWebProjects", "list saved user projects"],
+  [worker, "async function editWebProject", "edit existing saved user projects"],
+  [worker, "async function listWebProjectRevisions", "list saved project revisions"],
+  [worker, "async function restoreWebProjectRevision", "restore saved project revisions"],
+  [worker, 'fn("list_web_projects"', "agent can list saved projects"],
+  [worker, 'fn("edit_web_project"', "agent can edit saved projects"],
+  [worker, 'fn("list_web_project_revisions"', "agent can list project versions"],
+  [worker, 'fn("restore_web_project_revision"', "agent can restore project versions"],
+  [worker, 'if (name === "edit_web_project")', "edit tool dispatch is connected"],
+  [worker, 'if (name === "restore_web_project_revision")', "restore tool dispatch is connected"],
+  [worker, 'name === "edit_web_project"', "project edit tool is allowlisted"],
+  [worker, '["create_web_project","edit_web_project","restore_web_project_revision"].includes(name)', "edited and restored projects return in chat"],
+  [worker, "idx_project_revisions_owner_time", "revision queries are indexed by project and owner"],
+  [worker, "ORDER BY created_at DESC LIMIT 10", "project revisions are retained up to ten versions"],
   [app, "generated-project-preview", "in-chat interactive project preview"],
   [app, 'setAttribute("sandbox","allow-scripts")', "isolated generated project iframe"],
   [index, "إنشاء تطبيق أو لعبة", "chat tool shortcut for apps and games"],
@@ -75,4 +90,4 @@ if (!index.includes('id="voiceBtn" class="voice-input-btn"')) throw new Error("V
 if (!index.includes('id="voiceStatus"')) throw new Error("Accessible voice status is missing.");
 if (app.includes("voiceTestBtn") || app.includes("heroPortrait")) throw new Error("Removed hero controls are still referenced by app.js.");
 if (!admin.includes("metricAccountsEntered") || !admin.includes("metricSuccessfulLogins")) throw new Error("Login-history metrics missing from owner panel.");
-console.log("Wens feature contracts passed: document reading, agent routing, reply deduplication, free Egyptian voice handling and admin features.");
+console.log("Wens feature contracts passed: document reading, agent routing, project editing and rollback, reply deduplication, Egyptian voice handling and admin features.");
