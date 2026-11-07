@@ -113,6 +113,84 @@ function setMetric(id, value) {
   const element = $(id);
   if (element) element.textContent = Number.isFinite(Number(value)) ? Number(value).toLocaleString("ar-EG") : "غير متاح";
 }
+let registeredUsersOffset = 0;
+const registeredUsersPageSize = 25;
+let registeredUsersTotal = 0;
+function renderRegisteredUsers(users) {
+  const list = $("registeredUsersList");
+  if (!list) return;
+  list.replaceChildren();
+  const items = Array.isArray(users) ? users : [];
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "لا توجد حسابات تطابق البحث.";
+    list.append(empty);
+    return;
+  }
+  for (const user of items) {
+    const card = document.createElement("article");
+    card.className = "registered-user-card";
+    const identity = document.createElement("div");
+    identity.className = "registered-user-identity";
+    const name = document.createElement("strong");
+    name.textContent = user.name || "مستخدم ونس";
+    const email = document.createElement("span");
+    email.textContent = user.email || "";
+    identity.append(name, email);
+    const details = document.createElement("div");
+    details.className = "registered-user-details";
+    const fields = [
+      ["تاريخ التسجيل", formatPresenceTime(user.registeredAt)],
+      ["آخر دخول مسجل", formatPresenceTime(user.lastLoginAt)],
+      ["مرات الدخول المسجلة", Number(user.loginCount || 0).toLocaleString("ar-EG")],
+      ["الجلسات النشطة", Number(user.activeSessions || 0).toLocaleString("ar-EG")],
+      ["آخر نشاط", formatPresenceTime(user.lastSeenAt)],
+      ["الرسائل المحفوظة", Number(user.messageCount || 0).toLocaleString("ar-EG")]
+    ];
+    for (const [label, value] of fields) {
+      const item = document.createElement("span");
+      item.textContent = label + ": " + value;
+      details.append(item);
+    }
+    card.append(identity, details);
+    list.append(card);
+  }
+}
+async function refreshRegisteredUsers(reset = false) {
+  const list = $("registeredUsersList");
+  const search = $("usersSearchInput");
+  const previous = $("usersPrevBtn");
+  const next = $("usersNextBtn");
+  const searchButton = $("usersSearchBtn");
+  if (reset) registeredUsersOffset = 0;
+  if (searchButton) searchButton.disabled = true;
+  try {
+    const query = String(search?.value || "").trim().slice(0, 100);
+    const url = "/api/admin/users?limit=" + registeredUsersPageSize +
+      "&offset=" + registeredUsersOffset + "&q=" + encodeURIComponent(query);
+    const data = await request(url);
+    registeredUsersTotal = Number(data.total || 0);
+    renderRegisteredUsers(data.users);
+    const count = $("registeredUsersCount");
+    if (count) count.textContent = registeredUsersTotal.toLocaleString("ar-EG") + " حساب";
+    const first = registeredUsersTotal ? registeredUsersOffset + 1 : 0;
+    const last = Math.min(registeredUsersOffset + registeredUsersPageSize, registeredUsersTotal);
+    $("usersPageStatus").textContent = first.toLocaleString("ar-EG") + "–" + last.toLocaleString("ar-EG") +
+      " من " + registeredUsersTotal.toLocaleString("ar-EG");
+    if (previous) previous.disabled = registeredUsersOffset <= 0;
+    if (next) next.disabled = registeredUsersOffset + registeredUsersPageSize >= registeredUsersTotal;
+  } catch (error) {
+    if (list) list.textContent = error.message || "تعذّر تحميل بيانات الحسابات.";
+    if (previous) previous.disabled = true;
+    if (next) next.disabled = true;
+    const count = $("registeredUsersCount");
+    if (count) count.textContent = "تعذّر التحميل";
+    $("usersPageStatus").textContent = "تحقق من جلسة المدير واتصال قاعدة البيانات.";
+  } finally {
+    if (searchButton) searchButton.disabled = false;
+  }
+}
 function formatPresenceTime(seconds) {
   if (!seconds) return "غير متاح";
   return new Date(seconds * 1000).toLocaleString("ar-EG");
@@ -159,6 +237,8 @@ async function refreshDiagnostics() {
     const features = data.features || {};
     const tables = data.tables || {};
     setMetric("metricUsers", counts.users);
+    setMetric("metricAccountsEntered", counts.accountsEntered);
+    setMetric("metricSuccessfulLogins", counts.successfulLogins);
     setMetric("metricSessions", counts.activeSessions);
     setMetric("metricMessages", counts.messages);
     setMetric("metricTasks", counts.activeAgentTasks);
@@ -171,6 +251,7 @@ async function refreshDiagnostics() {
     setDiagnostic("diagTables", tables.missing?.length ? "جداول ناقصة: " + tables.missing.join("، ") : "الجداول الأساسية موجودة", !(tables.missing?.length));
     const when = data.checkedAt ? new Date(data.checkedAt).toLocaleString("ar-EG") : "";
     $("diagnosticsStatus").textContent = "اكتمل فحص الأرقام والإعدادات الإجمالية " + when + ". لا يتضمن الفحص محتوى محادثات أو أسرارًا.";
+    await refreshRegisteredUsers(false);
   } catch (error) {
     $("diagnosticsStatus").textContent = error.message || "تعذّر جلب تشخيص الخادم.";
   } finally {
@@ -237,6 +318,20 @@ $("adminLogoutBtn").addEventListener("click", async () => {
 $("refreshStatusBtn").addEventListener("click", refreshStatus);
 $("refreshDiagnosticsBtn").addEventListener("click", refreshDiagnostics);
 $("refreshOnlineUsersBtn")?.addEventListener("click", refreshDiagnostics);
+$("usersSearchBtn")?.addEventListener("click", () => refreshRegisteredUsers(true));
+$("usersSearchInput")?.addEventListener("keydown", event => {
+  if (event.key === "Enter") { event.preventDefault(); refreshRegisteredUsers(true); }
+});
+$("usersPrevBtn")?.addEventListener("click", () => {
+  registeredUsersOffset = Math.max(0, registeredUsersOffset - registeredUsersPageSize);
+  refreshRegisteredUsers(false);
+});
+$("usersNextBtn")?.addEventListener("click", () => {
+  if (registeredUsersOffset + registeredUsersPageSize < registeredUsersTotal) {
+    registeredUsersOffset += registeredUsersPageSize;
+    refreshRegisteredUsers(false);
+  }
+});
 setInterval(() => { if (!$("adminApp")?.hidden) refreshDiagnostics(); }, 30000);
 $("testAgentBtn").addEventListener("click", async () => {
   const button = $("testAgentBtn");
