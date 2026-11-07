@@ -966,7 +966,7 @@ async function runAgentBrowser(env, user, db, task, options = {}) {
   }
 }
 
-const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب، ثم استخدمي أدوات ونس الفعلية عندما تفيد: الحساب، إنشاء المهام وتعديلها وتحديد مواعيدها وأولوياتها، إنجازها، أرشفتها واستعادتها، والبحث في سجل محادثات المستخدم نفسه. لا تنفذي إلا ما تسمح به الأدوات. يمكنك الآن البحث في الويب وقراءة المواقع العامة، وفتح جلسة متصفح خاصة بالمستخدم للتنقل وقراءة الصفحات والضغط على الروابط والأزرار العادية وملء الحقول غير الحساسة. لا تطلبي كلمة مرور أو رمز تحقق أو رقم بطاقة في الشات؛ أرسلي رابط Live View المؤقت ليُدخل المستخدم بيانات تسجيل الدخول بنفسه داخل المتصفح. لا تضغطي أزرار الدفع والشراء والتحويل والحذف والإرسال والنشر أو اعتماد التغييرات النهائية، ولا تنفذي معاملات مالية أو إجراءات لا يمكن التراجع عنها. لا تطلبي تأكيدًا على البحث أو القراءة أو التنقل أو ملء الحقول غير الحساسة؛ نفذيها مباشرة. الأرشفة قابلة للاسترجاع وليست حذفًا نهائيًا. إذا طلب المستخدم إنشاء تطبيق أو لعبة، استدعي أداة create_web_project بدل الاكتفاء بشرح أو مقتطفات كود. أنشئي نسخة ويب تفاعلية كاملة واحفظيها واعرضي معاينتها ورابط تحميلها. لا تدّعي إنشاء APK أصلي أو نشر عام؛ الأداة تنتج مشروع ويب مستقلًا قابلًا للتجربة والتنزيل. كوني طبيعية واذكري بدقة ما تم وما لم يتم.`;
+const AGENT_SYSTEM_PROMPT = "أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب وحددي نتيجة قابلة للتحقق، ثم استخدمي أدوات ونس الفعلية بدل الاكتفاء بالنصائح عندما يكون التنفيذ متاحًا. رتّبي المهام الكبيرة إلى خطوات قصيرة، ونفّذي الخطوات الآمنة مباشرة، ثم افحصي نتيجة كل أداة قبل الانتقال للخطوة التالية. لا تعرضي التفكير الداخلي؛ اكتفي بذكر ملخص الخطة والنتيجة للمستخدم. استخدمي أدوات الحساب، والبحث في الويب وقراءة المواقع العامة، والمتصفح الخاص بالمستخدم، وإدارة المهام، والبحث في سجل محادثاته. عند إنشاء تطبيق أو لعبة استخدمي create_web_project واحفظي المشروع واعرضي المعاينة والتنزيل. عند طلب تعديل مشروع سابق، استخدمي list_web_projects لتحديده ثم edit_web_project، ولا تعيدي إنشاءه من الصفر. احتفظي بالنسخ السابقة؛ وعند طلب التراجع اعرضي list_web_project_revisions ثم استخدمي restore_web_project_revision للنسخة التي اختارها المستخدم. لا تدّعي اختبارًا لم تنفذيه أو إنشاء APK أصلي أو نشرًا عامًا؛ الأداة تنتج تطبيق ويب مستقلًا فقط. لا تنفذي إلا العمليات التي تسمح بها الأدوات، ولا تخترعي صلاحيات أو اتصالات خارجية غير موجودة. لا تطلبي كلمة مرور أو رمز تحقق أو رقم بطاقة في الشات؛ أرسلي رابط Live View المؤقت ليُدخل المستخدم بيانات تسجيل الدخول بنفسه. لا تضغطي أزرار الدفع والشراء والتحويل والحذف النهائي والإرسال والنشر أو اعتماد التغييرات غير القابلة للتراجع. لا تطلبي تأكيدًا على البحث أو القراءة أو التنقل أو ملء الحقول غير الحساسة؛ نفذيها مباشرة. لا تحفظي كلمات المرور أو مفاتيح API أو الأسرار داخل المحادثات أو المشروعات. كوني طبيعية باللهجة المصرية، واذكري بوضوح ما نجح وما تعذّر.";
 let agentTasksReady;
 async function ensureAgentTasks(db) {
   if (!agentTasksReady) {
@@ -1064,6 +1064,21 @@ function agentTools() {
       title: { type: "string", description: "Project title." },
       prompt: { type: "string", description: "Detailed project requirements, features and interactions." }
     }, ["kind", "prompt"]),
+    fn("list_web_projects", "List this signed-in user's saved web apps and games. Use this before editing a previous project when its exact id is not already known.", {
+      limit: { type: "integer", description: "Maximum projects to list, from 1 to 10." }
+    }),
+    fn("edit_web_project", "Modify one of this signed-in user's saved web apps or games. Preserve existing features, save a previous version, and return updated preview and download links.", {
+      id: { type: "string", description: "Exact project id from list_web_projects." },
+      prompt: { type: "string", description: "Specific changes to implement in the existing project." }
+    }, ["id", "prompt"]),
+    fn("list_web_project_revisions", "List saved previous versions of one of this user's projects so a version can be restored.", {
+      project_id: { type: "string", description: "Exact project id from list_web_projects." },
+      limit: { type: "integer", description: "Maximum revisions to list, from 1 to 10." }
+    }, ["project_id"]),
+    fn("restore_web_project_revision", "Restore one previously saved version of a project. The current version is saved first so the restore is reversible.", {
+      project_id: { type: "string", description: "Exact project id from list_web_projects." },
+      revision_id: { type: "string", description: "Exact revision id from list_web_project_revisions." }
+    }, ["project_id", "revision_id"]),
     fn("calculate", "Calculate a simple arithmetic expression using numbers, parentheses, decimals, +, -, *, /, and remainder.", {
       expression: { type: "string", description: "Arithmetic expression, for example (1250 * 3.5) + 80." }
     }, ["expression"]),
@@ -1121,6 +1136,8 @@ async function ensureGeneratedProjects(db) {
     generatedProjectsSchemaReady = (async () => {
       await db.prepare("CREATE TABLE IF NOT EXISTS generated_projects (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('app','game')), description TEXT NOT NULL DEFAULT '', html TEXT NOT NULL, created_at INTEGER NOT NULL)").run();
       await db.prepare("CREATE INDEX IF NOT EXISTS idx_generated_projects_user_created ON generated_projects(user_id, created_at DESC)").run();
+      await db.prepare("CREATE TABLE IF NOT EXISTS generated_project_revisions (id TEXT PRIMARY KEY NOT NULL, project_id TEXT NOT NULL REFERENCES generated_projects(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, html TEXT NOT NULL, edit_request TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_project_revisions_owner_time ON generated_project_revisions(project_id, user_id, created_at DESC)").run();
     })().catch(error => { generatedProjectsSchemaReady = null; throw error; });
   }
   await generatedProjectsSchemaReady;
@@ -1223,6 +1240,205 @@ async function generatedProjectRoute(request,env,user,projectId,action) {
   return new Response(project.html,{status:200,headers:{...headers,"Content-Security-Policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'; frame-ancestors 'self'"}});
 }
 
+
+function normalizeGeneratedProjectHtml(output) {
+  let html = String(output || "").trim();
+  const fence = String.fromCharCode(96).repeat(3);
+  if (html.startsWith(fence)) {
+    html = html.replace(/^\x60{3}(?:html)?\s*/i, "").replace(/\s*\x60{3}\s*$/, "");
+  }
+  const start = html.search(/<!doctype html|<html(?:\s|>)/i);
+  if (start >= 0) html = html.slice(start).trim();
+  if (!/<html(?:\s|>)/i.test(html) || !/<\/html>/i.test(html)) {
+    return { error: "النموذج لم يُرجع صفحة HTML كاملة وصالحة." };
+  }
+  if (html.length > 90000) return { error: "المشروع أكبر من الحد المسموح به (90 ألف حرف)." };
+  if (/<script\b[^>]*\bsrc\s*=|<iframe\b|<object\b|<embed\b/i.test(html)) {
+    return { error: "المشروع يحتوي موردًا خارجيًا أو إطارًا غير مسموح." };
+  }
+  return { html };
+}
+
+async function listWebProjects(env, user, args = {}) {
+  if (!env.DB || !user) return { error: "سجّل الدخول أولًا للوصول إلى مشروعاتك." };
+  await ensureGeneratedProjects(env.DB);
+  const limit = Math.min(10, Math.max(1, Number(args.limit) || 8));
+  const rows = await env.DB.prepare(
+    "SELECT id,title,kind,description,created_at FROM generated_projects WHERE user_id=? ORDER BY created_at DESC LIMIT ?"
+  ).bind(user.id, limit).all();
+  return {
+    projects: (rows.results || []).map(row => ({
+      id: row.id,
+      title: row.title,
+      kind: row.kind,
+      description: String(row.description || "").slice(0, 240),
+      createdAt: row.created_at,
+      previewPath: "/api/projects/" + row.id + "/preview",
+      downloadPath: "/api/projects/" + row.id + "/download"
+    }))
+  };
+}
+
+async function editWebProject(env, user, args = {}) {
+  if (!env.DB || !user) return { error: "سجّل الدخول أولًا لتعديل مشروعاتك." };
+  if (!env.AI) return { error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." };
+  const id = String(args.id || "").trim();
+  const prompt = String(args.prompt || "").trim().slice(0, 2200);
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { error: "معرّف المشروع غير صالح. اعرض مشروعاتك أولًا." };
+  if (prompt.length < 4) return { error: "اكتب التعديل المطلوب بوضوح." };
+  await ensureGeneratedProjects(env.DB);
+  const project = await env.DB.prepare(
+    "SELECT id,title,kind,description,html,created_at FROM generated_projects WHERE id=? AND user_id=? LIMIT 1"
+  ).bind(id, user.id).first();
+  if (!project) return { error: "لم أجد هذا المشروع داخل حسابك." };
+  const originalHtml = String(project.html || "");
+  if (originalHtml.length > 45000) {
+    return { error: "المشروع كبير جدًا للتعديل الآلي في النسخة المجانية الحالية. اطلب تعديل جزء أصغر أو أنشئ نسخة أخف." };
+  }
+  const model = env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash";
+  const system = [
+    "You are a senior frontend engineer modifying an existing standalone HTML5 application.",
+    "Return only the complete updated HTML document. Preserve all existing working features unless the user explicitly requests a change.",
+    "Implement the requested change, do not merely explain it. Keep responsive mobile-first layout, accessible controls, and working vanilla JavaScript.",
+    "Do not add external libraries, CDNs, remote assets, fetch/network requests, WebSockets, cookies, service workers, iframes, eval, dynamic imports, payments, analytics, trackers, or login flows.",
+    "For Arabic projects keep RTL direction and Egyptian-friendly labels. Keep the existing language unless the request asks otherwise.",
+    "Do not remove data, features, screens, or user content unrelated to the requested change. Output the entire HTML document only."
+  ].join("\n");
+  try {
+    const result = await env.AI.run(model, {
+      messages: [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: "Project title: " + String(project.title || "Wens project") +
+            "\nProject type: " + String(project.kind || "app") +
+            "\nChange request: " + prompt +
+            "\n\nCurrent complete HTML source:\n" + originalHtml +
+            "\n\nReturn the complete updated standalone HTML document only."
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 5200,
+      chat_template_kwargs: { enable_thinking: false }
+    });
+    const message = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
+    const raw = typeof message?.content === "string"
+      ? message.content
+      : typeof result?.response === "string" ? result.response : "";
+    const normalized = normalizeGeneratedProjectHtml(raw);
+    if (normalized.error) return { error: normalized.error + " لم يتم تغيير النسخة المحفوظة." };
+    const now = Math.floor(Date.now() / 1000);
+    const revisionId = crypto.randomUUID();
+    const updateResults = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO generated_project_revisions (id,project_id,user_id,html,edit_request,created_at) VALUES (?,?,?,?,?,?)"
+      ).bind(revisionId, id, user.id, originalHtml, prompt, now),
+      env.DB.prepare(
+        "UPDATE generated_projects SET html=? WHERE id=? AND user_id=?"
+      ).bind(normalized.html, id, user.id),
+      env.DB.prepare(
+        "DELETE FROM generated_project_revisions WHERE project_id=? AND user_id=? AND id NOT IN (SELECT id FROM generated_project_revisions WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 10)"
+      ).bind(id, user.id, id, user.id)
+    ]);
+    if (!updateResults?.[1]?.meta || updateResults[1].meta.changes < 1) {
+      return { error: "لم أستطع حفظ التعديل. النسخة الأصلية لم تتغير." };
+    }
+    return {
+      ok: true,
+      project: {
+        id,
+        title: project.title,
+        kind: project.kind,
+        description: project.description || "",
+        createdAt: project.created_at,
+        updatedAt: now,
+        revisionId,
+        previewPath: "/api/projects/" + id + "/preview",
+        downloadPath: "/api/projects/" + id + "/download"
+      },
+      message: "تم تعديل المشروع وحفظ نسخة سابقة قابلة للاستعادة."
+    };
+  } catch (error) {
+    const raw = String(error?.message || error || "unknown");
+    const detail = raw.replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]").slice(0, 180);
+    console.error("[WENS_PROJECT_EDIT_FAILURE]", detail);
+    return {
+      error: /quota|billing|payment|neurons|allocation/i.test(raw)
+        ? "وصل نموذج البرمجة إلى حد الاستخدام المجاني الحالي. النسخة الأصلية محفوظة كما هي."
+        : "تعذّر تعديل المشروع الآن. النسخة الأصلية محفوظة كما هي."
+    };
+  }
+}
+
+async function listWebProjectRevisions(env, user, args = {}) {
+  if (!env.DB || !user) return { error: "سجّل الدخول أولًا للوصول إلى مشروعاتك." };
+  const projectId = String(args.project_id || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(projectId)) return { error: "معرّف المشروع غير صالح." };
+  await ensureGeneratedProjects(env.DB);
+  const owned = await env.DB.prepare(
+    "SELECT id FROM generated_projects WHERE id=? AND user_id=? LIMIT 1"
+  ).bind(projectId, user.id).first();
+  if (!owned) return { error: "المشروع غير موجود في حسابك." };
+  const limit = Math.min(10, Math.max(1, Number(args.limit) || 10));
+  const rows = await env.DB.prepare(
+    "SELECT id,edit_request,created_at FROM generated_project_revisions WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT ?"
+  ).bind(projectId, user.id, limit).all();
+  return {
+    revisions: (rows.results || []).map(row => ({
+      id: row.id,
+      change: String(row.edit_request || "").slice(0, 220),
+      createdAt: row.created_at
+    }))
+  };
+}
+
+async function restoreWebProjectRevision(env, user, args = {}) {
+  if (!env.DB || !user) return { error: "سجّل الدخول أولًا لاستعادة مشروع." };
+  const projectId = String(args.project_id || "").trim();
+  const revisionId = String(args.revision_id || "").trim();
+  if (!/^[0-9a-f-]{36}$/i.test(projectId) || !/^[0-9a-f-]{36}$/i.test(revisionId)) {
+    return { error: "معرّف المشروع أو النسخة السابقة غير صالح." };
+  }
+  await ensureGeneratedProjects(env.DB);
+  const project = await env.DB.prepare(
+    "SELECT id,title,kind,description,html,created_at FROM generated_projects WHERE id=? AND user_id=? LIMIT 1"
+  ).bind(projectId, user.id).first();
+  if (!project) return { error: "المشروع غير موجود في حسابك." };
+  const revision = await env.DB.prepare(
+    "SELECT html FROM generated_project_revisions WHERE id=? AND project_id=? AND user_id=? LIMIT 1"
+  ).bind(revisionId, projectId, user.id).first();
+  if (!revision) return { error: "النسخة السابقة غير موجودة لهذا المشروع." };
+  const now = Math.floor(Date.now() / 1000);
+  const snapshotId = crypto.randomUUID();
+  const updateResults = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO generated_project_revisions (id,project_id,user_id,html,edit_request,created_at) VALUES (?,?,?,?,?,?)"
+    ).bind(snapshotId, projectId, user.id, project.html, "نسخة احتياطية قبل الاستعادة", now),
+    env.DB.prepare(
+      "UPDATE generated_projects SET html=? WHERE id=? AND user_id=?"
+    ).bind(revision.html, projectId, user.id),
+    env.DB.prepare(
+      "DELETE FROM generated_project_revisions WHERE project_id=? AND user_id=? AND id NOT IN (SELECT id FROM generated_project_revisions WHERE project_id=? AND user_id=? ORDER BY created_at DESC LIMIT 10)"
+    ).bind(projectId, user.id, projectId, user.id)
+  ]);
+  if (!updateResults?.[1]?.meta || updateResults[1].meta.changes < 1) {
+    return { error: "تعذّرت استعادة النسخة السابقة؛ لم تتغير النسخة الحالية." };
+  }
+  return {
+    ok: true,
+    project: {
+      id: projectId,
+      title: project.title,
+      kind: project.kind,
+      description: project.description || "",
+      createdAt: project.created_at,
+      updatedAt: now,
+      previewPath: "/api/projects/" + projectId + "/preview",
+      downloadPath: "/api/projects/" + projectId + "/download"
+    }
+  };
+}
+
 async function executeAgentTool(name, args, env, user) {
   if (name === "get_current_time") return { now: new Date().toISOString() };
   if (name === "calculate") {
@@ -1302,6 +1518,10 @@ async function executeAgentTool(name, args, env, user) {
   }
   if (!env.DB || !user) return { error: "يلزم تسجيل الدخول إلى حساب ونس للوصول إلى بياناتك الخاصة." };
   if (name === "create_web_project") return await createWebProject(env,user,args || {});
+  if (name === "list_web_projects") return await listWebProjects(env,user,args || {});
+  if (name === "edit_web_project") return await editWebProject(env,user,args || {});
+  if (name === "list_web_project_revisions") return await listWebProjectRevisions(env,user,args || {});
+  if (name === "restore_web_project_revision") return await restoreWebProjectRevision(env,user,args || {});
   await ensureAgentTasks(env.DB);
   if (name === "browser_open" || name === "browser_inspect" || name === "browser_click" || name === "browser_fill") {
     if (!env.BROWSER) return { error: "خدمة المتصفح الخارجي غير مربوطة على الخادم." };
@@ -1714,7 +1934,7 @@ async function handleAgent(request, env, user, options = {}) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
-        const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project"];
+        const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project","list_web_projects","edit_web_project","list_web_project_revisions","restore_web_project_revision"];
         if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
         let output;
         if (name === "generate_image" || name === "edit_image") {
@@ -1730,7 +1950,7 @@ async function handleAgent(request, env, user, options = {}) {
         } else {
           output = await executeAgentTool(name,args || {},env,user);
         }
-        if (name === "create_web_project" && output?.project) generatedProjects.push(output.project);
+        if (["create_web_project","edit_web_project","restore_web_project_revision"].includes(name) && output?.project) generatedProjects.push(output.project);
         if (toolAudit && name === "calculate") {
           toolAudit.push({
             expression: String(args?.expression || ""),
@@ -1751,6 +1971,10 @@ async function handleAgent(request, env, user, options = {}) {
           generate_image: "إنشاء صورة بالذكاء الاصطناعي",
           edit_image: "تعديل الصورة المرفقة",
           create_web_project: "إنشاء تطبيق أو لعبة تفاعلية",
+          list_web_projects: "عرض مشروعاتك المحفوظة",
+          edit_web_project: "تعديل مشروع محفوظ وحفظ نسخة سابقة",
+          list_web_project_revisions: "عرض نسخ المشروع السابقة",
+          restore_web_project_revision: "استعادة نسخة سابقة من المشروع",
           search_web: "البحث في المواقع العامة",
           open_webpage: "قراءة صفحة ويب",
           browser_open: "فتح موقع في المتصفح",
