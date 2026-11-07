@@ -225,8 +225,8 @@ jobs:
           python scripts/make-acceptance-documents.py > /tmp/wens-accept-documents.json
           DOC_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 150 \
             -o /tmp/wens-accept-documents-result.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt \
-            -H 'Content-Type: application/json' -X POST --data-binary @/tmp/wens-accept-documents.json \
-            "$BASE/api/agent")
+            -H 'Content-Type: application/json' -H 'X-Wens-Diagnostics: acceptance-suite' \
+            -X POST --data-binary @/tmp/wens-accept-documents.json "$BASE/api/agent")
           if [ "$DOC_STATUS" != "200" ]; then cat /tmp/wens-accept-documents-result.json; exit 1; fi
           python - <<'PY'
           import json
@@ -234,10 +234,15 @@ jobs:
           steps=d.get('steps') or []
           reply=str(d.get('reply',''))
           tokens=['WENS_PDF_TOKEN_7391','WENS_DOCX_TOKEN_8426','WENS_XLSX_TOKEN_9513']
+          audit=d.get('documentAudit') or {}
+          preview=str(audit.get('preview',''))
           assert d.get('ok') is True, d
           assert any('قراءة محتوى PDF' in str(s) for s in steps), steps
-          missing=[x for x in tokens if x not in reply]
-          assert not missing, {'missing':missing,'reply':reply,'steps':steps}
+          assert audit.get('extractedCharacters',0)>0, {'audit':audit,'steps':steps}
+          missing_from_extraction=[x for x in tokens if x not in preview]
+          assert not missing_from_extraction, {'missing_from_extraction':missing_from_extraction,'audit':audit}
+          missing_from_reply=[x for x in tokens if x not in reply]
+          assert not missing_from_reply, {'missing_from_reply':missing_from_reply,'reply':reply,'audit':audit}
           print("PDF/DOCX/XLSX contents extracted and all three marker strings returned: OK")
           PY
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-accept-cookie.txt \
