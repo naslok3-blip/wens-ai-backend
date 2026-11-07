@@ -22,6 +22,8 @@ jobs:
           node --check admin.js
           node --check public/app.js
           node --check public/admin.js
+          node --check owner-panel.js
+          node --check public/owner-panel.js
       - name: Verify published assets are in sync
         run: |
           cmp index.html public/index.html
@@ -31,6 +33,12 @@ jobs:
           cmp admin.html public/admin.html
           cmp admin.js public/admin.js
           cmp admin.css public/admin.css
+          node --check scripts/check-worker-assets.mjs
+          node scripts/check-worker-assets.mjs
+          node --check scripts/check-admin-controls.mjs
+          node scripts/check-admin-controls.mjs
+          node --check scripts/check-feature-contracts.mjs
+          node scripts/check-feature-contracts.mjs
       - name: Verify production Worker, Workers AI, D1 and static assets
         run: |
           set -euo pipefail
@@ -66,6 +74,14 @@ jobs:
           CI_PASSWORD: Wens-CI-${{ github.run_id }}-${{ github.run_attempt }}-Test!
         run: |
           set -euo pipefail
+          CI_SESSION_ACTIVE=0
+          cleanup_ci_session() {
+            if [ "$CI_SESSION_ACTIVE" = "1" ]; then
+              curl --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt \
+                -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null || true
+            fi
+          }
+          trap cleanup_ci_session EXIT
           echo "Creating isolated CI account"
           REGISTER_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
             -o /tmp/wens-register.json -w '%{http_code}' -c /tmp/wens-cookie.txt \
@@ -85,6 +101,7 @@ jobs:
           print("Registration: OK")
           PY
           test "$REGISTER_STATUS" = "200"
+          CI_SESSION_ACTIVE=1
           ME_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
             -o /tmp/wens-me-register.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
             "$BASE/api/auth/me")
@@ -96,12 +113,14 @@ jobs:
           PY
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt -c /tmp/wens-cookie.txt \
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
+          CI_SESSION_ACTIVE=0
           LOGIN_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
             -o /tmp/wens-login.json -w '%{http_code}' -c /tmp/wens-cookie.txt \
             -H 'Content-Type: application/json' -X POST \
             --data "$(python -c 'import json,os; print(json.dumps({"email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
             "$BASE/api/auth/login")
           test "$LOGIN_STATUS" = "200"
+          CI_SESSION_ACTIVE=1
           ME_LOGIN_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
             -o /tmp/wens-me-login.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
             "$BASE/api/auth/me")
@@ -176,7 +195,121 @@ jobs:
           echo "CI test account for post-run cleanup: $CI_EMAIL"
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt \
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
+          CI_SESSION_ACTIVE=0
+      - name: Verify preview owner console layout and static assets
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
+        env:
+          BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/admin.html" -o /tmp/wens-preview-admin.html
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/style.css" -o /tmp/wens-preview-style.css
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/admin.css" -o /tmp/wens-preview-admin.css
+          grep -q '<body class="admin-page">' /tmp/wens-preview-admin.html
+          grep -q 'content="#f4f7fb"' /tmp/wens-preview-admin.html
+          grep -q 'position:fixed!important' /tmp/wens-preview-style.css
+          grep -q 'height:100dvh' /tmp/wens-preview-style.css
+          grep -q 'background:#f4f7fb' /tmp/wens-preview-admin.css
+          grep -q 'overflow-y:auto' /tmp/wens-preview-admin.css
+          echo "Preview admin page, full-screen layout and white theme: OK"
+      - name: Live agent and PDF Word Excel acceptance test
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
+          CI_EMAIL: wens-accept-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+          CI_PASSWORD: Wens-Accept-${{ github.run_id }}-${{ github.run_attempt }}-Test!
+        run: |
+          set -euo pipefail
+          CI_SESSION_ACTIVE=0
+          cleanup_ci_session() {
+            if [ "$CI_SESSION_ACTIVE" = "1" ]; then
+              curl --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-accept-cookie.txt \
+                -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null || true
+            fi
+          }
+          trap cleanup_ci_session EXIT
+          echo "Waiting for the new production admin UI to be deployed"
+          deployed=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.html" -o /tmp/wens-production-admin.html; then
+              if grep -q '<body class="admin-page">' /tmp/wens-production-admin.html; then
+                deployed=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          test "$deployed" = "1"
+          echo "Production white admin UI is live"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/api/health" -o /tmp/wens-production-health.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/wens-production-health.json',encoding='utf-8'))
+          features=data.get('features',{})
+          assert data.get('ok') is True, data
+          assert features.get('documentReadingConfigured') is True, "Production document-reading service is not configured"
+          print("Production document-reading service: configured")
+          PY
+          echo "Registering an isolated acceptance-test account"
+          REGISTER_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+            -o /tmp/wens-accept-register.json -w '%{http_code}' -c /tmp/wens-accept-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data "$(python -c 'import json,os; print(json.dumps({"name":"Wens Acceptance Test","email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
+            "$BASE/api/auth/register")
+          if [ "$REGISTER_STATUS" != "200" ]; then cat /tmp/wens-accept-register.json; exit 1; fi
+          CI_SESSION_ACTIVE=1
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/wens-accept-register.json',encoding='utf-8'))
+          assert d.get('ok') is True and d.get('user',{}).get('id'), d
+          print("Isolated account and session: OK")
+          PY
+          echo "Testing real agent tool execution (19 * 23)"
+          AGENT_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 120 \
+            -o /tmp/wens-accept-agent.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data '{"message":"استخدمي أداة calculate إلزاميًا لحساب 19 * 23. لا تحسبي ذهنيًا. اكتبي الناتج النهائي بالأرقام الإنجليزية هكذا: 437."}' \
+            "$BASE/api/agent")
+          if [ "$AGENT_STATUS" != "200" ]; then cat /tmp/wens-accept-agent.json; exit 1; fi
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/wens-accept-agent.json',encoding='utf-8'))
+          steps=d.get('steps') or []
+          assert d.get('ok') is True, d
+          assert any('إجراء حساب' in str(s) and str(s).endswith('— تم') for s in steps), steps
+          assert '437' in str(d.get('reply','')), d.get('reply')
+          print("Agent calculator tool and exact 437 response: OK")
+          PY
+          echo "Generating non-sensitive PDF, DOCX and XLSX samples"
+          python scripts/make-acceptance-documents.py > /tmp/wens-accept-documents.json
+          DOC_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 150 \
+            -o /tmp/wens-accept-documents-result.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt \
+            -H 'Content-Type: application/json' -H 'X-Wens-Diagnostics: acceptance-suite' \
+            -X POST --data-binary @/tmp/wens-accept-documents.json "$BASE/api/agent")
+          if [ "$DOC_STATUS" != "200" ]; then cat /tmp/wens-accept-documents-result.json; exit 1; fi
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/wens-accept-documents-result.json',encoding='utf-8'))
+          steps=d.get('steps') or []
+          reply=str(d.get('reply',''))
+          tokens=['WENS_PDF_TOKEN_7391','WENS_DOCX_TOKEN_8426','WENS_XLSX_TOKEN_9513']
+          audit=d.get('documentAudit')
+          assert d.get('ok') is True, d
+          assert any('قراءة محتوى PDF' in str(s) for s in steps), steps
+          if audit:
+              preview=str(audit.get('preview',''))
+              assert audit.get('extractedCharacters',0)>0, {'audit':audit,'steps':steps}
+              missing_from_extraction=[x for x in tokens if x not in preview]
+              assert not missing_from_extraction, {'missing_from_extraction':missing_from_extraction,'audit':audit}
+          else:
+              print("Production Worker has no documentAudit field; validating the actual answer instead.")
+          missing_from_reply=[x for x in tokens if x not in reply]
+          assert not missing_from_reply, {'missing_from_reply':missing_from_reply,'reply':reply,'audit':audit}
+          print("PDF/DOCX/XLSX contents read and all three marker strings returned: OK")
+          PY
+          echo "Live agent and three-format document acceptance: OK"
       - name: Verify deployed HTML, JavaScript, CSS and avatar assets
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
@@ -192,6 +325,9 @@ jobs:
           grep -q 'data-action="deep"' /tmp/wens-index.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
           grep -q 'Cloudflare AI' /tmp/wens-app.js
+          grep -q 'WensPlayVoicePreview' /tmp/wens-app.js
+          grep -q 'adminVoicePreviewDock' /tmp/wens-app.js
+          grep -q 'fetch("/api/voice/connect"' /tmp/wens-app.js
           grep -q 'updateAdminShortcut' /tmp/wens-app.js
           grep -q 'addSelectedFile' /tmp/wens-app.js
           grep -q 'attachmentPayload' /tmp/wens-app.js
@@ -216,9 +352,13 @@ jobs:
           grep -q 'id="adminSetupForm"' /tmp/wens-admin.html
           grep -q 'id="showAdminResetBtn"' /tmp/wens-admin.html
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js" -o /tmp/wens-admin.js
-          grep -q '/api/auth/me' /tmp/wens-admin.js
+          grep -q '/api/admin/status' /tmp/wens-admin.js
+          grep -q '/api/admin/diagnostics' /tmp/wens-admin.js
+          grep -q '/api/admin/settings' /tmp/wens-admin.js
+          grep -q 'voicePreviewBtn' /tmp/wens-admin.js
           echo "Production Wens portrait, chat and same-page admin assets: OK"
       - name: Verify owner-only admin and shared settings API
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"

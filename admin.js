@@ -5,8 +5,8 @@ const defaults = {
   welcomeText: "اتكلم معايا واسألني اللي في بالك.",
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
-  voiceRate: 0.96, voicePitch: 1.12, theme: "purple",
-  enableVoice: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
+  voiceRate: 0.96, theme: "purple",
+  enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
@@ -75,7 +75,6 @@ function readForm() {
 }
 function updateRanges() {
   $("rateOut").value = Number($("voiceRate").value).toFixed(2);
-  $("pitchOut").value = Number($("voicePitch").value).toFixed(2);
 }
 function setState(id, label, ready) {
   const element = $(id);
@@ -89,6 +88,8 @@ async function refreshStatus() {
     const f = data.features || {};
     setState("workersAiState", f.workersAI ? "متصل ويعمل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
+    setState("voiceState", f.naturalVoiceConfigured ? "المفتاح مربوط — اختبر السماع" : "غير مربوط", !!f.naturalVoiceConfigured);
+    setState("browserState", f.browserConfigured ? "الربط موجود" : "غير مربوط", !!f.browserConfigured);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
     $("databaseDetail").textContent = !f.databaseConfigured ? "لم يتم ربط D1 بعد" : !f.databaseConnected ? "تعذّر الاتصال بقاعدة البيانات" : f.settingsStorageReady ? "الجداول وحفظ الإعدادات جاهزة" : "تخزين الإعدادات يحتاج مراجعة";
     $("checkedAt").textContent = "آخر فحص: " + new Date(data.checkedAt).toLocaleString("ar-EG");
@@ -102,11 +103,50 @@ async function refreshStatus() {
     }
   } finally { $("refreshStatusBtn").disabled = false; }
 }
+function setDiagnostic(id, text, ready) {
+  const element = $(id);
+  if (!element) return;
+  element.textContent = text;
+  element.className = ready ? "state-ready" : "state-off";
+}
+function setMetric(id, value) {
+  const element = $(id);
+  if (element) element.textContent = Number.isFinite(Number(value)) ? Number(value).toLocaleString("ar-EG") : "غير متاح";
+}
+async function refreshDiagnostics() {
+  const button = $("refreshDiagnosticsBtn");
+  if (button) button.disabled = true;
+  try {
+    const data = await request("/api/admin/diagnostics");
+    const counts = data.counts || {};
+    const features = data.features || {};
+    const tables = data.tables || {};
+    setMetric("metricUsers", counts.users);
+    setMetric("metricSessions", counts.activeSessions);
+    setMetric("metricMessages", counts.messages);
+    setMetric("metricTasks", counts.activeAgentTasks);
+    setMetric("metricTools", data.agent?.toolCount);
+    setDiagnostic("diagWorkersAI", features.workersAI ? "مربوط" : "غير مربوط", !!features.workersAI);
+    setDiagnostic("diagDatabase", features.databaseConnected ? "متصلة" : "غير متصلة", !!features.databaseConnected);
+    setDiagnostic("diagVoice", features.naturalVoiceConfigured ? "المفتاح موجود — يلزم سماع فعلي" : "غير مهيأ", !!features.naturalVoiceConfigured);
+    setDiagnostic("diagDocuments", features.documentReadingConfigured ? "المفتاح موجود — اختبر ملفًا" : "غير مهيأ", !!features.documentReadingConfigured);
+    setDiagnostic("diagBrowser", features.browserConfigured ? "الربط موجود — لم يُختبر التصفح" : "غير مربوط", !!features.browserConfigured);
+    setDiagnostic("diagTables", tables.missing?.length ? "جداول ناقصة: " + tables.missing.join("، ") : "الجداول الأساسية موجودة", !(tables.missing?.length));
+    const when = data.checkedAt ? new Date(data.checkedAt).toLocaleString("ar-EG") : "";
+    $("diagnosticsStatus").textContent = "اكتمل فحص الأرقام والإعدادات الإجمالية " + when + ". لا يتضمن الفحص محتوى محادثات أو أسرارًا.";
+  } catch (error) {
+    $("diagnosticsStatus").textContent = error.message || "تعذّر جلب تشخيص الخادم.";
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
 async function showDashboard() {
   $("adminGate").hidden = true;
   $("adminApp").hidden = false;
-  try { await loadSettings(); await refreshStatus(); }
-  catch (error) { serviceMessage(error.message, true); }
+  try {
+    await loadSettings();
+    await Promise.all([refreshStatus(), refreshDiagnostics()]);
+  } catch (error) { serviceMessage(error.message, true); }
 }
 $("adminLoginForm").addEventListener("submit", async event => {
   event.preventDefault();
@@ -158,6 +198,85 @@ $("adminLogoutBtn").addEventListener("click", async () => {
   gateMessage("تم تسجيل خروج المدير.");
 });
 $("refreshStatusBtn").addEventListener("click", refreshStatus);
+$("refreshDiagnosticsBtn").addEventListener("click", refreshDiagnostics);
+$("testAgentBtn").addEventListener("click", async () => {
+  const button = $("testAgentBtn");
+  button.disabled = true;
+  $("agentTestStatus").textContent = "جاري اختبار استجابة الوكيل وأداة الحساب...";
+  $("agentTestSteps").textContent = "";
+  $("agentTestReply").textContent = "";
+  try {
+    const result = await request("/api/admin/test-agent", {}, "POST");
+    const steps = Array.isArray(result.steps) ? result.steps : [];
+    $("agentTestSteps").textContent = steps.join("\n");
+    $("agentTestReply").textContent = result.reply || "";
+    if (result.calculatorToolUsed) {
+      $("agentTestStatus").textContent = "نجح الاختبار: الوكيل رد ونفّذ أداة الحساب ✓";
+      $("agentTestStatus").style.color = "#9be7c1";
+    } else {
+      $("agentTestStatus").textContent = "وصل رد من النموذج، لكن لم يثبت استخدام أداة الحساب. لا نعتبر اختبار الوكيل كاملًا.";
+      $("agentTestStatus").style.color = "#ffcf8f";
+    }
+  } catch (error) {
+    $("agentTestStatus").textContent = error.message || "فشل اختبار الوكيل.";
+    $("agentTestStatus").style.color = "#ff9fba";
+  } finally { button.disabled = false; }
+});
+function updateDocumentTestButton() {
+  $("testDocumentBtn").disabled = !(
+    $("documentTestFile").files?.[0] && $("documentTestConsent").checked
+  );
+}
+$("documentTestFile").addEventListener("change", updateDocumentTestButton);
+$("documentTestConsent").addEventListener("change", updateDocumentTestButton);
+$("testDocumentBtn").addEventListener("click", async () => {
+  const file = $("documentTestFile").files?.[0];
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) {
+    $("documentTestStatus").textContent = "الحد الأقصى لحجم الملف في هذا الاختبار 8 ميجابايت.";
+    $("documentTestStatus").style.color = "#ff9fba";
+    return;
+  }
+  const extension = String(file.name.split(".").pop() || "").toLowerCase();
+  const types = {
+    pdf: "application/pdf",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  };
+  if (!types[extension]) {
+    $("documentTestStatus").textContent = "اختَر ملف PDF أو DOCX أو XLSX.";
+    $("documentTestStatus").style.color = "#ff9fba";
+    return;
+  }
+  const button = $("testDocumentBtn");
+  button.disabled = true;
+  $("documentTestResult").textContent = "";
+  $("documentTestStatus").textContent = "جاري إرسال الملف للاختبار دون حفظه في قاعدة بيانات ونس...";
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("تعذّرت قراءة الملف من الهاتف."));
+      reader.readAsDataURL(file);
+    });
+    const data = dataUrl.split(",")[1] || "";
+    if (!data) throw new Error("الملف المرفق لا يحتوي على بيانات قابلة للقراءة.");
+    const result = await request("/api/admin/test-document", {
+      name: file.name, type: types[extension], data
+    }, "POST");
+    $("documentTestResult").textContent =
+      "الملف: " + result.name + "\nالنموذج: " + result.model +
+      "\nعدد الحروف المستخرجة: " + result.extractedCharacters +
+      "\n\nمقتطف من المحتوى:\n" + result.preview;
+    $("documentTestStatus").textContent = "نجح اختبار وصول الملف والاستخراج الأولي. راجع المقتطف مقابل الملف الأصلي.";
+    $("documentTestStatus").style.color = "#9be7c1";
+  } catch (error) {
+    $("documentTestStatus").textContent = error.message || "فشل اختبار قراءة الملف.";
+    $("documentTestStatus").style.color = "#ff9fba";
+  } finally {
+    updateDocumentTestButton();
+  }
+});
 $("testWorkersAiBtn").addEventListener("click", async () => {
   $("testWorkersAiBtn").disabled = true;
   serviceMessage("جاري اختبار Cloudflare Workers AI...");
@@ -174,7 +293,7 @@ document.querySelectorAll(".nav-btn").forEach(button => button.addEventListener(
   document.querySelectorAll(".nav-btn").forEach(item => item.classList.toggle("active", item === button));
   document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page.id === "tab-" + button.dataset.tab));
 }));
-["voiceRate", "voicePitch"].forEach(id => $(id).addEventListener("input", updateRanges));
+["voiceRate"].forEach(id => $(id).addEventListener("input", updateRanges));
 $("saveBtn").addEventListener("click", async () => {
   readForm();
   $("saveBtn").disabled = true;
@@ -220,17 +339,27 @@ $("resetBtn").addEventListener("click", async () => {
 
 $("voicePreviewBtn").addEventListener("click", async () => {
   $("voicePreviewBtn").disabled = true;
-  $("voicePreviewStatus").textContent = "جاري تشغيل عينة صوت ونس...";
+  $("voiceConfirmBtn").hidden = true;
+  $("voicePreviewStatus").textContent = "جاري فتح قناة الصوت وإرسال العينة...";
   try {
     const play = window.parent && window.parent.WensPlayVoicePreview;
     if (typeof play !== "function") throw new Error("افتح لوحة الإدارة من داخل صفحة ونس لتشغيل العينة.");
-    await play("أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.", $("voiceName").value);
-    $("voicePreviewStatus").textContent = "تم إرسال عينة الصوت إلى مشغل ونس.";
+    const started = await play("أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.", $("voiceName").value);
+    if (!started) throw new Error("لم يبدأ اتصال الصوت. راجع حالة الاتصال وحاول مرة أخرى.");
+    $("voiceConfirmBtn").hidden = false;
+    $("voicePreviewStatus").textContent = "اتصل مشغل الصوت وأُرسلت العينة. شغّل المقطع من المشغل الظاهر في صفحة ونس، ثم أكّد السماع هنا.";
+    $("voicePreviewStatus").style.color = "#ffcf8f";
   } catch (error) {
     $("voicePreviewStatus").textContent = error.message || "تعذّر اختبار الصوت.";
+    $("voicePreviewStatus").style.color = "#ff9fba";
   } finally {
     $("voicePreviewBtn").disabled = false;
   }
+});
+$("voiceConfirmBtn").addEventListener("click", () => {
+  $("voicePreviewStatus").textContent = "أكّدت سماع صوت ونس فعليًا من الهاتف.";
+  $("voicePreviewStatus").style.color = "#9be7c1";
+  $("voiceConfirmBtn").hidden = true;
 });
 
 function compressAvatarFile(file) {
