@@ -427,6 +427,24 @@ async function adminRoute(request, env, path) {
   }
   const manager = await adminUser(request, env);
   if (!manager) return json({ error: "سجّل الدخول بحساب مالك التطبيق أولًا." }, 401);
+  if (path === "/api/admin/users" && request.method === "GET") {
+    const now = Math.floor(Date.now() / 1000);
+    const result = await env.DB.prepare(
+      "SELECT u.id,u.email,u.display_name,u.created_at,MAX(s.last_seen_at) AS last_seen_at," +
+      "SUM(CASE WHEN s.expires_at>? THEN 1 ELSE 0 END) AS active_sessions " +
+      "FROM users u LEFT JOIN sessions s ON s.user_id=u.id " +
+      "GROUP BY u.id ORDER BY COALESCE(MAX(s.last_seen_at),u.created_at) DESC LIMIT 100"
+    ).bind(now).all();
+    const users = (result.results || []).map(row => ({
+      name: String(row.display_name || ""),
+      email: String(row.email || ""),
+      createdAt: Number(row.created_at || 0),
+      lastSeenAt: Number(row.last_seen_at || 0),
+      activeSessions: Number(row.active_sessions || 0),
+      online: Number(row.active_sessions || 0) > 0 && Number(row.last_seen_at || 0) >= now - 120
+    }));
+    return json({ ok: true, checkedAt: new Date().toISOString(), onlineWindowSeconds: 120, users });
+  }
   if (path === "/api/admin/diagnostics" && request.method === "GET") {
     let databaseConnected = false;
     const tableNames = new Set();
@@ -447,6 +465,7 @@ async function adminRoute(request, env, path) {
           const now = Math.floor(Date.now() / 1000);
           counts.users = await countRows("users");
           counts.activeSessions = await countRows("sessions", "WHERE expires_at>?", [now]);
+          counts.onlineUsers = await countRows("sessions", "WHERE expires_at>? AND last_seen_at>=?", [now, now - 120]);
           counts.messages = await countRows("messages");
           counts.activeAgentTasks = await countRows("agent_tasks", "WHERE archived=0 AND done=0");
         }
@@ -1766,6 +1785,18 @@ export default {
     try {
       if (path === "/api/settings" && request.method === "GET") return json({ settings: await readAppSettings(env) });
       if (path === "/api/voice/connect" && request.method === "POST") return await handleRealtimeVoice(request, env);
+      if (path === "/api/presence/heartbeat" && request.method === "POST") {
+        if (!env.DB) return json({ ok: false }, 401);
+        const raw = cookieValue(request.headers.get("Cookie"), COOKIE);
+        if (!raw) return json({ ok: false }, 401);
+        const now = Math.floor(Date.now() / 1000);
+        const result = await env.DB.prepare(
+          "UPDATE sessions SET last_seen_at=? WHERE token_hash=? AND expires_at>?"
+        ).bind(now, await digest(raw), now).run();
+        return Number(result.meta?.changes || 0) === 1
+          ? json({ ok: true, checkedAt: new Date().toISOString() })
+          : json({ ok: false }, 401);
+      }
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
       if (path === "/api/chat/history" && request.method === "GET") {
