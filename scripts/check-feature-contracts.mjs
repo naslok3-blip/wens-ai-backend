@@ -12,7 +12,7 @@ const checks = [
   [app, "SpeechSynthesisUtterance", "on-device speech fallback"],
   [app, 'utterance.lang = preferredVoice?.lang || "ar-EG"', "Egyptian-first device locale with Arabic fallback"],
   [app, "synth.getVoices()", "selects installed device voices"],
-  [app, "egyptianVoices.length", "does not fall back to generic MSA voices"],
+  [app, "femaleVoice(egyptianVoices)", "prefers installed Egyptian voices before Arabic fallback"],
   [app, "cleanRepeatedReplyText", "legacy repeated replies cleaned in chat UI"],
   [worker, "cleanRepeatedResponseText(finalText)", "model output deduplicated before save and response"],
   [worker, "projectTargetMentioned", "polite app and game requests routed to project generation"],
