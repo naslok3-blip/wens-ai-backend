@@ -1289,6 +1289,7 @@ async function handleAgent(request, env, user, options = {}) {
   let imageBase64 = "";
   let imageMimeType = "";
   let textAttachmentContext = "";
+  let documentExtractionText = "";
   const attachmentNames = [];
   const documentFiles = [];
   let documentBytesTotal = 0;
@@ -1347,7 +1348,11 @@ async function handleAgent(request, env, user, options = {}) {
   if (documentFiles.length) {
     const extraction = await extractDocumentAttachments(env, documentFiles, message);
     if (extraction.error) return json({ error: extraction.error }, 502);
-    textAttachmentContext += "\\n\\n--- محتوى المستندات المستخرج ---\\n" + extraction.text;
+    documentExtractionText = String(extraction.text || "").trim();
+    if (!documentExtractionText) {
+      return json({ error: "خدمة قراءة الملفات لم تُرجع محتوى يمكن استخدامه." }, 502);
+    }
+    textAttachmentContext += "\n\n--- محتوى المستندات المستخرج ---\n" + documentExtractionText;
     if (options.auditDocuments) {
       documentAudit = {
         extractedCharacters: extraction.text.length,
@@ -1361,7 +1366,7 @@ async function handleAgent(request, env, user, options = {}) {
     message,
     imageBase64 ? "[تم إرفاق صورة باسم " + imageName + ". افحص الصورة وأجب عنها.]" : "",
     textAttachmentContext
-  ].filter(Boolean).join("\\n\\n") || "افحص المرفقات المرسلة ووضّح ما يمكن قراءته منها.";
+  ].filter(Boolean).join("\n\n") || "افحص المرفقات المرسلة ووضّح ما يمكن قراءته منها.";
   const storedMessage = (documentFiles.length ? message : promptMessage) +
     (attachmentNames.length ? "\\n\\n[أسماء المرفقات: " + attachmentNames.join("، ") + "]" : "");
   const steps = [];
@@ -1427,7 +1432,10 @@ async function handleAgent(request, env, user, options = {}) {
   const imageInstructions = imageBase64
     ? "\\nالمستخدم أرفق صورة. إذا طلب تعديلها أو تغيير خلفيتها أو أسلوبها، استخدمي أداة edit_image لتنفيذ التعديل على الصورة نفسها، وليس مجرد وصف التعديل."
     : "\\nإذا طلب المستخدم إنشاء صورة جديدة، استخدمي أداة generate_image. إذا طلب تعديل صورة ولم يرفق صورة، اطلبي منه إرفاقها أولًا.";
-  const finalSystemPrompt = effectiveSystemPrompt + imageInstructions;
+  const documentInstructions = documentExtractionText
+    ? "\n\nتأكيد مهم: تم استلام المستندات المرفقة وقراءة محتواها بالفعل. محتواها المستخرج موجود في رسالة المستخدم التالية. اعتمدي على هذا المحتوى في الإجابة، ولا تقولي إن الملفات غير مرفقة أو إنك لا تستطيعين قراءتها."
+    : "";
+  const finalSystemPrompt = effectiveSystemPrompt + imageInstructions + documentInstructions;
   const messages = [
     { role: "system", content: finalSystemPrompt },
     ...conversationHistory,
@@ -1528,6 +1536,11 @@ async function handleAgent(request, env, user, options = {}) {
           messages.push({ role: "tool", tool_call_id: call.id, name, content: JSON.stringify(output) });
         }
       }
+    }
+    const documentRefusalPattern = /(?:لم\s*(?:يتم\s*)?(?:إرفاق|رفع)|لا\s*توجد\s*ملفات|لا\s*أرى\s*(?:أي\s*)?ملفات|لا\s*أستطيع\s*(?:قراءة|الوصول)\s*إلى?\s*(?:الملفات|المستندات)|لا\s*يمكنني\s*قراءة\s*(?:الملفات|المستندات)|no files?\s+(?:were\s+)?(?:attached|uploaded)|(?:can't|cannot)\s+(?:read|see)\s+(?:the\s+)?files?)/i;
+    if (documentExtractionText && documentRefusalPattern.test(finalText)) {
+      finalText = "استخرجت محتوى الملفات المرفقة بالفعل. إليك النص الذي تمت قراءته:\n\n" + documentExtractionText;
+      steps.push("عرض المحتوى المستخرج بدل إنكار المرفقات — تم");
     }
     if (!finalText) {
       const lastOptions = {
