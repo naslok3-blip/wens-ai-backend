@@ -21,7 +21,10 @@ const checks = [
   [worker, "/api/admin/test-agent", "Worker agent test route"],
   [admin, "/api/admin/test-document", "admin file test route"],
   [worker, "/api/admin/test-document", "Worker file test route"],
-  [worker, "documentAudit", "file extraction audit"]
+  [worker, "documentAudit", "file extraction audit"],
+  [worker, "documentExtractionText", "explicit extracted-document context"],
+  [worker, "documentRefusalPattern", "fallback when the model falsely denies uploaded files"],
+  [worker, "تم استلام المستندات المرفقة وقراءة محتواها بالفعل", "document context instruction"]
 ];
 for (const [source, token, label] of checks) {
   if (!source.includes(token)) throw new Error("Missing feature contract: " + label);
