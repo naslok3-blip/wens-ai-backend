@@ -234,16 +234,19 @@ jobs:
           steps=d.get('steps') or []
           reply=str(d.get('reply',''))
           tokens=['WENS_PDF_TOKEN_7391','WENS_DOCX_TOKEN_8426','WENS_XLSX_TOKEN_9513']
-          audit=d.get('documentAudit') or {}
-          preview=str(audit.get('preview',''))
+          audit=d.get('documentAudit')
           assert d.get('ok') is True, d
           assert any('قراءة محتوى PDF' in str(s) for s in steps), steps
-          assert audit.get('extractedCharacters',0)>0, {'audit':audit,'steps':steps}
-          missing_from_extraction=[x for x in tokens if x not in preview]
-          assert not missing_from_extraction, {'missing_from_extraction':missing_from_extraction,'audit':audit}
+          if audit:
+              preview=str(audit.get('preview',''))
+              assert audit.get('extractedCharacters',0)>0, {'audit':audit,'steps':steps}
+              missing_from_extraction=[x for x in tokens if x not in preview]
+              assert not missing_from_extraction, {'missing_from_extraction':missing_from_extraction,'audit':audit}
+          else:
+              print("Production Worker has no documentAudit field; validating the actual answer instead.")
           missing_from_reply=[x for x in tokens if x not in reply]
           assert not missing_from_reply, {'missing_from_reply':missing_from_reply,'reply':reply,'audit':audit}
-          print("PDF/DOCX/XLSX contents extracted and all three marker strings returned: OK")
+          print("PDF/DOCX/XLSX contents read and all three marker strings returned: OK")
           PY
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-accept-cookie.txt \
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
