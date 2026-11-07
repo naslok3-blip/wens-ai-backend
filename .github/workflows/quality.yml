@@ -74,6 +74,14 @@ jobs:
           CI_PASSWORD: Wens-CI-${{ github.run_id }}-${{ github.run_attempt }}-Test!
         run: |
           set -euo pipefail
+          CI_SESSION_ACTIVE=0
+          cleanup_ci_session() {
+            if [ "$CI_SESSION_ACTIVE" = "1" ]; then
+              curl --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt \
+                -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null || true
+            fi
+          }
+          trap cleanup_ci_session EXIT
           echo "Creating isolated CI account"
           REGISTER_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
             -o /tmp/wens-register.json -w '%{http_code}' -c /tmp/wens-cookie.txt \
@@ -93,6 +101,7 @@ jobs:
           print("Registration: OK")
           PY
           test "$REGISTER_STATUS" = "200"
+          CI_SESSION_ACTIVE=1
           ME_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
             -o /tmp/wens-me-register.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
             "$BASE/api/auth/me")
@@ -104,12 +113,14 @@ jobs:
           PY
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt -c /tmp/wens-cookie.txt \
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
+          CI_SESSION_ACTIVE=0
           LOGIN_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
             -o /tmp/wens-login.json -w '%{http_code}' -c /tmp/wens-cookie.txt \
             -H 'Content-Type: application/json' -X POST \
             --data "$(python -c 'import json,os; print(json.dumps({"email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
             "$BASE/api/auth/login")
           test "$LOGIN_STATUS" = "200"
+          CI_SESSION_ACTIVE=1
           ME_LOGIN_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
             -o /tmp/wens-me-login.json -w '%{http_code}' -b /tmp/wens-cookie.txt \
             "$BASE/api/auth/me")
@@ -184,14 +195,23 @@ jobs:
           echo "CI test account for post-run cleanup: $CI_EMAIL"
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt \
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
+          CI_SESSION_ACTIVE=0
       - name: Live agent and PDF Word Excel acceptance test
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
+        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
         env:
           BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
           CI_EMAIL: wens-accept-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
           CI_PASSWORD: Wens-Accept-${{ github.run_id }}-${{ github.run_attempt }}-Test!
         run: |
           set -euo pipefail
+          CI_SESSION_ACTIVE=0
+          cleanup_ci_session() {
+            if [ "$CI_SESSION_ACTIVE" = "1" ]; then
+              curl --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-accept-cookie.txt \
+                -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null || true
+            fi
+          }
+          trap cleanup_ci_session EXIT
           echo "Registering an isolated acceptance-test account"
           REGISTER_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
             -o /tmp/wens-accept-register.json -w '%{http_code}' -c /tmp/wens-accept-cookie.txt \
@@ -199,6 +219,7 @@ jobs:
             --data "$(python -c 'import json,os; print(json.dumps({"name":"Wens Acceptance Test","email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
             "$BASE/api/auth/register")
           if [ "$REGISTER_STATUS" != "200" ]; then cat /tmp/wens-accept-register.json; exit 1; fi
+          CI_SESSION_ACTIVE=1
           python - <<'PY'
           import json
           d=json.load(open('/tmp/wens-accept-register.json',encoding='utf-8'))
@@ -248,8 +269,6 @@ jobs:
           assert not missing_from_reply, {'missing_from_reply':missing_from_reply,'reply':reply,'audit':audit}
           print("PDF/DOCX/XLSX contents read and all three marker strings returned: OK")
           PY
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-accept-cookie.txt \
-            -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
           echo "Live agent and three-format document acceptance: OK"
       - name: Verify deployed HTML, JavaScript, CSS and avatar assets
         if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
