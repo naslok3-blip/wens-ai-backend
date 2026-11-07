@@ -10,7 +10,7 @@ const checks = [
   [app, "playbackStarted", "waits for audio playback"],
   [app, "SpeechSynthesisUtterance", "on-device speech fallback"],
   [app, 'utterance.lang = "ar-EG"', "Egyptian Arabic speech locale"],
-  [app, "speechSynthesis.getVoices()", "selects an installed Arabic device voice"],
+  [app, "synth.getVoices()", "selects an installed Arabic device voice"],
   [app, "brandAdminEntry", "hidden owner entry preserved in header logo"],
   [app, 'fetch("/api/voice/connect"', "browser WebRTC route"],
   [worker, 'path === "/api/voice/connect"', "Worker voice route"],
