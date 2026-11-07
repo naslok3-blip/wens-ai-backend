@@ -1590,6 +1590,24 @@ async function handleAgent(request, env, user, options = {}) {
     }
     return json({ ok: true, model: result.model, steps, reply, generatedImages });
   }
+  const capabilityQuestion = /(?:تقدر|يقدر|قدرة|صلاحية|ميزة|إمكانية|capability|permission)/i.test(message);
+  const projectCreationIntent = !capabilityQuestion && /(?:أنشئ|أنشئي|انشئ|اعمل|اعملي|اصنع|اصنعي|صمم|صممي|ابني|جهز|جهزي|نفذ|نفّذ|build|create|make|develop).{0,100}(?:تطبيق|برنامج|لعبة|موقع|app|game|website)|(?:تطبيق|برنامج|لعبة|موقع|app|game|website).{0,100}(?:اعملي|اعمل|اصنعي|اصنع|صممي|صمم|ابني|جهزي|جهز|نفذي|نفذ|build|create|make|develop)/i.test(message);
+  if (projectCreationIntent) {
+    const kind = /(?:لعبة|game)/i.test(message) ? "game" : "app";
+    const result = await createWebProject(env, user, { kind, title: kind === "game" ? "لعبة ونس" : "تطبيق ونس", prompt: message });
+    if (!result?.project) {
+      steps.push("إنشاء المشروع — تعذّر: " + String(result?.error || "فشل توليد الملف"));
+      return json({ ok: false, error: result?.error || "تعذّر إنشاء المشروع.", steps }, 502);
+    }
+    generatedProjects.push(result.project);
+    steps.push((kind === "game" ? "إنشاء لعبة متصفح" : "إنشاء تطبيق ويب") + " — تم");
+    const reply = "جهزت لك " + (kind === "game" ? "اللعبة" : "التطبيق") + " وحفظته في حسابك. تقدر تجربه من المعاينة تحت الرد أو تنزّل ملف HTML.";
+    if (options.persist && env.DB && user) {
+      await env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
+        .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+    }
+    return json({ ok: true, model: env.WENS_PROJECT_MODEL || env.WENS_AGENT_MODEL || "@cf/qwen/qwen3.8-27b", steps, reply, generatedImages, generatedProjects });
+  }
   const systemPrompt = options.persist
     ? SYSTEM_PROMPT + "\\n\\n" + AGENT_SYSTEM_PROMPT + "\\nفي المحادثة الرئيسية، كوني رفيقة طبيعية: جاوبي مباشرة وباختصار مناسب، ولا تحولي كل سؤال بسيط إلى خطة. استخدمي الأدوات عند الحاجة الفعلية فقط. إذا طلب المستخدم تنفيذ شيء، خططي ونفذي ما تسمح به الأدوات ثم اشرحي النتيجة بصدق."
     : AGENT_SYSTEM_PROMPT;
