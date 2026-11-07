@@ -82,3 +82,17 @@ body.admin-page{
   .admin-page .admin-login-form{gap:10px;margin-top:14px}
   .admin-page .admin-login-form input{min-height:48px;font-size:16px}
 }
+
+.online-users-section{margin:18px 0;padding:16px;border:1px solid #ffffff18;border-radius:18px;background:#ffffff06}
+.online-users-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.online-users-heading h3{margin:0;font-size:16px}
+.online-users-heading p,.online-privacy-note{margin:5px 0;color:var(--muted);font-size:11px;line-height:1.8}
+.online-count{padding:7px 11px;border-radius:20px;background:#2fa97820;color:#75e0ae;font-size:12px}
+.online-users-list{display:grid;gap:9px;margin:14px 0}
+.online-user-card{display:grid;grid-template-columns:1fr auto;gap:9px;padding:13px;border:1px solid #ffffff16;border-radius:14px;background:#111827}
+.online-user-identity{display:grid;gap:4px;min-width:0}
+.online-user-identity strong{font-size:14px}
+.online-user-identity span{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.online-status{align-self:start;color:#72e0aa;font-size:11px;white-space:nowrap}
+.online-user-details{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:7px 14px;color:var(--muted);font-size:10px}
+@media(max-width:480px){.online-users-section{padding:12px}.online-user-card{padding:11px}}
