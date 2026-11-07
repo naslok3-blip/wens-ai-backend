@@ -113,12 +113,49 @@ function setMetric(id, value) {
   const element = $(id);
   if (element) element.textContent = Number.isFinite(Number(value)) ? Number(value).toLocaleString("ar-EG") : "غير متاح";
 }
+function formatPresenceTime(seconds) {
+  if (!seconds) return "غير متاح";
+  return new Date(seconds * 1000).toLocaleString("ar-EG");
+}
+function renderOnlineUsers(users) {
+  const list = $("onlineUsersList"), count = $("onlineUsersCount");
+  const items = Array.isArray(users) ? users : [];
+  if (count) count.textContent = items.length.toLocaleString("ar-EG") + " متصل";
+  if (!list) return;
+  list.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "لا يوجد مستخدمون نشطون خلال آخر دقيقتين.";
+    list.append(empty);
+    return;
+  }
+  for (const user of items) {
+    const card = document.createElement("article"); card.className = "online-user-card";
+    const identity = document.createElement("div"); identity.className = "online-user-identity";
+    const name = document.createElement("strong"); name.textContent = user.name || "مستخدم ونس";
+    const email = document.createElement("span"); email.textContent = user.email || "";
+    identity.append(name, email);
+    const status = document.createElement("span"); status.className = "online-status"; status.textContent = "متصل الآن";
+    const details = document.createElement("div"); details.className = "online-user-details";
+    for (const [label, value] of [
+      ["آخر نشاط", formatPresenceTime(user.lastSeenAt)],
+      ["تاريخ التسجيل", formatPresenceTime(user.accountCreatedAt)],
+      ["الجلسات", Number(user.activeSessions || 0).toLocaleString("ar-EG")],
+      ["الرسائل المحفوظة", Number(user.messageCount || 0).toLocaleString("ar-EG")]
+    ]) {
+      const item = document.createElement("span"); item.textContent = label + ": " + value; details.append(item);
+    }
+    card.append(identity, status, details); list.append(card);
+  }
+}
 async function refreshDiagnostics() {
   const button = $("refreshDiagnosticsBtn");
   if (button) button.disabled = true;
   try {
     const data = await request("/api/admin/diagnostics");
     const counts = data.counts || {};
+    renderOnlineUsers(data.onlineUsers);
     const features = data.features || {};
     const tables = data.tables || {};
     setMetric("metricUsers", counts.users);
@@ -199,6 +236,8 @@ $("adminLogoutBtn").addEventListener("click", async () => {
 });
 $("refreshStatusBtn").addEventListener("click", refreshStatus);
 $("refreshDiagnosticsBtn").addEventListener("click", refreshDiagnostics);
+$("refreshOnlineUsersBtn")?.addEventListener("click", refreshDiagnostics);
+setInterval(() => { if (!$("adminApp")?.hidden) refreshDiagnostics(); }, 30000);
 $("testAgentBtn").addEventListener("click", async () => {
   const button = $("testAgentBtn");
   button.disabled = true;
