@@ -196,10 +196,26 @@ jobs:
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-cookie.txt \
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
           CI_SESSION_ACTIVE=0
-      - name: Live agent and PDF Word Excel acceptance test
-        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+      - name: Verify preview owner console layout and static assets
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
         env:
-          BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
+          BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/admin.html" -o /tmp/wens-preview-admin.html
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/style.css" -o /tmp/wens-preview-style.css
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/admin.css" -o /tmp/wens-preview-admin.css
+          grep -q '<body class="admin-page">' /tmp/wens-preview-admin.html
+          grep -q 'content="#f4f7fb"' /tmp/wens-preview-admin.html
+          grep -q 'position:fixed!important' /tmp/wens-preview-style.css
+          grep -q 'height:100dvh' /tmp/wens-preview-style.css
+          grep -q 'background:#f4f7fb' /tmp/wens-preview-admin.css
+          grep -q 'overflow-y:auto' /tmp/wens-preview-admin.css
+          echo "Preview admin page, full-screen layout and white theme: OK"
+      - name: Live agent and PDF Word Excel acceptance test
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
+        env:
+          BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
           CI_EMAIL: wens-accept-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
           CI_PASSWORD: Wens-Accept-${{ github.run_id }}-${{ github.run_attempt }}-Test!
         run: |
