@@ -68,6 +68,9 @@ function setAuthMessage(message, error = false) {
   $("authStatus").style.color = error ? "#ff9fba" : "#9be7c1";
 }
 function showAuth() {
+  if (presenceTimer) clearInterval(presenceTimer);
+  presenceTimer = null;
+  currentUser = null;
   $("authPanel").hidden = false;
   $("appRoot").hidden = true;
   $("adminInlinePanel").hidden = true;
@@ -75,8 +78,19 @@ function showAuth() {
   $("openAdminBtn").hidden = true;
   $("backToAppBtn").hidden = true;
 }
+let presenceTimer = null;
+async function sendPresenceHeartbeat() {
+  if (!currentUser || currentUser.id === "guest" || document.visibilityState === "hidden") return;
+  try { await api("/api/presence/heartbeat", {}, "POST"); } catch {}
+}
+function startPresenceHeartbeat() {
+  if (presenceTimer) clearInterval(presenceTimer);
+  sendPresenceHeartbeat();
+  presenceTimer = setInterval(sendPresenceHeartbeat, 30000);
+}
 function showApp(user) {
   currentUser = user;
+  startPresenceHeartbeat();
   $("authPanel").hidden = true;
   $("appRoot").hidden = false;
   $("adminInlinePanel").hidden = true;

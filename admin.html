@@ -68,6 +68,7 @@
       <nav class="admin-nav" aria-label="أقسام لوحة الإدارة">
         <button class="nav-btn active" data-tab="overview">▦ نظرة عامة</button>
         <button class="nav-btn" data-tab="system">⌁ مركز التشغيل</button>
+        <button class="nav-btn" data-tab="users">👥 المستخدمون والمتصلون</button>
         <button class="nav-btn" data-tab="agent">✧ الوكيل والأدوات</button>
         <button class="nav-btn" data-tab="files">▤ اختبار الملفات</button>
         <button class="nav-btn" data-tab="identity">◈ هوية التطبيق</button>
@@ -104,6 +105,21 @@
           </div>
           <div class="actions left-actions"><button id="refreshDiagnosticsBtn" class="btn secondary" type="button">تحديث التشخيص والأرقام</button></div>
           <p id="diagnosticsStatus" class="status-line" role="status" aria-live="polite"></p>
+        </section>
+        <section class="tab-page" id="tab-users">
+          <h2>المستخدمون والمتصلون الآن</h2>
+          <p class="muted">بيانات الحساب الأساسية وحالة الاتصال وآخر ظهور فقط. لا تعرض اللوحة كلمات المرور أو محتوى المحادثات.</p>
+          <div class="metrics-grid users-metrics">
+            <article class="metric-card"><span>متصلون الآن</span><strong id="usersOnlineCount">—</strong></article>
+            <article class="metric-card"><span>إجمالي الحسابات</span><strong id="usersTotalCount">—</strong></article>
+          </div>
+          <div class="users-toolbar">
+            <input id="usersSearch" type="search" placeholder="ابحث بالاسم أو البريد الإلكتروني" autocomplete="off">
+            <button id="refreshUsersBtn" class="btn secondary" type="button">تحديث القائمة</button>
+          </div>
+          <p id="usersStatus" class="status-line" role="status" aria-live="polite">جارٍ تحميل الحسابات...</p>
+          <div id="usersList" class="users-list" aria-live="polite"></div>
+          <p class="muted users-footnote">يُعتبر الحساب متصلًا إذا أرسل التطبيق إشارة نشاط خلال آخر 120 ثانية. قد يستغرق ظهور الحالة حتى نصف دقيقة.</p>
         </section>
         <section class="tab-page" id="tab-agent">
           <h2>اختبار وكيل ونس والأدوات</h2>
