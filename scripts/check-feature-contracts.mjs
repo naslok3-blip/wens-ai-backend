@@ -17,6 +17,10 @@ const checks = [
   [worker, "https://api.openai.com/v1/realtime/calls", "Realtime upstream"],
   [owner, "WensPlayVoicePreview", "admin calls parent voice preview"],
   [worker, "item.result === 437", "agent verifies calculator result"],
+  [worker, '.replace(/\\s+/g, "") === "19*23"', "calculator expression whitespace normalization"],
+  [worker, "user_login_events", "persistent successful login history"],
+  [worker, 'path === "/api/admin/users"', "owner-only searchable account listing"],
+  [admin, "registeredUsersList", "owner account registry UI"],
   [worker, "auditTools: true", "agent captures calculator output"],
   [worker, "base64DecodedSize", "decoded upload size validation"],
   [worker, 'detail: "high"', "PDF high-detail reading"],
@@ -49,4 +53,5 @@ if (index.includes('<section class="hero">')) throw new Error("Removed top hero/
 if (!index.includes('id="voiceBtn" class="voice-input-btn"')) throw new Error("Voice input control must live in the chat composer.");
 if (!index.includes('id="voiceStatus"')) throw new Error("Accessible voice status is missing.");
 if (app.includes("voiceTestBtn") || app.includes("heroPortrait")) throw new Error("Removed hero controls are still referenced by app.js.");
-console.log("Wens feature contracts passed: document reading, calculator, voice playback fallback, and white chat layout.");
+if (!admin.includes("metricAccountsEntered") || !admin.includes("metricSuccessfulLogins")) throw new Error("Login-history metrics missing from owner panel.");
+console.log("Wens feature contracts passed: document reading, calculator validation, login history, account listing, voice fallback and white chat layout.");
