@@ -135,3 +135,88 @@ footer{display:none}
   #appRoot .bubble{max-width:91%;font-size:12px;padding:9px 10px}
 }
 @supports not (height:100dvh){html,body{height:100vh}}
+
+
+/* Wens professional light chat UI — shared visual language with the owner console. */
+:root{--purple:#6848c7;--pink:#b43d83;--bg:#f4f7fb;--text:#1e293b;--muted:#64748b;--line:#dbe3ef}
+html{color-scheme:light}
+body{background:#f4f7fb;color:#1e293b}
+.topbar{background:rgba(255,255,255,.96);color:#172033;border-bottom:1px solid #e2e8f0;box-shadow:0 2px 12px #17203308;backdrop-filter:blur(14px)}
+.brand{color:#172033}
+.brand small{color:#64748b}
+.logo{background:linear-gradient(135deg,#a78bfa,#f0a5cf);color:#2b2142;box-shadow:none}
+#brandAdminEntry{cursor:pointer;user-select:none;touch-action:manipulation}
+main.app{width:min(1120px,100%);max-width:100%;height:0;min-height:0;flex:1 1 auto;overflow:hidden;display:flex;flex-direction:column;padding:12px clamp(9px,2vw,24px) max(8px,env(safe-area-inset-bottom));margin:0 auto}
+#appRoot:not([hidden]){display:flex;height:100%;min-height:0;flex:1 1 auto;flex-direction:column;gap:0;overflow:hidden}
+#appRoot>.panel{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;overflow:hidden;margin:0;padding:clamp(12px,2vw,22px);background:#fff;color:#1e293b;border:1px solid #e2e8f0;border-radius:22px;box-shadow:0 12px 36px #1720330b}
+#appRoot>.panel>.section-head{flex:0 0 auto;padding-bottom:10px;border-bottom:1px solid #eef2f7}
+#appRoot>.panel>.section-head h2{color:#172033;font-size:clamp(17px,3vw,21px);font-weight:800}
+#appRoot>.panel>.section-head p{color:#64748b;font-size:12px}
+#appRoot .text-btn{color:#6848c7}
+#appRoot .messages{display:flex;flex:1 1 auto;flex-direction:column;min-height:0;max-height:none!important;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:14px 2px;gap:13px}
+#appRoot .message{gap:8px;align-items:flex-end}
+#appRoot .mini-avatar{width:32px;height:32px;flex:0 0 32px;border-radius:50%;border:1px solid #e4dcf8;background:#f2efff;object-fit:cover}
+#appRoot .bubble{max-width:min(88%,720px);padding:13px 15px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;color:#253247;font-size:14px;line-height:1.85;box-shadow:0 2px 8px #17203306}
+#appRoot .user .bubble{background:#f2efff;border-color:#ddd5fb;color:#34245d}
+#appRoot .bubble-text a{color:#5b43ac}
+#appRoot .execution-trace{border-top-color:#e2e8f0;color:#6848c7}
+#appRoot .execution-trace ul{color:#64748b}
+#appRoot .voice-replay-btn{border:1px solid #d9d1f3;border-radius:10px;background:#fff;color:#6045b4;font-size:12px;font-weight:700}
+#appRoot .voice-replay-btn:disabled{opacity:.65}
+#appRoot .voice-player-shell{background:#f8fafc;border:1px solid #dbe3ef;border-radius:13px}
+#appRoot .voice-player-label{color:#475569;font-size:11px}
+#appRoot .voice-audio-player{background:#fff;border:1px solid #e2e8f0}
+#appRoot .voice-device-note{margin:8px 0 0;color:#64748b;font-size:11px}
+#appRoot .chat-composer{position:relative;flex:0 0 auto;margin-top:5px;padding-top:10px;border-top:1px solid #eef2f7}
+#appRoot .chat-form{display:flex;align-items:center;gap:8px}
+#appRoot .chat-form input{min-width:0;flex:1;min-height:50px;padding:12px 14px;background:#fff;border:1px solid #cbd5e1;border-radius:15px;color:#172033;font-size:14px}
+#appRoot .chat-form input::placeholder{color:#94a3b8}
+#appRoot .chat-form input:focus{border-color:#9b85df;box-shadow:0 0 0 3px #6848c714}
+#appRoot .send-btn{min-height:46px;padding:0 17px;border-radius:13px;background:#6848c7;color:#fff;font-weight:800;box-shadow:none}
+#appRoot .attach-menu-btn,#appRoot .voice-input-btn{width:44px;height:44px;min-width:44px;flex:0 0 44px;border:1px solid #dbe3ef;border-radius:50%;background:#fff;color:#475569;font-size:22px;line-height:1;display:grid;place-items:center;cursor:pointer}
+#appRoot .voice-input-btn{font-size:18px;color:#6848c7}
+#appRoot .voice-input-btn.listening{background:#fce7f3;border-color:#f9a8d4;color:#be185d;box-shadow:0 0 0 3px #f9a8d433}
+#appRoot .attach-menu-btn[aria-expanded="true"]{background:#eeeaff;border-color:#c4b5fd;color:#5b21b6;transform:rotate(45deg)}
+#appRoot .attachment-menu,#appRoot .plugin-tools{background:rgba(255,255,255,.99);border:1px solid #e2e8f0;color:#1e293b;box-shadow:0 18px 45px #1720331a}
+#appRoot .attachment-option{color:#1e293b}
+#appRoot .attachment-option:hover,#appRoot .attachment-option:focus-visible,#appRoot .plugin-tools>button:hover{background:#f1f5f9}
+#appRoot .attachment-option small{color:#64748b}
+#appRoot .attachment-icon{background:#f1edff;color:#6848c7}
+#appRoot .plugin-tools-heading{color:#334155}
+#appRoot .plugin-tools-heading button{color:#6848c7}
+#appRoot .plugin-tools>button{color:#334155}
+#appRoot .deep-think-badge{background:#f5f3ff;border-color:#ddd6fe;color:#4c1d95}
+#appRoot .deep-think-badge button{color:#9d174d}
+#appRoot .attachment-chip{background:#f8fafc;border-color:#e2e8f0;color:#334155}
+#appRoot .attachment-chip button{background:#e2e8f0;color:#334155}
+#appRoot .message-attachment-name{background:#f1edff;color:#4c1d95}
+#appRoot .attachment-status{color:#64748b}
+#appRoot .panel>.disclaimer{flex:0 0 auto;margin-top:8px;color:#64748b;font-size:10px;line-height:1.6}
+#appRoot .voice-status{flex:0 0 auto;margin:8px 0 0;padding:7px 10px;border-radius:10px;background:#f8fafc;color:#64748b;font-size:11px;line-height:1.6}
+#appRoot .voice-status:empty{display:none}
+#appRoot .voice-player-dock:empty{display:none}
+#appRoot .voice-player-dock{width:100%;flex:0 0 auto}
+#appRoot .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.auth-panel{background:#fff;color:#1e293b;border:1px solid #e2e8f0;box-shadow:0 12px 36px #1720330b}
+.auth-form label{color:#334155}
+.auth-form input{background:#fff;border-color:#cbd5e1;color:#172033}
+.auth-toggle{color:#6848c7}
+.system-status{background:#f8fafc;border-color:#e2e8f0;color:#9a6700}
+.system-status.all-ready{background:#ecfdf5;border-color:#a7f3d0;color:#047857}
+.disclaimer{color:#64748b}
+@media(max-width:480px){
+  .topbar{min-height:58px;padding-inline:12px}
+  .logo{width:40px;height:40px;border-radius:13px}
+  main.app{padding:8px 8px max(6px,env(safe-area-inset-bottom))}
+  #appRoot>.panel{padding:11px 10px 9px;border-radius:17px}
+  #appRoot>.panel>.section-head{padding-bottom:8px}
+  #appRoot .messages{padding:10px 0;gap:10px}
+  #appRoot .bubble{max-width:91%;font-size:13px;padding:10px 12px}
+  #appRoot .chat-form{gap:6px}
+  #appRoot .chat-form input{min-height:46px;padding:10px;font-size:13px}
+  #appRoot .send-btn{min-height:44px;padding:0 13px;font-size:13px}
+  #appRoot .attach-menu-btn,#appRoot .voice-input-btn{width:40px;height:40px;min-width:40px;flex-basis:40px}
+  #appRoot .panel>.disclaimer{font-size:9px;margin-top:5px}
+  #appRoot .voice-status{font-size:10px;margin-top:5px}
+}
+@supports not (height:100dvh){html,body{height:100vh}}

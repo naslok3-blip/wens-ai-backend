@@ -1,12 +1,17 @@
 import { readFile } from "node:fs/promises";
-const [app, admin, owner, worker] = await Promise.all([
+const [app, admin, owner, worker, index] = await Promise.all([
   readFile("app.js", "utf8"), readFile("admin.js", "utf8"),
-  readFile("owner-panel.js", "utf8"), readFile("worker.js", "utf8")
+  readFile("owner-panel.js", "utf8"), readFile("worker.js", "utf8"),
+  readFile("index.html", "utf8")
 ]);
 const checks = [
   [app, "window.WensPlayVoicePreview", "parent voice preview"],
   [app, "getAdminVoicePreviewDock", "visible admin audio dock"],
   [app, "playbackStarted", "waits for audio playback"],
+  [app, "SpeechSynthesisUtterance", "on-device speech fallback"],
+  [app, 'utterance.lang = "ar-EG"', "Egyptian Arabic speech locale"],
+  [app, "speechSynthesis.getVoices()", "selects an installed Arabic device voice"],
+  [app, "brandAdminEntry", "hidden owner entry preserved in header logo"],
   [app, 'fetch("/api/voice/connect"', "browser WebRTC route"],
   [worker, 'path === "/api/voice/connect"', "Worker voice route"],
   [worker, "https://api.openai.com/v1/realtime/calls", "Realtime upstream"],
@@ -40,4 +45,8 @@ if (!admin.includes("file.size > 8 * 1024 * 1024")) throw new Error("Browser 8 M
 if (!worker.includes("decodedBytes > 8 * 1024 * 1024")) throw new Error("Server 8 MiB limit missing.");
 if (!worker.includes("documentBytesTotal + decodedBytes > 10 * 1024 * 1024")) throw new Error("Server 10 MiB combined limit missing.");
 if (!owner.includes("/api/admin/status") || !owner.includes("/api/admin/diagnostics")) throw new Error("Owner panel route mismatch.");
-console.log("Wens feature contracts passed: audio playback, calculator result, and PDF/DOCX/XLSX handling.");
+if (index.includes('<section class="hero">')) throw new Error("Removed top hero/profile area is still present.");
+if (!index.includes('id="voiceBtn" class="voice-input-btn"')) throw new Error("Voice input control must live in the chat composer.");
+if (!index.includes('id="voiceStatus"')) throw new Error("Accessible voice status is missing.");
+if (app.includes("voiceTestBtn") || app.includes("heroPortrait")) throw new Error("Removed hero controls are still referenced by app.js.");
+console.log("Wens feature contracts passed: document reading, calculator, voice playback fallback, and white chat layout.");

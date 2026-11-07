@@ -1,4 +1,5 @@
 const $ = id => document.getElementById(id);
+const setVoiceStatus = message => { const status = $("voiceStatus"); if (status) status.textContent = message || ""; };
 // إدارة ونس تفتح من الصورة الشخصية فقط، داخل الصفحة نفسها.
 let authMode = "login";
 let currentUser = null;
@@ -31,15 +32,13 @@ function loadLocalSettings() {
 
 function applyLocalSettings() {
   document.title = appSettings.appName;
-  $("brandName").textContent = appSettings.appName;
-  $("eyebrowText").textContent = appSettings.eyebrow;
-  $("welcomeTitle").textContent = appSettings.welcomeTitle;
-  $("welcomeText").textContent = appSettings.welcomeText;
-  $("voiceButtonText").textContent = appSettings.voiceButton;
-  $("voiceBtn").hidden = !appSettings.enableVoice;
+  const brandName = $("brandName");
+  if (brandName) brandName.textContent = appSettings.appName;
+  const voiceButtonText = $("voiceButtonText");
+  if (voiceButtonText) voiceButtonText.textContent = appSettings.voiceButton;
+  const voiceButton = $("voiceBtn");
+  if (voiceButton) voiceButton.hidden = !appSettings.enableVoice;
   const avatarSrc = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
-  const portrait = $("heroPortrait");
-  if (portrait) portrait.src = avatarSrc;
   document.querySelectorAll(".mini-avatar").forEach(image => { image.src = avatarSrc; });
   const themes = {
     purple: ["#b49aff", "#ffacd6"],
@@ -91,7 +90,7 @@ function showApp(user) {
   loadChatHistory();
 }
 async function updateAdminShortcut() {
-  // الإدارة لا تظهر كزر عام؛ مدخلها المخفي هو الضغط خمس مرات على صورة ونس.
+  // الإدارة لا تظهر كزر عام؛ مدخلها المخفي هو الضغط خمس مرات على شعار ونس.
   $("openAdminBtn").hidden = true;
 }
 function openAdminInsideWens() {
@@ -137,12 +136,17 @@ async function handleAdminAvatarTap() {
     $("voiceStatus").textContent = "تعذّر التحقق من صلاحية الإدارة الآن.";
   }
 }
-const adminPortrait = $("heroPortrait");
-if (adminPortrait) {
-  adminPortrait.addEventListener("click", handleAdminAvatarTap);
-  adminPortrait.addEventListener("keydown", event => {
+const adminBrandEntry = $("brandAdminEntry");
+if (adminBrandEntry) {
+  adminBrandEntry.addEventListener("click", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    handleAdminAvatarTap();
+  });
+  adminBrandEntry.addEventListener("keydown", event => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
+      event.stopPropagation();
       handleAdminAvatarTap();
     }
   });
@@ -597,8 +601,7 @@ let activeVoiceAudio = null;
 let voiceFinishTimer = null;
 
 function setAvatarSpeaking(active) {
-  document.querySelector(".hero-portrait")?.classList.toggle("talking", active);
-  document.querySelector(".mini-avatar")?.classList.toggle("talking", active);
+  document.querySelectorAll(".mini-avatar").forEach(image => image.classList.toggle("talking", active));
 }
 
 function stopRealtimeVoice() {
@@ -780,21 +783,90 @@ async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = fa
   scheduleStop(120000);
 }
 
+function speakOnDevice(text, playerTarget, waitForPlayback = false) {
+  const synth = window.speechSynthesis;
+  const Utterance = window.SpeechSynthesisUtterance;
+  if (!synth || typeof Utterance !== "function") {
+    return Promise.reject(new Error("متصفح الهاتف لا يدعم الصوت المحلي. حدّث Chrome وخدمات تحويل النص إلى كلام."));
+  }
+  synth.cancel();
+  const message = String(text || "").trim().slice(0, 2000);
+  if (!message) return Promise.resolve(false);
+  const voices = typeof synth.getVoices === "function" ? synth.getVoices() : [];
+  const arabicVoices = voices.filter(voice => /^ar(?:-|$)/i.test(String(voice.lang || "")));
+  const egyptianVoice =
+    arabicVoices.find(voice => /^ar-EG(?:-|$)/i.test(String(voice.lang || ""))) ||
+    arabicVoices.find(voice => /egypt|egyptian|مصر|مصري/i.test(String(voice.name || "")));
+  const preferredVoice = egyptianVoice ||
+    arabicVoices.find(voice => /female|woman|hoda|salma|هدى|سلمى/i.test(String(voice.name || ""))) ||
+    arabicVoices[0] || null;
+  const utterance = new Utterance(message);
+  utterance.lang = "ar-EG";
+  utterance.rate = Math.min(1.2, Math.max(0.8, Number(appSettings.voiceRate) || 0.96));
+  utterance.pitch = 1.06;
+  if (preferredVoice) utterance.voice = preferredVoice;
+  const bubble = playerTarget && typeof playerTarget.querySelector === "function" ? playerTarget : null;
+  let note = bubble?.querySelector(".voice-device-note");
+  if (bubble && !note) {
+    note = document.createElement("p");
+    note.className = "voice-device-note";
+    bubble.appendChild(note);
+  }
+  if (note) note.textContent = "🔊 تشغيل بصوت عربي من الهاتف";
+  setVoiceStatus("خدمة الصوت الطبيعي غير متاحة؛ بجرب صوت العربية المصري الموجود على جهازك.");
+  return new Promise((resolve, reject) => {
+    let started = false;
+    let settled = false;
+    const startTimer = setTimeout(() => {
+      if (!started && !settled) {
+        settled = true;
+        reject(new Error("لم يبدأ صوت الهاتف. تأكد من تفعيل خدمة تحويل النص إلى كلام وتنزيل صوت العربية (مصر)."));
+      }
+    }, 12000);
+    utterance.onstart = () => {
+      started = true;
+      clearTimeout(startTimer);
+      setAvatarSpeaking(true);
+      setVoiceStatus("ونس بتتكلم دلوقتي بصوت الهاتف 💜");
+      if (waitForPlayback && !settled) { settled = true; resolve(true); }
+    };
+    utterance.onend = () => {
+      clearTimeout(startTimer);
+      setAvatarSpeaking(false);
+      setVoiceStatus("انتهى تشغيل الرد الصوتي.");
+      if (!settled) { settled = true; resolve(true); }
+    };
+    utterance.onerror = event => {
+      clearTimeout(startTimer);
+      setAvatarSpeaking(false);
+      const reason = event?.error === "not-allowed"
+        ? "اسمح للمتصفح بتشغيل الصوت من إعدادات الهاتف."
+        : "تعذّر تشغيل الصوت العربي من الهاتف.";
+      if (!settled) { settled = true; reject(new Error(reason)); }
+    };
+    synth.speak(utterance);
+  });
+}
+
 async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
   if (appSettings.voiceEngine !== "cloud" && !voiceOverride) {
-    speakOnDevice(message);
-    return true;
+    try { await speakOnDevice(message, playerTarget, waitForPlayback); return true; }
+    catch (error) { setVoiceStatus(String(error.message || error).slice(0, 180)); return false; }
   }
   try {
-    $("voiceStatus").textContent = "جاري تجهيز صوت ونس…";
+    setVoiceStatus("جاري تجهيز صوت ونس…");
     await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral", playerTarget, waitForPlayback);
     return true;
   } catch (error) {
     stopRealtimeVoice();
-    $("voiceStatus").textContent = "الصوت الطبيعي لم يبدأ: " + String(error.message || error).slice(0, 150);
-    return false;
+    setVoiceStatus("خدمة الصوت الطبيعي غير متاحة حاليًا؛ بجرب الصوت العربي الموجود على جهازك.");
+    try { await speakOnDevice(message, playerTarget, waitForPlayback); return true; }
+    catch (fallbackError) {
+      setVoiceStatus("الصوت السحابي والجهاز لم يشتغلا. " + String(fallbackError.message || fallbackError).slice(0, 140));
+      return false;
+    }
   }
 }
 
@@ -819,14 +891,6 @@ function getAdminVoicePreviewDock() {
 }
 window.WensPlayVoicePreview = (text, voice) =>
   speak(text, voice, getAdminVoicePreviewDock(), true);
-$("voiceTestBtn").addEventListener("click", async () => {
-  $("voiceTestBtn").disabled = true;
-  $("voiceTestBtn").textContent = "جاري تجهيز الصوت…";
-  await speak("أهلًا بيك، أنا ونس. عامِل إيه؟ خلّينا نتكلم سوا.", null, $("voicePlayerDock"));
-  $("voiceTestBtn").disabled = false;
-  $("voiceTestBtn").textContent = "🔊 اسمع صوت ونس";
-});
-
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -837,7 +901,7 @@ $("voiceBtn").addEventListener("click", () => {
   recognition = new SpeechRecognition();
   recognition.lang = appSettings.voiceLocale;
   recognition.interimResults = false;
-  recognition.onstart = () => { $("voiceStatus").textContent = "سامعاك... اتكلم دلوقتي 🎙️"; $("voiceBtn").classList.add("listening"); };
+  recognition.onstart = () => { setVoiceStatus("سامعاك... اتكلم دلوقتي 🎙️"); $("voiceBtn").classList.add("listening"); };
   recognition.onresult = event => { $("messageInput").value = event.results[0][0].transcript; $("chatForm").requestSubmit(); };
   recognition.onerror = event => { $("voiceStatus").textContent = event.error === "not-allowed" ? "اسمح باستخدام الميكروفون من إعدادات الجهاز." : "ماقدرتش ألتقط الكلام؛ جرّب تاني."; };
   recognition.onend = () => { recognition = null; $("voiceBtn").classList.remove("listening"); };

@@ -197,7 +197,7 @@ jobs:
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
           CI_SESSION_ACTIVE=0
       - name: Verify preview owner console layout and static assets
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-white-chat-voice-fallback'
         env:
           BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
         run: |
