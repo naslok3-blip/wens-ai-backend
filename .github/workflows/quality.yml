@@ -197,7 +197,7 @@ jobs:
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
           CI_SESSION_ACTIVE=0
       - name: Verify preview owner console layout and static assets
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
         env:
           BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
         run: |
@@ -213,7 +213,7 @@ jobs:
           grep -q 'overflow-y:auto' /tmp/wens-preview-admin.css
           echo "Preview admin page, full-screen layout and white theme: OK"
       - name: Live agent and PDF Word Excel acceptance test
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
           CI_EMAIL: wens-accept-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
