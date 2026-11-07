@@ -67,7 +67,27 @@ function setAuthMessage(message, error = false) {
   $("authStatus").textContent = message || "";
   $("authStatus").style.color = error ? "#ff9fba" : "#9be7c1";
 }
+let presenceHeartbeatTimer = null;
+function stopPresenceHeartbeat() {
+  if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer);
+  presenceHeartbeatTimer = null;
+}
+function startPresenceHeartbeat() {
+  stopPresenceHeartbeat();
+  if (!currentUser || currentUser.id === "guest") return;
+  const ping = () => {
+    if (document.visibilityState === "visible") api("/api/auth/presence", {}, "POST").catch(() => {});
+  };
+  ping();
+  presenceHeartbeatTimer = setInterval(ping, 45000);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && currentUser && currentUser.id !== "guest") {
+    api("/api/auth/presence", {}, "POST").catch(() => {});
+  }
+});
 function showAuth() {
+  stopPresenceHeartbeat();
   $("authPanel").hidden = false;
   $("appRoot").hidden = true;
   $("adminInlinePanel").hidden = true;
@@ -87,6 +107,7 @@ function showApp(user) {
     ? "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات"
     : "مسجّل الدخول: " + user.name;
   updateAdminShortcut();
+  startPresenceHeartbeat();
   loadChatHistory();
 }
 async function updateAdminShortcut() {
