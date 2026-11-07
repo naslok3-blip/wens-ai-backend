@@ -320,7 +320,7 @@ jobs:
           print("PDF/DOCX/XLSX contents read and all three marker strings returned: OK")
           PY
           echo "Testing authenticated creation and preview of a browser game"
-          PROJECT_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 240 -o /tmp/wens-generated-project.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt -H 'Content-Type: application/json' -X POST --data '{"message":"أنشئي لعبة متصفح كاملة اسمها اختبار ونس: لعبة تخمين رقم من 1 إلى 20، واجهة عربية، إدخال رقم، نتيجة أعلى أو أقل، عدد محاولات، وزر لعبة جديدة. استخدمي أداة إنشاء التطبيق أو اللعبة واحفظي المشروع واعرضي معاينته."}' "$BASE/api/chat")
+          PROJECT_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 240 -o /tmp/wens-generated-project.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt -H 'Content-Type: application/json' -H 'X-Wens-Diagnostics: project-agent-e2e' -X POST --data '{"message":"أنشئي لعبة متصفح كاملة اسمها اختبار ونس: لعبة تخمين رقم من 1 إلى 20، واجهة عربية، إدخال رقم، نتيجة أعلى أو أقل، عدد محاولات، وزر لعبة جديدة. استخدمي أداة إنشاء التطبيق أو اللعبة واحفظي المشروع واعرضي معاينته."}' "$BASE/api/chat")
           if [ "$PROJECT_STATUS" != "200" ]; then cat /tmp/wens-generated-project.json; exit 1; fi
           python - <<'PY'
           import json

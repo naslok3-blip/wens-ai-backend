@@ -34,6 +34,11 @@ const checks = [
   [worker, "documentExtractionText", "explicit extracted-document context"],
   [worker, "documentRefusalPattern", "fallback when the model falsely denies uploaded files"],
   [worker, "create_web_project", "AI web app and game creation tool"],
+  [worker, '"@cf/zai-org/glm-4.7-flash"', "fast dedicated project-generation model"],
+  [worker, "projectCreationIntent", "deterministic app and game generation dispatch"],
+  [worker, "quota_or_billing", "project generation quota diagnostics"],
+  [worker, "inference_timeout", "project inference timeout diagnostics"],
+
   [worker, "generated_projects", "per-user saved generated projects"],
   [worker, "generatedProjectRoute(request", "authenticated project preview and download route"],
   [worker, "Content-Security-Policy", "sandboxed project preview security policy"],

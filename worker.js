@@ -1125,7 +1125,7 @@ async function ensureGeneratedProjects(db) {
   }
   await generatedProjectsSchemaReady;
 }
-async function createWebProject(env, user, args) {
+async function createWebProject(env, user, args, options = {}) {
   if (!env.DB || !user) return { error: "سجّل الدخول أولًا لحفظ التطبيقات والألعاب في حسابك." };
   if (!env.AI) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
   const kind = args.kind === "game" ? "game" : "app";
@@ -1133,40 +1133,84 @@ async function createWebProject(env, user, args) {
   const prompt = String(args.prompt || "").trim().slice(0, 3200);
   if (prompt.length < 12) return { error: "سجّل وصفًا أوضح للتطبيق أو اللعبة." };
   await ensureGeneratedProjects(env.DB);
-  const model = env.WENS_PROJECT_MODEL || env.WENS_AGENT_MODEL || "@cf/qwen/qwen3.8-27b";
+
+  // Prefer the low-latency multilingual model for code generation; do not inherit a reasoning-heavy chat model.
+  const model = env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash";
   const system = [
-    "You are a senior frontend engineer and game developer.",
-    "Return ONLY one complete standalone HTML document. No Markdown fences, explanations, JSON, or code excerpts.",
-    "Use semantic HTML, inline CSS, and vanilla JavaScript. Make it fully working and polished on phones and desktop.",
-    "Do not use external libraries, CDNs, remote fonts/images, network requests, fetch, WebSocket, cookies, localStorage, sessionStorage, service workers, iframes, eval, or dynamic imports.",
-    "Use CSS, inline SVG, canvas and local UI visuals. Keep state in memory.",
-    "Do not include secrets, analytics, trackers, payment collection, login forms, or requests for personal data.",
-    "Games need real rules/game loop, scoring, start/restart and win/loss states. Apps need working navigation, forms and validation.",
-    "If the request is Arabic, use Arabic RTL and Egyptian-friendly labels. Every visible control must work.",
-    "Return a complete compact HTML document with a closing html tag."
+    "You are a senior frontend engineer. Output only one complete standalone HTML5 document.",
+    "Use inline CSS and vanilla JavaScript. The app/game must actually work, not be a mockup.",
+    "Use a polished responsive mobile-first layout, touch-friendly controls, semantic markup, and accessible labels.",
+    "No external libraries, CDNs, fonts, images, fetch/network requests, WebSockets, cookies, storage, service workers, iframes, eval, dynamic imports, payment, login, analytics, or trackers.",
+    "For games include real rules, score or attempts, clear win/loss feedback and a restart button.",
+    "For apps include working navigation, inputs, validation and useful local interactions.",
+    "For Arabic requests use RTL, Arabic labels and Egyptian-friendly language.",
+    "Keep code concise. Do not add comments, explanations, Markdown fences, or text before/after the HTML. Finish with </html>."
   ].join("\n");
   try {
-    const options = { messages: [{role:"system",content:system},{role:"user",content:"Project type: "+kind+"\nTitle: "+title+"\nRequirements: "+prompt+"\nBuild the complete implementation now. Return full HTML only."}], temperature:0.25, max_tokens:7000 };
-    if (model === "@cf/zai-org/glm-4.7-flash") options.chat_template_kwargs = {enable_thinking:false};
-    if (model === "@cf/qwen/qwen3.8-27b") options.reasoning_effort = "medium";
-    const result = await env.AI.run(model, options);
+    const runOptions = {
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: "Type: " + kind + "\nTitle: " + title + "\nRequirements: " + prompt + "\nReturn the full working HTML document only." }
+      ],
+      temperature: 0.1,
+      max_tokens: 4200,
+      chat_template_kwargs: { enable_thinking: false }
+    };
+    const result = await env.AI.run(model, runOptions);
     const message = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
-    let source = typeof message?.content === "string" ? message.content.trim() : typeof result?.response === "string" ? result.response.trim() : "";
+    let source = typeof message?.content === "string"
+      ? message.content.trim()
+      : typeof result?.response === "string" ? result.response.trim() : "";
     const fence = String.fromCharCode(96).repeat(3);
-    if (source.startsWith(fence)) source = source.replace(/^\x60{3}(?:html)?\s*/i,"").replace(/\s*\x60{3}\s*$/,"");
-    const start = source.search(/<!doctype html|<html(?:\s|>)/i);
-    if (start >= 0) source = source.slice(start).trim();
-    if (!/<html(?:\s|>)/i.test(source) || !/<\/html>/i.test(source)) return {error:"النموذج لم يُكمل ملف HTML صالحًا. جرّبي تقليل حجم الطلب."};
-    if (source.length > 90000) return {error:"المشروع الناتج أكبر من الحد المسموح. قلّلي عدد الشاشات أو الميزات."};
-    if (/<script\b[^>]*\bsrc\s*=|<iframe\b|<object\b|<embed\b/i.test(source)) return {error:"المشروع يحتوي موردًا خارجيًا أو إطارًا غير مسموح. أعيدي الطلب دون مكتبات خارجية."};
-    const id=crypto.randomUUID(), now=Math.floor(Date.now()/1000);
-    const description=prompt.replace(/\s+/g," ").slice(0,500);
-    await env.DB.prepare("INSERT INTO generated_projects (id,user_id,title,kind,description,html,created_at) VALUES (?,?,?,?,?,?,?)").bind(id,user.id,title||"مشروع ونس",kind,description,source,now).run();
-    return {ok:true,project:{id,title:title||"مشروع ونس",kind,description,createdAt:now,previewPath:"/api/projects/"+id+"/preview",downloadPath:"/api/projects/"+id+"/download"}};
-  } catch(error) {
-    const detail=String(error?.message||error||"unknown").replace(/Bearer\\s+[^\\s]+/gi,"Bearer [redacted]").replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g,"[redacted]").slice(0,180);
-    console.error("[WENS_PROJECT_GENERATION_FAILURE]",detail);
-    return {error:"تعذّر إنشاء المشروع الآن. قد تكون حصة النموذج انتهت أو لم يكمل توليد الملف."};
+    if (source.startsWith(fence)) {
+      source = source.replace(/^\x60{3}(?:html)?\s*/i, "").replace(/\s*\x60{3}\s*$/, "");
+    }
+    const documentStart = source.search(/<!doctype html|<html(?:\s|>)/i);
+    if (documentStart >= 0) source = source.slice(documentStart).trim();
+    if (!/<html(?:\s|>)/i.test(source) || !/<\/html>/i.test(source)) {
+      return {
+        error: "النموذج لم يُكمل ملف HTML صالحًا. قلّل تفاصيل النسخة الأولى أو اطلب شاشة واحدة فقط.",
+        ...(options.diagnostics ? { diagnostic: { category: "incomplete_html", model, outputLength: source.length, finishReason: result?.choices?.[0]?.finish_reason || result?.result?.choices?.[0]?.finish_reason || "unknown" } } : {})
+      };
+    }
+    if (source.length > 90000) return { error: "المشروع الناتج أكبر من الحد المسموح. قلّل عدد الشاشات أو الميزات." };
+    if (/<script\b[^>]*\bsrc\s*=|<iframe\b|<object\b|<embed\b/i.test(source)) {
+      return { error: "المشروع يحتوي موردًا خارجيًا أو إطارًا غير مسموح. أعد الطلب دون مكتبات خارجية." };
+    }
+    const id = crypto.randomUUID();
+    const now = Math.floor(Date.now() / 1000);
+    const description = prompt.replace(/\s+/g, " ").slice(0, 500);
+    await env.DB.prepare(
+      "INSERT INTO generated_projects (id,user_id,title,kind,description,html,created_at) VALUES (?,?,?,?,?,?,?)"
+    ).bind(id, user.id, title || "مشروع ونس", kind, description, source, now).run();
+    return {
+      ok: true,
+      project: {
+        id, title: title || "مشروع ونس", kind, description, createdAt: now,
+        previewPath: "/api/projects/" + id + "/preview",
+        downloadPath: "/api/projects/" + id + "/download"
+      }
+    };
+  } catch (error) {
+    const raw = String(error?.message || error || "unknown");
+    const detail = raw
+      .replace(/Bearer\\s+[^\\s]+/gi, "Bearer [redacted]")
+      .replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g, "[redacted]")
+      .slice(0, 220);
+    const category = /quota|billing|payment|neurons|allocation/i.test(raw)
+      ? "quota_or_billing"
+      : /timeout|timed out|abort|deadline|exceeded time|504|524/i.test(raw)
+        ? "inference_timeout"
+        : "model_or_database_error";
+    console.error("[WENS_PROJECT_GENERATION_FAILURE]", JSON.stringify({ category, detail }));
+    return {
+      error: category === "quota_or_billing"
+        ? "خدمة إنشاء المشاريع وصلت إلى حد الاستخدام المتاح حاليًا."
+        : category === "inference_timeout"
+          ? "توليد المشروع استغرق وقتًا أطول من المهلة. جرّب نسخة أولى أبسط."
+          : "تعذّر إنشاء المشروع حاليًا. راجع حالة نموذج إنشاء المشاريع.",
+      ...(options.diagnostics ? { diagnostic: { category, detail } } : {})
+    };
   }
 }
 async function generatedProjectRoute(request,env,user,projectId,action) {
@@ -1594,10 +1638,10 @@ async function handleAgent(request, env, user, options = {}) {
   const projectCreationIntent = !capabilityQuestion && /(?:أنشئ|أنشئي|انشئ|اعمل|اعملي|اصنع|اصنعي|صمم|صممي|ابني|جهز|جهزي|نفذ|نفّذ|build|create|make|develop).{0,100}(?:تطبيق|برنامج|لعبة|موقع|app|game|website)|(?:تطبيق|برنامج|لعبة|موقع|app|game|website).{0,100}(?:اعملي|اعمل|اصنعي|اصنع|صممي|صمم|ابني|جهزي|جهز|نفذي|نفذ|build|create|make|develop)/i.test(message);
   if (projectCreationIntent) {
     const kind = /(?:لعبة|game)/i.test(message) ? "game" : "app";
-    const result = await createWebProject(env, user, { kind, title: kind === "game" ? "لعبة ونس" : "تطبيق ونس", prompt: message });
+    const result = await createWebProject(env, user, { kind, title: kind === "game" ? "لعبة ونس" : "تطبيق ونس", prompt: message }, { diagnostics: request.headers.get("x-wens-diagnostics") === "project-agent-e2e" });
     if (!result?.project) {
       steps.push("إنشاء المشروع — تعذّر: " + String(result?.error || "فشل توليد الملف"));
-      return json({ ok: false, error: result?.error || "تعذّر إنشاء المشروع.", steps }, 502);
+      return json({ ok: false, error: result?.error || "تعذّر إنشاء المشروع.", steps, ...(result?.diagnostic ? { diagnostic: result.diagnostic } : {}) }, 502);
     }
     generatedProjects.push(result.project);
     steps.push((kind === "game" ? "إنشاء لعبة متصفح" : "إنشاء تطبيق ويب") + " — تم");
