@@ -429,6 +429,10 @@ async function adminRoute(request, env, path) {
   if (!manager) return json({ error: "سجّل الدخول بحساب مالك التطبيق أولًا." }, 401);
   if (path === "/api/admin/users" && request.method === "GET") {
     const now = Math.floor(Date.now() / 1000);
+    const summary = await env.DB.prepare(
+      "SELECT COUNT(*) AS total_users,COUNT(DISTINCT CASE WHEN s.expires_at>? AND s.last_seen_at>=? THEN u.id END) AS online_users " +
+      "FROM users u LEFT JOIN sessions s ON s.user_id=u.id"
+    ).bind(now, now - 120).first();
     const result = await env.DB.prepare(
       "SELECT u.id,u.email,u.display_name,u.created_at,MAX(s.last_seen_at) AS last_seen_at," +
       "SUM(CASE WHEN s.expires_at>? THEN 1 ELSE 0 END) AS active_sessions " +
@@ -443,7 +447,8 @@ async function adminRoute(request, env, path) {
       activeSessions: Number(row.active_sessions || 0),
       online: Number(row.active_sessions || 0) > 0 && Number(row.last_seen_at || 0) >= now - 120
     }));
-    return json({ ok: true, checkedAt: new Date().toISOString(), onlineWindowSeconds: 120, users });
+    return json({ ok: true, checkedAt: new Date().toISOString(), onlineWindowSeconds: 120,
+      counts: { totalUsers: Number(summary?.total_users || 0), onlineUsers: Number(summary?.online_users || 0) }, users });
   }
   if (path === "/api/admin/diagnostics" && request.method === "GET") {
     let databaseConnected = false;
