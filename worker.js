@@ -91,15 +91,32 @@ function sessionCookie(token, maxAge = SESSION_SECONDS) {
 function adminSessionCookie(token, maxAge = 4 * 60 * 60) {
   return ADMIN_COOKIE + "=" + encodeURIComponent(token) + "; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=" + maxAge;
 }
-async function issueSession(db, user) {
+let loginHistorySchemaReady;
+async function ensureLoginHistorySchema(db) {
+  if (!loginHistorySchemaReady) {
+    loginHistorySchemaReady = (async () => {
+      await db.prepare(
+        "CREATE TABLE IF NOT EXISTS user_login_events (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, event_type TEXT NOT NULL CHECK (event_type IN ('signup','login')), occurred_at INTEGER NOT NULL)"
+      ).run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_user_login_events_user_time ON user_login_events(user_id, occurred_at DESC)").run();
+    })().catch(error => { loginHistorySchemaReady = null; throw error; });
+  }
+  await loginHistorySchemaReady;
+}
+async function issueSession(db, user, eventType = "login") {
   await ensurePresenceSchema(db);
+  await ensureLoginHistorySchema(db);
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const token = b64url(bytes);
   const tokenHash = await digest(token);
   const now = Math.floor(Date.now() / 1000);
   const expires = now + SESSION_SECONDS;
-  await db.prepare("INSERT INTO sessions (id,user_id,token_hash,expires_at,created_at,last_seen_at) VALUES (?,?,?,?,?,?)")
-    .bind(crypto.randomUUID(), user.id, tokenHash, expires, now, now).run();
+  await db.batch([
+    db.prepare("INSERT INTO sessions (id,user_id,token_hash,expires_at,created_at,last_seen_at) VALUES (?,?,?,?,?,?)")
+      .bind(crypto.randomUUID(), user.id, tokenHash, expires, now, now),
+    db.prepare("INSERT INTO user_login_events (id,user_id,event_type,occurred_at) VALUES (?,?,?,?)")
+      .bind(crypto.randomUUID(), user.id, eventType === "signup" ? "signup" : "login", now)
+  ]);
   return json({ ok: true, user: { id: user.id, email: user.email, name: user.display_name } }, 200, { "Set-Cookie": sessionCookie(token) });
 }
 function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثناء تنفيذ طلب الحساب. جرّب مرة أخرى.") {
@@ -181,7 +198,7 @@ async function authRoute(request, env, path, requestId) {
       return authDiagnostic(requestId, "register_insert", error, "تعذّر حفظ الحساب في قاعدة البيانات. لم يكتمل التسجيل.");
     }
     try {
-      return await issueSession(db, { id, email, display_name: name });
+      return await issueSession(db, { id, email, display_name: name }, "signup");
     } catch (error) {
       return authDiagnostic(requestId, "register_session", error, "تم إنشاء الحساب، لكن تعذّر إنشاء جلسة الدخول. جرّب تسجيل الدخول الآن.");
     }
@@ -451,12 +468,13 @@ async function adminRoute(request, env, path) {
   if (path === "/api/admin/diagnostics" && request.method === "GET") {
     let databaseConnected = false;
     const tableNames = new Set();
-    const counts = { users: null, activeSessions: null, messages: null, activeAgentTasks: null };
+    const counts = { users: null, activeSessions: null, messages: null, activeAgentTasks: null, accountsEntered: null, successfulLogins: null };
     if (env.DB) {
       try {
         const probe = await env.DB.prepare("SELECT 1 AS ok").first();
         databaseConnected = Number(probe?.ok) === 1;
         if (databaseConnected) {
+          await ensureLoginHistorySchema(env.DB);
           const listed = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
           for (const row of listed.results || []) tableNames.add(String(row.name || ""));
           const countRows = async (table, where = "", values = []) => {
@@ -471,12 +489,16 @@ async function adminRoute(request, env, path) {
           counts.activeSessions = await countRows("sessions", "WHERE expires_at>?", [now]);
           counts.messages = await countRows("messages");
           counts.activeAgentTasks = await countRows("agent_tasks", "WHERE archived=0 AND done=0");
+          counts.accountsEntered = Number((await env.DB.prepare(
+            "SELECT COUNT(DISTINCT user_id) AS total FROM user_login_events"
+          ).first())?.total || 0);
+          counts.successfulLogins = await countRows("user_login_events", "WHERE event_type='login'");
         }
       } catch {
         databaseConnected = false;
       }
     }
-    const requiredTables = ["users", "sessions", "messages", "app_settings", "admin_credentials", "admin_sessions"];
+    const requiredTables = ["users", "sessions", "messages", "app_settings", "admin_credentials", "admin_sessions", "user_login_events"];
     const missingTables = requiredTables.filter(name => !tableNames.has(name));
     const tools = agentTools();
     return json({
@@ -510,6 +532,47 @@ async function adminRoute(request, env, path) {
       }
     });
   }
+  if (path === "/api/admin/users" && request.method === "GET") {
+    if (!env.DB) return json({ error: "قاعدة بيانات المستخدمين غير متاحة." }, 503);
+    await ensurePresenceSchema(env.DB);
+    await ensureLoginHistorySchema(env.DB);
+    const url = new URL(request.url);
+    const query = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+    const limit = Math.min(100, Math.max(10, Number.parseInt(url.searchParams.get("limit") || "25", 10) || 25));
+    const offset = Math.min(100000, Math.max(0, Number.parseInt(url.searchParams.get("offset") || "0", 10) || 0));
+    const where = query ? "WHERE lower(u.display_name) LIKE lower(?) OR lower(u.email) LIKE lower(?)" : "";
+    const filterValues = query ? ["%" + query + "%", "%" + query + "%"] : [];
+    const totalRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM users u " + where)
+      .bind(...filterValues).first();
+    const now = Math.floor(Date.now() / 1000);
+    const rows = await env.DB.prepare(
+      "SELECT u.display_name AS name, u.email, u.created_at AS registeredAt, " +
+      "COALESCE((SELECT MAX(e.occurred_at) FROM user_login_events e WHERE e.user_id=u.id), " +
+      "(SELECT MAX(s.created_at) FROM sessions s WHERE s.user_id=u.id)) AS lastLoginAt, " +
+      "(SELECT COUNT(*) FROM user_login_events e WHERE e.user_id=u.id AND e.event_type='login') AS loginCount, " +
+      "(SELECT COUNT(*) FROM sessions s WHERE s.user_id=u.id AND s.expires_at>?) AS activeSessions, " +
+      "(SELECT MAX(COALESCE(s.last_seen_at,s.created_at)) FROM sessions s WHERE s.user_id=u.id) AS lastSeenAt, " +
+      "(SELECT COUNT(*) FROM messages m WHERE m.user_id=u.id) AS messageCount " +
+      "FROM users u " + where + " ORDER BY u.created_at DESC LIMIT ? OFFSET ?"
+    ).bind(now, ...filterValues, limit, offset).all();
+    return json({
+      ok: true,
+      total: Number(totalRow?.total || 0),
+      limit,
+      offset,
+      historyTrackingStarted: true,
+      users: (rows.results || []).map(row => ({
+        name: String(row.name || ""),
+        email: String(row.email || ""),
+        registeredAt: Number(row.registeredAt || 0),
+        lastLoginAt: Number(row.lastLoginAt || 0),
+        loginCount: Number(row.loginCount || 0),
+        activeSessions: Number(row.activeSessions || 0),
+        lastSeenAt: Number(row.lastSeenAt || 0),
+        messageCount: Number(row.messageCount || 0)
+      }))
+    });
+  }
   if (path === "/api/admin/test-agent" && request.method === "POST") {
     if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
     const probe = new Request(new URL("/api/agent", request.url), {
@@ -527,7 +590,7 @@ async function adminRoute(request, env, path) {
     }
     const steps = Array.isArray(result.steps) ? result.steps : [];
     const calculatorRun = (Array.isArray(result.toolAudit) ? result.toolAudit : []).find(item =>
-      String(item.expression || "").replace(/\\s+/g, "") === "19*23" &&
+      String(item.expression || "").replace(/\s+/g, "") === "19*23" &&
       item.result === 437 && !item.error
     );
     const calculatorToolUsed = Boolean(calculatorRun) &&
