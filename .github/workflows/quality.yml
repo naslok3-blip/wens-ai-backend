@@ -197,9 +197,9 @@ jobs:
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
           CI_SESSION_ACTIVE=0
       - name: Verify preview owner console layout and static assets
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-white-chat-voice-fallback'
         env:
-          BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
+          BASE: https://engineering-wens-white-chat-voice-fallback-wens-ai-backend-b142.naqashy1.workers.dev
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/admin.html" -o /tmp/wens-preview-admin.html
@@ -212,6 +212,18 @@ jobs:
           grep -q 'background:#f4f7fb' /tmp/wens-preview-admin.css
           grep -q 'overflow-y:auto' /tmp/wens-preview-admin.css
           echo "Preview admin page, full-screen layout and white theme: OK"
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/" -o /tmp/wens-preview-index.html
+          curl --fail --silent --show-error --retry 5 --retry-delay 3 --connect-timeout 10 --max-time 30 "$BASE/app.js" -o /tmp/wens-preview-app.js
+          ! grep -q '<section class="hero">' /tmp/wens-preview-index.html
+          ! grep -q 'heroPortrait\|voiceTestBtn\|welcomeTitle\|welcomeText' /tmp/wens-preview-index.html
+          grep -q 'id="brandAdminEntry"' /tmp/wens-preview-index.html
+          grep -q 'id="voiceBtn" class="voice-input-btn"' /tmp/wens-preview-index.html
+          grep -q 'id="voiceStatus"' /tmp/wens-preview-index.html
+          grep -q 'SpeechSynthesisUtterance' /tmp/wens-preview-app.js
+          grep -q 'ar-EG' /tmp/wens-preview-app.js
+          grep -q '#appRoot>.panel{display:flex' /tmp/wens-preview-style.css
+          grep -q 'background:#f4f7fb' /tmp/wens-preview-style.css
+          echo "Preview white chat, removed hero, composer microphone and Arabic device voice fallback: OK"
       - name: Live agent and PDF Word Excel acceptance test
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:

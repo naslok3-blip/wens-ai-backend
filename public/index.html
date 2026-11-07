@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b0b16">
+<meta name="theme-color" content="#f4f7fb">
 <meta name="description" content="ونس AI رفيقتك الذكية باللغة العربية واللهجة المصرية. دردشة ذكية، مساعد شخصي، ومساعدة في فهم الملفات والإجابة عن أسئلتك.">
 <meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="https://wens-ai-backend-b142.naqashy1.workers.dev/">
@@ -20,11 +20,11 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"ونس AI","alternateName":"Wens AI","applicationCategory":"UtilitiesApplication","operatingSystem":"Web, Android, iOS","inLanguage":"ar-EG","description":"رفيقة ذكية للمحادثة والمساعدة باللغة العربية واللهجة المصرية.","url":"https://wens-ai-backend-b142.naqashy1.workers.dev/"}
 </script>
-<style>.messages{max-height:min(60vh,620px);min-height:150px;overflow:auto}.bubble-text{white-space:pre-wrap;overflow-wrap:anywhere}.bubble-text a{color:#d9c9ff;text-decoration:underline;overflow-wrap:anywhere}.execution-trace{margin-top:10px;padding-top:8px;border-top:1px solid #ffffff18;color:#d9c9ff;font-size:11px}.execution-trace summary{cursor:pointer}.execution-trace ul{margin:7px 0 0;padding-inline-start:20px;color:#b7b0cb;line-height:1.8}.admin-inline-panel{margin-top:14px;padding:14px}.admin-inline-panel iframe{display:block;width:100%;height:82vh;min-height:760px;border:1px solid #ffffff18;border-radius:16px;background:#101020}@media(max-width:480px){.admin-inline-panel{padding:9px}.admin-inline-panel iframe{height:82vh;min-height:720px}}</style>
+<style>.messages{max-height:min(60vh,620px);min-height:150px;overflow:auto}.bubble-text{white-space:pre-wrap;overflow-wrap:anywhere}.bubble-text a{color:#6246b4;text-decoration:underline;overflow-wrap:anywhere}.execution-trace{margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;color:#6848c7;font-size:11px}.execution-trace summary{cursor:pointer}.execution-trace ul{margin:7px 0 0;padding-inline-start:20px;color:#64748b;line-height:1.8}.admin-inline-panel{margin-top:14px;padding:14px}.admin-inline-panel iframe{display:block;width:100%;height:82vh;min-height:760px;border:1px solid #ffffff18;border-radius:16px;background:#101020}@media(max-width:480px){.admin-inline-panel{padding:9px}.admin-inline-panel iframe{height:82vh;min-height:720px}}</style>
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="index.html"><span class="logo">و</span><span><b id="brandName">ونس AI</b><small>رفيقة يومك الذكية</small></span></a>
+  <a class="brand" href="index.html"><span class="logo" id="brandAdminEntry" tabindex="0" role="button" aria-label="مدخل مالك التطبيق">و</span><span><b id="brandName">ونس AI</b><small>رفيقة يومك الذكية</small></span></a>
   <div class="top-actions"><button id="openAdminBtn" class="admin-shortcut" type="button" hidden>الإدارة</button><button id="backToAppBtn" class="admin-shortcut" type="button" hidden>العودة لونس</button><button id="logoutBtn" class="admin-shortcut" hidden>خروج</button></div>
 </header>
 <main class="app">
@@ -43,16 +43,12 @@
 </section>
 
 <div id="appRoot" hidden>
-<section class="hero">
-  <img id="heroPortrait" class="hero-portrait" src="/avatar.jpg?v=real-jpg-20261105" alt="صورة ونس الشخصية" width="192" height="192" loading="eager" decoding="async" fetchpriority="high" tabindex="0" role="button" aria-label="صورة ونس">
-  <p class="eyebrow" id="eyebrowText">موجودة علشانك</p><h1 id="welcomeTitle">أهلًا بيك، أنا ونس 💜</h1>
-  <p id="welcomeText" class="hero-text">اتكلم معايا واسألني اللي في بالك.</p>
-  <div class="actions"><button id="voiceBtn" class="btn secondary" type="button" aria-label="تسجيل رسالة صوتية بالميكروفون">🎙️ <span id="voiceButtonText">الميكروفون</span></button><button id="voiceTestBtn" class="btn primary" type="button">🔊 اسمع صوت ونس</button></div>
-  <p id="voiceStatus" class="status-line" aria-live="polite"></p><div id="voicePlayerDock" class="voice-player-dock" aria-live="polite"></div>
-</section>
+
 
 <section class="panel">
   <div class="section-head"><div><h2>الدردشة مع ونس</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div><button id="clearBtn" class="text-btn">مسح العرض</button></div>
+  <p id="voiceStatus" class="voice-status" role="status" aria-live="polite"></p>
+  <div id="voicePlayerDock" class="voice-player-dock" aria-live="polite"></div>
   <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><img class="mini-avatar" src="/avatar.jpg?v=real-jpg-20261104" alt="ونس" width="30" height="30"><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
   <div class="chat-composer">
     <div id="attachmentMenu" class="attachment-menu" role="menu" aria-label="إضافة إلى المحادثة" hidden>
@@ -85,7 +81,7 @@
     <div id="deepThinkBadge" class="deep-think-badge" hidden>🧠 التفكير العميق مفعّل <button id="disableDeepThink" type="button">إيقاف</button></div>
     <div id="attachmentsPreview" class="attachments-preview" hidden></div>
     <form id="chatForm" class="chat-form">
-      <button id="attachMenuBtn" class="attach-menu-btn" type="button" aria-label="إضافة مرفق أو أداة" aria-expanded="false">＋</button>
+      <button id="attachMenuBtn" class="attach-menu-btn" type="button" aria-label="إضافة مرفق أو أداة" aria-expanded="false">＋</button><button id="voiceBtn" class="voice-input-btn" type="button" aria-label="التحدث وإملاء رسالة صوتية"><span aria-hidden="true">🎙️</span><span id="voiceButtonText" class="visually-hidden">اتكلم معايا</span></button>
       <input id="messageInput" placeholder="اكتب رسالتك أو أرفق ملفًا..." autocomplete="off" aria-label="رسالتك">
       <button class="send-btn" type="submit">إرسال</button>
     </form>
