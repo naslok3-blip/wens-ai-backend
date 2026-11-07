@@ -16,7 +16,7 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, theme: "purple",
-    enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device"
+    enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device"
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -877,7 +877,7 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
           resolve();
         }
       }),
-      new Promise(resolve => setTimeout(resolve, 1200))
+      new Promise(resolve => setTimeout(resolve, 1500))
     ]);
     voices = typeof synth.getVoices === "function" ? synth.getVoices() : [];
   }
@@ -886,18 +886,31 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
     /^ar-EG(?:[-_]|$)/i.test(String(voice.lang || "")) ||
     /egyptian|egypt|مصري|مصر/i.test(String(voice.name || ""))
   );
-  if (!egyptianVoices.length) {
-    throw new Error("مش لاقية على موبايلك صوت مصري مثبت (ar-EG). مش هستخدم صوت فصحى بديل. نزّل صوت العربية – مصر من إعدادات تحويل النص لصوت في الهاتف.");
-  }
-  const preferredVoice = egyptianVoices.find(voice =>
-    /female|woman|hoda|salma|هدى|سلمى/i.test(String(voice.name || ""))
-  ) || egyptianVoices[0];
+  const arabicVoices = voices.filter(voice =>
+    /^ar(?:[-_]|$)/i.test(String(voice.lang || "")) ||
+    /arabic|العربية|عربي/i.test(String(voice.name || ""))
+  );
+  const femaleVoice = list => list.find(voice =>
+    /female|woman|hoda|salma|هدى|سلمى|فاطمة|ليلى/i.test(String(voice.name || ""))
+  );
+  const preferredVoice =
+    femaleVoice(egyptianVoices) ||
+    egyptianVoices[0] ||
+    femaleVoice(arabicVoices) ||
+    arabicVoices[0] ||
+    null;
+  const hasEgyptianVoice = Boolean(preferredVoice && egyptianVoices.includes(preferredVoice));
+  const voiceDescription = hasEgyptianVoice
+    ? "صوت مصري مثبت على الهاتف"
+    : preferredVoice
+      ? "صوت عربي متاح على الهاتف"
+      : "صوت الهاتف الافتراضي للغة العربية";
 
   const utterance = new Utterance(message);
-  utterance.lang = preferredVoice.lang || "ar-EG";
+  utterance.lang = preferredVoice?.lang || "ar-EG";
   utterance.rate = Math.min(1.15, Math.max(0.85, Number(appSettings.voiceRate) || 0.98));
   utterance.pitch = 1.06;
-  utterance.voice = preferredVoice;
+  if (preferredVoice) utterance.voice = preferredVoice;
 
   const bubble = playerTarget && typeof playerTarget.querySelector === "function" ? playerTarget : null;
   let note = bubble?.querySelector(".voice-device-note");
@@ -906,21 +919,24 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
     note.className = "voice-device-note";
     bubble.appendChild(note);
   }
-  if (note) note.textContent = "🔊 صوت مصري مثبت على الهاتف";
-  setVoiceStatus("ونس بتتكلم دلوقتي بصوت مصري مثبت على الموبايل 💜");
+  if (note) note.textContent = "🔊 " + voiceDescription;
+  setVoiceStatus("بجهز صوت ونس من الهاتف…");
   return new Promise((resolve, reject) => {
     let started = false;
     let settled = false;
     const startTimer = setTimeout(() => {
       if (!started && !settled) {
         settled = true;
-        reject(new Error("صوت الهاتف المصري لم يبدأ. راجع خدمة تحويل النص إلى كلام في إعدادات الموبايل."));
+        reject(new Error("محرك الصوت في الهاتف ما بدأش التشغيل. جرّب زر اسمع رد ونس أو راجع إعدادات تحويل النص لصوت."));
       }
     }, 12000);
     utterance.onstart = () => {
       started = true;
       clearTimeout(startTimer);
       setAvatarSpeaking(true);
+      setVoiceStatus(hasEgyptianVoice
+        ? "ونس بتتكلم دلوقتي بصوت مصري 💜"
+        : "ونس بتتكلم دلوقتي بصوت عربي من الهاتف 💜");
       if (waitForPlayback && !settled) { settled = true; resolve(true); }
     };
     utterance.onend = () => {
@@ -933,13 +949,18 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
       setAvatarSpeaking(false);
       const reason = event?.error === "not-allowed"
         ? "اسمح للمتصفح بتشغيل الصوت من إعدادات الهاتف."
-        : "تعذّر تشغيل الصوت المصري المثبت على الهاتف.";
+        : "محرك الصوت في الهاتف رفض تشغيل الرد. اضغط اسمع رد ونس للمحاولة مرة أخرى.";
       if (!settled) { settled = true; reject(new Error(reason)); }
     };
-    synth.speak(utterance);
+    try {
+      synth.speak(utterance);
+      synth.resume?.();
+    } catch (error) {
+      clearTimeout(startTimer);
+      reject(error);
+    }
   });
 }
-
 async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
