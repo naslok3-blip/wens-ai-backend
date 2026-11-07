@@ -93,6 +93,8 @@
             <article class="metric-card"><span>الرسائل المحفوظة</span><strong id="metricMessages">—</strong></article>
             <article class="metric-card"><span>المهام النشطة</span><strong id="metricTasks">—</strong></article>
             <article class="metric-card"><span>أدوات الوكيل</span><strong id="metricTools">—</strong></article>
+            <article class="metric-card"><span>حسابات دخلت (منذ تفعيل السجل)</span><strong id="metricAccountsEntered">—</strong></article>
+            <article class="metric-card"><span>مرات الدخول الناجحة المسجلة</span><strong id="metricSuccessfulLogins">—</strong></article>
           </div>
           <section class="online-users-section" aria-labelledby="onlineUsersTitle">
             <div class="online-users-heading">
@@ -102,6 +104,23 @@
             <div id="onlineUsersList" class="online-users-list" aria-live="polite"><p class="muted">جارٍ تحميل قائمة المتصلين…</p></div>
             <p class="muted online-privacy-note">البيانات المعروضة: الاسم والبريد وتاريخ إنشاء الحساب وآخر نشاط وعدد الجلسات والرسائل. لا تعرض لوحة الإدارة نصوص المحادثات أو كلمات المرور أو عناوين IP أو مفاتيح الخدمات.</p>
             <button id="refreshOnlineUsersBtn" class="btn secondary" type="button">تحديث المتصلين</button>
+          </section>
+          <section class="registered-users-section" aria-labelledby="registeredUsersTitle">
+            <div class="online-users-heading">
+              <div><h3 id="registeredUsersTitle">بيانات حسابات المستخدمين</h3><p>للمالك فقط: الاسم والبريد وتاريخ التسجيل وآخر دخول وعدد مرات الدخول والجلسات والرسائل المحفوظة.</p></div>
+              <strong id="registeredUsersCount" class="online-count">— حساب</strong>
+            </div>
+            <div class="users-search-row">
+              <input id="usersSearchInput" type="search" maxlength="100" placeholder="ابحث بالاسم أو البريد الإلكتروني" autocomplete="off">
+              <button id="usersSearchBtn" class="btn secondary" type="button">بحث</button>
+            </div>
+            <div id="registeredUsersList" class="registered-users-list" aria-live="polite"><p class="muted">جارٍ تحميل الحسابات…</p></div>
+            <div class="users-pagination">
+              <button id="usersPrevBtn" class="btn secondary" type="button" disabled>السابق</button>
+              <span id="usersPageStatus" class="muted">—</span>
+              <button id="usersNextBtn" class="btn secondary" type="button" disabled>التالي</button>
+            </div>
+            <p class="muted online-privacy-note">سجل مرات الدخول يبدأ من تاريخ تفعيل الميزة؛ لا يمكن استعادة مرات الدخول السابقة التي حُذفت جلساتها قبل وجود سجل تاريخي. لا تُعرض كلمات المرور أو نصوص المحادثات أو عناوين IP.</p>
           </section>
           <div class="diagnostic-grid">
             <div class="diagnostic-item"><b>Workers AI</b><strong id="diagWorkersAI" class="state-pending">لم يُفحص</strong></div>
