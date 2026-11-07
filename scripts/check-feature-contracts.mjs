@@ -10,7 +10,7 @@ const checks = [
   [app, "getAdminVoicePreviewDock", "visible admin audio dock"],
   [app, "playbackStarted", "waits for audio playback"],
   [app, "SpeechSynthesisUtterance", "on-device speech fallback"],
-  [app, 'utterance.lang = preferredVoice.lang || "ar-EG"', "selected Egyptian Arabic voice locale"],
+  [app, 'utterance.lang = preferredVoice?.lang || "ar-EG"', "Egyptian-first device locale with Arabic fallback"],
   [app, "synth.getVoices()", "selects installed device voices"],
   [app, "egyptianVoices.length", "does not fall back to generic MSA voices"],
   [app, "cleanRepeatedReplyText", "legacy repeated replies cleaned in chat UI"],
