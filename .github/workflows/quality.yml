@@ -197,7 +197,7 @@ jobs:
             -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null
           CI_SESSION_ACTIVE=0
       - name: Verify preview owner console layout and static assets
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
         run: |
@@ -215,7 +215,7 @@ jobs:
       - name: Live agent and PDF Word Excel acceptance test
         if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'engineering/wens-full-app-hardening'
         env:
-          BASE: https://engineering-wens-full-app-hardening-wens-ai-backend-b142.naqashy1.workers.dev
+          BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
           CI_EMAIL: wens-accept-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
           CI_PASSWORD: Wens-Accept-${{ github.run_id }}-${{ github.run_attempt }}-Test!
         run: |
@@ -228,6 +228,28 @@ jobs:
             fi
           }
           trap cleanup_ci_session EXIT
+          echo "Waiting for the new production admin UI to be deployed"
+          deployed=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.html" -o /tmp/wens-production-admin.html; then
+              if grep -q '<body class="admin-page">' /tmp/wens-production-admin.html; then
+                deployed=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+          test "$deployed" = "1"
+          echo "Production white admin UI is live"
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/api/health" -o /tmp/wens-production-health.json
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/wens-production-health.json',encoding='utf-8'))
+          features=data.get('features',{})
+          assert data.get('ok') is True, data
+          assert features.get('documentReadingConfigured') is True, "Production document-reading service is not configured"
+          print("Production document-reading service: configured")
+          PY
           echo "Registering an isolated acceptance-test account"
           REGISTER_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
             -o /tmp/wens-accept-register.json -w '%{http_code}' -c /tmp/wens-accept-cookie.txt \
