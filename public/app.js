@@ -254,7 +254,7 @@ function appendMessageText(container, text) {
   }
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
-function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = []) {
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = []) {
   const row = document.createElement("div");
   row.className = "message " + who;
   if (who === "assistant") {
@@ -309,6 +309,21 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       media.appendChild(save);
     }
     if (media.childNodes.length) bubble.appendChild(media);
+  }
+  if (who === "assistant" && Array.isArray(generatedProjects) && generatedProjects.length) {
+    for (const project of generatedProjects.slice(0, 2)) {
+      if (!project || !/^\/api\/projects\/[0-9a-f-]{36}\/preview$/i.test(String(project.previewPath || "")) || !/^\/api\/projects\/[0-9a-f-]{36}\/download$/i.test(String(project.downloadPath || ""))) continue;
+      const card=document.createElement("section"); card.className="generated-project-card";
+      const heading=document.createElement("div"); heading.className="generated-project-heading";
+      const title=document.createElement("strong"); title.textContent=String(project.title||"مشروع ونس");
+      const type=document.createElement("span"); type.textContent=project.kind==="game"?"لعبة":"تطبيق ويب"; heading.append(title,type);
+      const preview=document.createElement("iframe"); preview.className="generated-project-preview"; preview.title="معاينة "+String(project.title||"مشروع ونس");
+      preview.loading="lazy"; preview.referrerPolicy="no-referrer"; preview.setAttribute("sandbox","allow-scripts"); preview.src=project.previewPath;
+      const actions=document.createElement("div"); actions.className="generated-project-actions";
+      const open=document.createElement("a"); open.href=project.previewPath; open.target="_blank"; open.rel="noopener noreferrer"; open.textContent="فتح المعاينة";
+      const download=document.createElement("a"); download.href=project.downloadPath; download.download=""; download.textContent="تنزيل ملف HTML";
+      actions.append(open,download); card.append(heading,preview,actions); bubble.append(card);
+    }
   }
   if (who === "assistant" && Array.isArray(steps) && steps.length) {
     const trace = document.createElement("details");
@@ -603,7 +618,7 @@ $("chatForm").addEventListener("submit", async event => {
     const data = await api("/api/chat", {
       message: text, attachments: payload, deepThink
     });
-    const assistantRow = addMessage(data.reply, "assistant", data.steps || [], [], data.generatedImages || []);
+    const assistantRow = addMessage(data.reply, "assistant", data.steps || [], [], data.generatedImages || [], data.generatedProjects || []);
     if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
   } catch (error) {
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);

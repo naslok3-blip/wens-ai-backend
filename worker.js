@@ -966,7 +966,7 @@ async function runAgentBrowser(env, user, db, task, options = {}) {
   }
 }
 
-const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب، ثم استخدمي أدوات ونس الفعلية عندما تفيد: الحساب، إنشاء المهام وتعديلها وتحديد مواعيدها وأولوياتها، إنجازها، أرشفتها واستعادتها، والبحث في سجل محادثات المستخدم نفسه. لا تنفذي إلا ما تسمح به الأدوات. يمكنك الآن البحث في الويب وقراءة المواقع العامة، وفتح جلسة متصفح خاصة بالمستخدم للتنقل وقراءة الصفحات والضغط على الروابط والأزرار العادية وملء الحقول غير الحساسة. لا تطلبي كلمة مرور أو رمز تحقق أو رقم بطاقة في الشات؛ أرسلي رابط Live View المؤقت ليُدخل المستخدم بيانات تسجيل الدخول بنفسه داخل المتصفح. لا تضغطي أزرار الدفع والشراء والتحويل والحذف والإرسال والنشر أو اعتماد التغييرات النهائية، ولا تنفذي معاملات مالية أو إجراءات لا يمكن التراجع عنها. لا تطلبي تأكيدًا على البحث أو القراءة أو التنقل أو ملء الحقول غير الحساسة؛ نفذيها مباشرة. الأرشفة قابلة للاسترجاع وليست حذفًا نهائيًا. كوني طبيعية في الحوار ولا تحولي كل سؤال إلى خطة، واذكري بدقة ما تم وما لم يتم.`;
+const AGENT_SYSTEM_PROMPT = `أنتِ WENS AI Agent، وكيلة شخصية باللغة العربية المصرية. افهمي الطلب، ثم استخدمي أدوات ونس الفعلية عندما تفيد: الحساب، إنشاء المهام وتعديلها وتحديد مواعيدها وأولوياتها، إنجازها، أرشفتها واستعادتها، والبحث في سجل محادثات المستخدم نفسه. لا تنفذي إلا ما تسمح به الأدوات. يمكنك الآن البحث في الويب وقراءة المواقع العامة، وفتح جلسة متصفح خاصة بالمستخدم للتنقل وقراءة الصفحات والضغط على الروابط والأزرار العادية وملء الحقول غير الحساسة. لا تطلبي كلمة مرور أو رمز تحقق أو رقم بطاقة في الشات؛ أرسلي رابط Live View المؤقت ليُدخل المستخدم بيانات تسجيل الدخول بنفسه داخل المتصفح. لا تضغطي أزرار الدفع والشراء والتحويل والحذف والإرسال والنشر أو اعتماد التغييرات النهائية، ولا تنفذي معاملات مالية أو إجراءات لا يمكن التراجع عنها. لا تطلبي تأكيدًا على البحث أو القراءة أو التنقل أو ملء الحقول غير الحساسة؛ نفذيها مباشرة. الأرشفة قابلة للاسترجاع وليست حذفًا نهائيًا. إذا طلب المستخدم إنشاء تطبيق أو لعبة، استدعي أداة create_web_project بدل الاكتفاء بشرح أو مقتطفات كود. أنشئي نسخة ويب تفاعلية كاملة واحفظيها واعرضي معاينتها ورابط تحميلها. لا تدّعي إنشاء APK أصلي أو نشر عام؛ الأداة تنتج مشروع ويب مستقلًا قابلًا للتجربة والتنزيل. كوني طبيعية واذكري بدقة ما تم وما لم يتم.`;
 let agentTasksReady;
 async function ensureAgentTasks(db) {
   if (!agentTasksReady) {
@@ -1059,6 +1059,11 @@ function agentTools() {
       prompt: { type: "string", description: "Exact visual edits to apply to the attached image." },
       size: { type: "string", description: "Image shape: square, landscape, portrait, wide, or tall." }
     }, ["prompt"]),
+    fn("create_web_project", "Create a complete working self-contained browser app or game. Always use this tool when the user explicitly asks to build an app or game. Save the single-file HTML project and return preview and download links.", {
+      kind: { type: "string", enum: ["app", "game"], description: "app for a web application or game for a browser game." },
+      title: { type: "string", description: "Project title." },
+      prompt: { type: "string", description: "Detailed project requirements, features and interactions." }
+    }, ["kind", "prompt"]),
     fn("calculate", "Calculate a simple arithmetic expression using numbers, parentheses, decimals, +, -, *, /, and remainder.", {
       expression: { type: "string", description: "Arithmetic expression, for example (1250 * 3.5) + 80." }
     }, ["expression"]),
@@ -1110,6 +1115,70 @@ function agentTools() {
     }, ["query"])
   ];
 }
+let generatedProjectsSchemaReady;
+async function ensureGeneratedProjects(db) {
+  if (!generatedProjectsSchemaReady) {
+    generatedProjectsSchemaReady = (async () => {
+      await db.prepare("CREATE TABLE IF NOT EXISTS generated_projects (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('app','game')), description TEXT NOT NULL DEFAULT '', html TEXT NOT NULL, created_at INTEGER NOT NULL)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_generated_projects_user_created ON generated_projects(user_id, created_at DESC)").run();
+    })().catch(error => { generatedProjectsSchemaReady = null; throw error; });
+  }
+  await generatedProjectsSchemaReady;
+}
+async function createWebProject(env, user, args) {
+  if (!env.DB || !user) return { error: "سجّل الدخول أولًا لحفظ التطبيقات والألعاب في حسابك." };
+  if (!env.AI) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
+  const kind = args.kind === "game" ? "game" : "app";
+  const title = String(args.title || (kind === "game" ? "لعبة ونس" : "تطبيق ونس")).replace(/[\\r\\n<>]/g, " ").trim().slice(0, 80);
+  const prompt = String(args.prompt || "").trim().slice(0, 3200);
+  if (prompt.length < 12) return { error: "سجّل وصفًا أوضح للتطبيق أو اللعبة." };
+  await ensureGeneratedProjects(env.DB);
+  const model = env.WENS_PROJECT_MODEL || env.WENS_AGENT_MODEL || "@cf/qwen/qwen3.8-27b";
+  const system = [
+    "You are a senior frontend engineer and game developer.",
+    "Return ONLY one complete standalone HTML document. No Markdown fences, explanations, JSON, or code excerpts.",
+    "Use semantic HTML, inline CSS, and vanilla JavaScript. Make it fully working and polished on phones and desktop.",
+    "Do not use external libraries, CDNs, remote fonts/images, network requests, fetch, WebSocket, cookies, localStorage, sessionStorage, service workers, iframes, eval, or dynamic imports.",
+    "Use CSS, inline SVG, canvas and local UI visuals. Keep state in memory.",
+    "Do not include secrets, analytics, trackers, payment collection, login forms, or requests for personal data.",
+    "Games need real rules/game loop, scoring, start/restart and win/loss states. Apps need working navigation, forms and validation.",
+    "If the request is Arabic, use Arabic RTL and Egyptian-friendly labels. Every visible control must work.",
+    "Return a complete compact HTML document with a closing html tag."
+  ].join("\n");
+  try {
+    const options = { messages: [{role:"system",content:system},{role:"user",content:"Project type: "+kind+"\nTitle: "+title+"\nRequirements: "+prompt+"\nBuild the complete implementation now. Return full HTML only."}], temperature:0.25, max_tokens:7000 };
+    if (model === "@cf/zai-org/glm-4.7-flash") options.chat_template_kwargs = {enable_thinking:false};
+    if (model === "@cf/qwen/qwen3.8-27b") options.reasoning_effort = "medium";
+    const result = await env.AI.run(model, options);
+    const message = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
+    let source = typeof message?.content === "string" ? message.content.trim() : typeof result?.response === "string" ? result.response.trim() : "";
+    const fence = String.fromCharCode(96).repeat(3);
+    if (source.startsWith(fence)) source = source.replace(/^\x60{3}(?:html)?\s*/i,"").replace(/\s*\x60{3}\s*$/,"");
+    const start = source.search(/<!doctype html|<html(?:\s|>)/i);
+    if (start >= 0) source = source.slice(start).trim();
+    if (!/<html(?:\s|>)/i.test(source) || !/<\/html>/i.test(source)) return {error:"النموذج لم يُكمل ملف HTML صالحًا. جرّبي تقليل حجم الطلب."};
+    if (source.length > 90000) return {error:"المشروع الناتج أكبر من الحد المسموح. قلّلي عدد الشاشات أو الميزات."};
+    if (/<script\b[^>]*\bsrc\s*=|<iframe\b|<object\b|<embed\b/i.test(source)) return {error:"المشروع يحتوي موردًا خارجيًا أو إطارًا غير مسموح. أعيدي الطلب دون مكتبات خارجية."};
+    const id=crypto.randomUUID(), now=Math.floor(Date.now()/1000);
+    const description=prompt.replace(/\s+/g," ").slice(0,500);
+    await env.DB.prepare("INSERT INTO generated_projects (id,user_id,title,kind,description,html,created_at) VALUES (?,?,?,?,?,?,?)").bind(id,user.id,title||"مشروع ونس",kind,description,source,now).run();
+    return {ok:true,project:{id,title:title||"مشروع ونس",kind,description,createdAt:now,previewPath:"/api/projects/"+id+"/preview",downloadPath:"/api/projects/"+id+"/download"}};
+  } catch(error) {
+    const detail=String(error?.message||error||"unknown").replace(/Bearer\\s+[^\\s]+/gi,"Bearer [redacted]").replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g,"[redacted]").slice(0,180);
+    console.error("[WENS_PROJECT_GENERATION_FAILURE]",detail);
+    return {error:"تعذّر إنشاء المشروع الآن. قد تكون حصة النموذج انتهت أو لم يكمل توليد الملف."};
+  }
+}
+async function generatedProjectRoute(request,env,user,projectId,action) {
+  if(!env.DB||!user)return json({error:"سجّل الدخول لفتح مشروعك."},401);
+  await ensureGeneratedProjects(env.DB);
+  const project=await env.DB.prepare("SELECT html FROM generated_projects WHERE id=? AND user_id=? LIMIT 1").bind(projectId,user.id).first();
+  if(!project)return json({error:"المشروع غير موجود في حسابك."},404);
+  const headers={"X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","Cache-Control":"private, no-store","Permissions-Policy":"camera=(), microphone=(), geolocation=(), payment=()","Content-Type":"text/html; charset=utf-8"};
+  if(action==="download")return new Response(project.html,{status:200,headers:{...headers,"Content-Disposition":'attachment; filename="wens-project-'+projectId.slice(0,8)+'.html"'}});
+  return new Response(project.html,{status:200,headers:{...headers,"Content-Security-Policy":"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'; frame-ancestors 'self'"}});
+}
+
 async function executeAgentTool(name, args, env, user) {
   if (name === "get_current_time") return { now: new Date().toISOString() };
   if (name === "calculate") {
@@ -1188,6 +1257,7 @@ async function executeAgentTool(name, args, env, user) {
     }
   }
   if (!env.DB || !user) return { error: "يلزم تسجيل الدخول إلى حساب ونس للوصول إلى بياناتك الخاصة." };
+  if (name === "create_web_project") return await createWebProject(env,user,args || {});
   await ensureAgentTasks(env.DB);
   if (name === "browser_open" || name === "browser_inspect" || name === "browser_click" || name === "browser_fill") {
     if (!env.BROWSER) return { error: "خدمة المتصفح الخارجي غير مربوطة على الخادم." };
@@ -1468,6 +1538,7 @@ async function handleAgent(request, env, user, options = {}) {
   const steps = [];
   if (documentsWereRead) steps.push("قراءة محتوى PDF / Word / Excel");
   const generatedImages = [];
+  const generatedProjects = [];
   const toolAudit = options.auditTools ? [] : null;
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
@@ -1581,7 +1652,7 @@ async function handleAgent(request, env, user, options = {}) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
-        const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image"];
+        const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project"];
         if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
         let output;
         if (name === "generate_image" || name === "edit_image") {
@@ -1597,6 +1668,7 @@ async function handleAgent(request, env, user, options = {}) {
         } else {
           output = await executeAgentTool(name,args || {},env,user);
         }
+        if (name === "create_web_project" && output?.project) generatedProjects.push(output.project);
         if (toolAudit && name === "calculate") {
           toolAudit.push({
             expression: String(args?.expression || ""),
@@ -1616,6 +1688,7 @@ async function handleAgent(request, env, user, options = {}) {
           search_my_messages: "البحث في سجل المحادثات",
           generate_image: "إنشاء صورة بالذكاء الاصطناعي",
           edit_image: "تعديل الصورة المرفقة",
+          create_web_project: "إنشاء تطبيق أو لعبة تفاعلية",
           search_web: "البحث في المواقع العامة",
           open_webpage: "قراءة صفحة ويب",
           browser_open: "فتح موقع في المتصفح",
@@ -1652,6 +1725,7 @@ async function handleAgent(request, env, user, options = {}) {
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
+    if (!finalText && generatedProjects.length) finalText = "خلصت النسخة الأولى من مشروعك. جرّب المعاينة وحمّل ملف HTML من البطاقة تحت الرد.";
     if (!finalText) return json({ error: "نفذت الوكيلة الأدوات لكن النموذج لم يرجع ملخصًا نهائيًا." }, 502);
     if (options.persist && env.DB && user) {
       const safeStoredReply = finalText.replace(/https:\/\/live\.browser\.run\/[^\s)]+/g, "[رابط متصفح مؤقت]");
@@ -1659,7 +1733,7 @@ async function handleAgent(request, env, user, options = {}) {
         "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
       ).bind(crypto.randomUUID(), user.id, "assistant", safeStoredReply, Math.floor(Date.now() / 1000)).run();
     }
-    const payload = { ok: true, model, steps, reply: finalText, generatedImages };
+    const payload = { ok: true, model, steps, reply: finalText, generatedImages, generatedProjects };
     if (toolAudit) payload.toolAudit = toolAudit;
     if (documentAudit) payload.documentAudit = documentAudit;
     return json(payload);
@@ -1870,6 +1944,11 @@ export default {
         if (!user) return json({ error: "سجّل الدخول الأول." }, 401);
         const rows = await requireDb(env).prepare("SELECT role,content,created_at FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 60").bind(user.id).all();
         return json({ messages: (rows.results || []).reverse(), persistence: true });
+      }
+      const projectRouteMatch = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/(preview|download)$/i);
+      if (projectRouteMatch && request.method === "GET") {
+        const projectUser = env.DB ? await currentUser(request, env) : null;
+        return await generatedProjectRoute(request, env, projectUser, projectRouteMatch[1], projectRouteMatch[2]);
       }
       if (path === "/api/agent" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
