@@ -1342,6 +1342,7 @@ async function handleAgent(request, env, user, options = {}) {
       textAttachmentContext += "\\n\\n[مرفق ملف باسم " + name + " ونوع " + (type || "غير معروف") + ". محتوى هذا النوع لم يتم استخراجه؛ لا تدّعي قراءته.]";
     }
   }
+  let documentAudit = null;
   let documentsWereRead = false;
   if (documentFiles.length) {
     const extraction = await extractDocumentAttachments(env, documentFiles, message);
@@ -1367,7 +1368,6 @@ async function handleAgent(request, env, user, options = {}) {
   if (documentsWereRead) steps.push("قراءة محتوى PDF / Word / Excel");
   const generatedImages = [];
   const toolAudit = options.auditTools ? [] : null;
-  let documentAudit = null;
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
     const prior = await env.DB.prepare(
