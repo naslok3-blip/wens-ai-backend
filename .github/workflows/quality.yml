@@ -39,6 +39,9 @@ jobs:
           node scripts/check-admin-controls.mjs
           node --check scripts/check-feature-contracts.mjs
           node scripts/check-feature-contracts.mjs
+          node --check reply-utils.mjs
+          node --check scripts/check-reply-utils.mjs
+          node scripts/check-reply-utils.mjs
       - name: Verify production Worker, Workers AI, D1 and static assets
         run: |
           set -euo pipefail

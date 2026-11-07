@@ -9,8 +9,15 @@ const checks = [
   [app, "getAdminVoicePreviewDock", "visible admin audio dock"],
   [app, "playbackStarted", "waits for audio playback"],
   [app, "SpeechSynthesisUtterance", "on-device speech fallback"],
-  [app, 'utterance.lang = "ar-EG"', "Egyptian Arabic speech locale"],
-  [app, "synth.getVoices()", "selects an installed Arabic device voice"],
+  [app, 'utterance.lang = preferredVoice.lang || "ar-EG"', "selected Egyptian Arabic voice locale"],
+  [app, "synth.getVoices()", "selects installed device voices"],
+  [app, "egyptianVoices.length", "does not fall back to generic MSA voices"],
+  [app, "cleanRepeatedReplyText", "legacy repeated replies cleaned in chat UI"],
+  [worker, "cleanRepeatedResponseText(finalText)", "model output deduplicated before save and response"],
+  [worker, "projectTargetMentioned", "polite app and game requests routed to project generation"],
+  [worker, "const maxTurns = deepThink ? 6 : 4", "reduced default agent round trips"],
+  [worker, 'voiceEngine: "device"', "free device voice is the default"],
+  [admin, 'voiceEngine: "device"', "admin defaults to free device voice"],
   [app, "brandAdminEntry", "hidden owner entry preserved in header logo"],
   [app, 'fetch("/api/voice/connect"', "browser WebRTC route"],
   [worker, 'path === "/api/voice/connect"', "Worker voice route"],
@@ -68,4 +75,4 @@ if (!index.includes('id="voiceBtn" class="voice-input-btn"')) throw new Error("V
 if (!index.includes('id="voiceStatus"')) throw new Error("Accessible voice status is missing.");
 if (app.includes("voiceTestBtn") || app.includes("heroPortrait")) throw new Error("Removed hero controls are still referenced by app.js.");
 if (!admin.includes("metricAccountsEntered") || !admin.includes("metricSuccessfulLogins")) throw new Error("Login-history metrics missing from owner panel.");
-console.log("Wens feature contracts passed: document reading, calculator validation, login history, account listing, app/game generation, isolated previews, voice fallback and white chat layout.");
+console.log("Wens feature contracts passed: document reading, agent routing, reply deduplication, free Egyptian voice handling and admin features.");

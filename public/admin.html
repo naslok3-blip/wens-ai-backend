@@ -184,9 +184,9 @@
           <h2>الصوت والمساعدة</h2>
           <div class="field"><label for="voiceLocale">لهجة الميكروفون</label><select id="voiceLocale"><option value="ar-EG">المصرية – مصر</option></select></div>
           <div class="field"><label for="voiceRate">سرعة الصوت: <output id="rateOut">0.96</output></label><input id="voiceRate" type="range" min="0.65" max="1.35" step="0.05" value="0.96"></div>
-          <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="cloud">الصوت المصري الطبيعي – مفعّل</option></select></div>
-          <div class="field"><label for="voiceName">اختيار نبرة ونس</label><select id="voiceName"><option value="coral">Coral – دافئة</option><option value="shimmer">Shimmer – ناعمة</option><option value="marin">Marin – طبيعية</option><option value="cedar">Cedar – واضحة</option><option value="sage">Sage – هادئة</option></select></div>
-          <div class="notice">ونس تستخدم صوتًا طبيعيًا عبر OpenAI Realtime. تعليمات الصوت مثبتة على اللهجة المصرية القاهرية العامية، وتمنع الفصحى واللهجات الأخرى. استهلاك الصوت يُحسب على رصيد OpenAI API. جرّب عينة الصوت من هنا قبل الاعتماد عليه.</div>
+          <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="device">صوت الهاتف المجاني — مصري فقط</option></select></div>
+          <div class="field"><label for="voiceName">اختيار نبرة ونس</label><select id="voiceName"><option value="device">اختيار الصوت المصري المثبّت تلقائيًا</option></select></div>
+          <div class="notice">ونس تستخدم صوت الهاتف مجانًا. هتختار صوت ar-EG المصري لو كان مثبتًا؛ ولو مش موجود مش هتشغّل صوت فصحى بديل. الصوت المصري البشري الطبيعي يحتاج محركًا مصريًا مخصصًا، وده مش متاح حاليًا ضمن المحركات المجانية المربوطة.</div>
           <div class="actions left-actions">
             <button id="voicePreviewBtn" class="btn secondary" type="button">بدء اختبار صوت ونس</button>
             <button id="voiceConfirmBtn" class="btn primary" type="button" hidden>تأكيد أنني سمعت الصوت</button>
