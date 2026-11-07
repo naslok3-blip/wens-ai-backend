@@ -140,12 +140,65 @@ async function refreshDiagnostics() {
     if (button) button.disabled = false;
   }
 }
+let cachedUsers = [];
+function renderUsers(users = cachedUsers) {
+  const host = $("usersList");
+  if (!host) return;
+  const query = String($("usersSearch")?.value || "").trim().toLocaleLowerCase();
+  const filtered = users.filter(user =>
+    String(user.name || "").toLocaleLowerCase().includes(query) ||
+    String(user.email || "").toLocaleLowerCase().includes(query)
+  );
+  host.replaceChildren();
+  if (!filtered.length) {
+    const empty = document.createElement("p");
+    empty.className = "users-empty";
+    empty.textContent = query ? "لا توجد نتائج مطابقة." : "لا توجد حسابات مسجلة حتى الآن.";
+    host.append(empty);
+    return;
+  }
+  for (const user of filtered) {
+    const card = document.createElement("article");
+    card.className = "user-row";
+    const identity = document.createElement("div");
+    identity.className = "user-identity";
+    const name = document.createElement("strong");
+    name.textContent = user.name || "بدون اسم";
+    const email = document.createElement("span");
+    email.textContent = user.email || "—";
+    identity.append(name, email);
+    const status = document.createElement("span");
+    status.className = user.online ? "user-presence is-online" : "user-presence";
+    status.textContent = user.online ? "● متصل الآن" : "○ غير متصل";
+    const details = document.createElement("div");
+    details.className = "user-details";
+    const lastSeen = user.lastSeenAt ? new Date(user.lastSeenAt * 1000).toLocaleString("ar-EG") : "لم يسجل دخولًا بعد";
+    const created = user.createdAt ? new Date(user.createdAt * 1000).toLocaleDateString("ar-EG") : "غير متاح";
+    details.textContent = "آخر ظهور: " + lastSeen + " · التسجيل: " + created + " · جلسات الدخول: " + Number(user.activeSessions || 0).toLocaleString("ar-EG");
+    card.append(identity, status, details);
+    host.append(card);
+  }
+}
+async function refreshUsers() {
+  const button = $("refreshUsersBtn");
+  if (button) button.disabled = true;
+  try {
+    const data = await request("/api/admin/users");
+    cachedUsers = Array.isArray(data.users) ? data.users : [];
+    $("usersOnlineCount").textContent = Number(data.counts?.onlineUsers || 0).toLocaleString("ar-EG");
+    $("usersTotalCount").textContent = Number(data.counts?.totalUsers || 0).toLocaleString("ar-EG");
+    renderUsers();
+    $("usersStatus").textContent = "آخر تحديث: " + new Date(data.checkedAt).toLocaleString("ar-EG") + " — أحدث 100 حساب.";
+  } catch (error) {
+    $("usersStatus").textContent = error.message || "تعذّر تحميل المستخدمين.";
+  } finally { if (button) button.disabled = false; }
+}
 async function showDashboard() {
   $("adminGate").hidden = true;
   $("adminApp").hidden = false;
   try {
     await loadSettings();
-    await Promise.all([refreshStatus(), refreshDiagnostics()]);
+    await Promise.all([refreshStatus(), refreshDiagnostics(), refreshUsers()]);
   } catch (error) { serviceMessage(error.message, true); }
 }
 $("adminLoginForm").addEventListener("submit", async event => {
@@ -199,6 +252,8 @@ $("adminLogoutBtn").addEventListener("click", async () => {
 });
 $("refreshStatusBtn").addEventListener("click", refreshStatus);
 $("refreshDiagnosticsBtn").addEventListener("click", refreshDiagnostics);
+$("refreshUsersBtn").addEventListener("click", refreshUsers);
+$("usersSearch").addEventListener("input", () => renderUsers());
 $("testAgentBtn").addEventListener("click", async () => {
   const button = $("testAgentBtn");
   button.disabled = true;
