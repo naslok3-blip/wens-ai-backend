@@ -16,7 +16,7 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, theme: "purple",
-    enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
+    enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device"
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
@@ -24,7 +24,7 @@ function loadLocalSettings() {
     return {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "cloud") && (key !== "voiceLocale" || value === "ar-EG"))
+        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "device") && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || value === "device"))
       ))
     };
   } catch { return defaults; }
@@ -222,6 +222,34 @@ async function loadChatHistory() {
     addMessage("تعذّر تحميل المحادثة: " + error.message);
   }
 }
+function cleanRepeatedReplyText(value) {
+  const source = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+  if (!source) return "";
+  const seen = new Set();
+  const output = [];
+  let previousBlank = false;
+  for (const rawLine of source.split("\n")) {
+    const line = rawLine.replace(/[ \t]+$/g, "");
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (output.length && !previousBlank) output.push("");
+      previousBlank = true;
+      continue;
+    }
+    previousBlank = false;
+    const key = trimmed
+      .replace(/^(?:[-*•▪‣]\s+|\d+[.)]\s+)/u, "")
+      .replace(/\s+/g, " ")
+      .replace(/[.!؟،,;:؛]+$/u, "")
+      .toLocaleLowerCase("ar");
+    if (key.length >= 16) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    output.push(line);
+  }
+  return output.join("\n").trim();
+}
 function appendMessageText(container, text) {
   const source = String(text ?? "");
   const pattern = /\[([^\]\n]{1,100})\]\((https:\/\/[^)\s]+)\)|(https:\/\/[^\s<>"']+)/g;
@@ -255,6 +283,15 @@ function appendMessageText(container, text) {
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
 function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = []) {
+  const displayText = who === "assistant" ? cleanRepeatedReplyText(text) : String(text ?? "");
+  const replyKey = displayText.replace(/\s+/g, " ").trim();
+  const messageContainer = $("messages");
+  const previousRow = messageContainer.lastElementChild;
+  const hasExtras = (steps?.length || attachments?.length || generatedImages?.length || generatedProjects?.length);
+  if (who === "assistant" && replyKey && !hasExtras &&
+      previousRow?.classList.contains("assistant") && previousRow.dataset.replyKey === replyKey) {
+    return previousRow;
+  }
   const row = document.createElement("div");
   row.className = "message " + who;
   if (who === "assistant") {
@@ -270,7 +307,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   bubble.className = "bubble";
   const content = document.createElement("div");
   content.className = "bubble-text";
-  appendMessageText(content, text);
+  appendMessageText(content, displayText);
   bubble.appendChild(content);
   if (Array.isArray(attachments) && attachments.length) {
     const media = document.createElement("div");
@@ -348,15 +385,16 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     replay.addEventListener("click", async () => {
       replay.disabled = true;
       replay.textContent = "جاري تجهيز الصوت…";
-      await speak(String(text ?? ""), null, bubble);
+      await speak(displayText, null, bubble);
       replay.disabled = false;
       replay.textContent = "🔊 اسمع رد ونس";
     });
     bubble.appendChild(replay);
   }
   row.appendChild(bubble);
-  $("messages").appendChild(row);
-  $("messages").scrollTop = $("messages").scrollHeight;
+  if (who === "assistant") row.dataset.replyKey = replyKey;
+  messageContainer.appendChild(row);
+  messageContainer.scrollTop = messageContainer.scrollHeight;
   return row;
 }
 function setBusy(busy) {
@@ -819,28 +857,48 @@ async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = fa
   scheduleStop(120000);
 }
 
-function speakOnDevice(text, playerTarget, waitForPlayback = false) {
+async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
   const synth = window.speechSynthesis;
   const Utterance = window.SpeechSynthesisUtterance;
   if (!synth || typeof Utterance !== "function") {
-    return Promise.reject(new Error("متصفح الهاتف لا يدعم الصوت المحلي. حدّث Chrome وخدمات تحويل النص إلى كلام."));
+    throw new Error("المتصفح مش بيدعم تشغيل الصوت المحلي.");
   }
   synth.cancel();
   const message = String(text || "").trim().slice(0, 2000);
-  if (!message) return Promise.resolve(false);
-  const voices = typeof synth.getVoices === "function" ? synth.getVoices() : [];
-  const arabicVoices = voices.filter(voice => /^ar(?:-|$)/i.test(String(voice.lang || "")));
-  const egyptianVoice =
-    arabicVoices.find(voice => /^ar-EG(?:-|$)/i.test(String(voice.lang || ""))) ||
-    arabicVoices.find(voice => /egypt|egyptian|مصر|مصري/i.test(String(voice.name || "")));
-  const preferredVoice = egyptianVoice ||
-    arabicVoices.find(voice => /female|woman|hoda|salma|هدى|سلمى/i.test(String(voice.name || ""))) ||
-    arabicVoices[0] || null;
+  if (!message) return false;
+
+  let voices = typeof synth.getVoices === "function" ? synth.getVoices() : [];
+  if (!voices.length) {
+    await Promise.race([
+      new Promise(resolve => {
+        if (typeof synth.addEventListener === "function") {
+          synth.addEventListener("voiceschanged", resolve, { once: true });
+        } else {
+          resolve();
+        }
+      }),
+      new Promise(resolve => setTimeout(resolve, 1200))
+    ]);
+    voices = typeof synth.getVoices === "function" ? synth.getVoices() : [];
+  }
+
+  const egyptianVoices = voices.filter(voice =>
+    /^ar-EG(?:[-_]|$)/i.test(String(voice.lang || "")) ||
+    /egyptian|egypt|مصري|مصر/i.test(String(voice.name || ""))
+  );
+  if (!egyptianVoices.length) {
+    throw new Error("مش لاقية على موبايلك صوت مصري مثبت (ar-EG). مش هستخدم صوت فصحى بديل. نزّل صوت العربية – مصر من إعدادات تحويل النص لصوت في الهاتف.");
+  }
+  const preferredVoice = egyptianVoices.find(voice =>
+    /female|woman|hoda|salma|هدى|سلمى/i.test(String(voice.name || ""))
+  ) || egyptianVoices[0];
+
   const utterance = new Utterance(message);
-  utterance.lang = "ar-EG";
-  utterance.rate = Math.min(1.2, Math.max(0.8, Number(appSettings.voiceRate) || 0.96));
+  utterance.lang = preferredVoice.lang || "ar-EG";
+  utterance.rate = Math.min(1.15, Math.max(0.85, Number(appSettings.voiceRate) || 0.98));
   utterance.pitch = 1.06;
-  if (preferredVoice) utterance.voice = preferredVoice;
+  utterance.voice = preferredVoice;
+
   const bubble = playerTarget && typeof playerTarget.querySelector === "function" ? playerTarget : null;
   let note = bubble?.querySelector(".voice-device-note");
   if (bubble && !note) {
@@ -848,28 +906,26 @@ function speakOnDevice(text, playerTarget, waitForPlayback = false) {
     note.className = "voice-device-note";
     bubble.appendChild(note);
   }
-  if (note) note.textContent = "🔊 تشغيل بصوت عربي من الهاتف";
-  setVoiceStatus("خدمة الصوت الطبيعي غير متاحة؛ بجرب صوت العربية المصري الموجود على جهازك.");
+  if (note) note.textContent = "🔊 صوت مصري مثبت على الهاتف";
+  setVoiceStatus("ونس بتتكلم دلوقتي بصوت مصري مثبت على الموبايل 💜");
   return new Promise((resolve, reject) => {
     let started = false;
     let settled = false;
     const startTimer = setTimeout(() => {
       if (!started && !settled) {
         settled = true;
-        reject(new Error("لم يبدأ صوت الهاتف. تأكد من تفعيل خدمة تحويل النص إلى كلام وتنزيل صوت العربية (مصر)."));
+        reject(new Error("صوت الهاتف المصري لم يبدأ. راجع خدمة تحويل النص إلى كلام في إعدادات الموبايل."));
       }
     }, 12000);
     utterance.onstart = () => {
       started = true;
       clearTimeout(startTimer);
       setAvatarSpeaking(true);
-      setVoiceStatus("ونس بتتكلم دلوقتي بصوت الهاتف 💜");
       if (waitForPlayback && !settled) { settled = true; resolve(true); }
     };
     utterance.onend = () => {
       clearTimeout(startTimer);
       setAvatarSpeaking(false);
-      setVoiceStatus("انتهى تشغيل الرد الصوتي.");
       if (!settled) { settled = true; resolve(true); }
     };
     utterance.onerror = event => {
@@ -877,7 +933,7 @@ function speakOnDevice(text, playerTarget, waitForPlayback = false) {
       setAvatarSpeaking(false);
       const reason = event?.error === "not-allowed"
         ? "اسمح للمتصفح بتشغيل الصوت من إعدادات الهاتف."
-        : "تعذّر تشغيل الصوت العربي من الهاتف.";
+        : "تعذّر تشغيل الصوت المصري المثبت على الهاتف.";
       if (!settled) { settled = true; reject(new Error(reason)); }
     };
     synth.speak(utterance);
@@ -887,22 +943,14 @@ function speakOnDevice(text, playerTarget, waitForPlayback = false) {
 async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
-  if (appSettings.voiceEngine !== "cloud" && !voiceOverride) {
-    try { await speakOnDevice(message, playerTarget, waitForPlayback); return true; }
-    catch (error) { setVoiceStatus(String(error.message || error).slice(0, 180)); return false; }
-  }
+  setVoiceStatus("بدور على صوت مصري مثبت على الموبايل…");
   try {
-    setVoiceStatus("جاري تجهيز صوت ونس…");
-    await speakRealtime(message, voiceOverride || appSettings.voiceName || "coral", playerTarget, waitForPlayback);
+    await speakOnDevice(message, playerTarget, waitForPlayback);
     return true;
   } catch (error) {
     stopRealtimeVoice();
-    setVoiceStatus("خدمة الصوت الطبيعي غير متاحة حاليًا؛ بجرب الصوت العربي الموجود على جهازك.");
-    try { await speakOnDevice(message, playerTarget, waitForPlayback); return true; }
-    catch (fallbackError) {
-      setVoiceStatus("الصوت السحابي والجهاز لم يشتغلا. " + String(fallbackError.message || fallbackError).slice(0, 140));
-      return false;
-    }
+    setVoiceStatus(String(error?.message || error).slice(0, 220));
+    return false;
   }
 }
 
@@ -925,8 +973,8 @@ function getAdminVoicePreviewDock() {
   dock.scrollIntoView({ behavior: "smooth", block: "nearest" });
   return dock;
 }
-window.WensPlayVoicePreview = (text, voice) =>
-  speak(text, voice, getAdminVoicePreviewDock(), true);
+window.WensPlayVoicePreview = text =>
+  speak(text, null, getAdminVoicePreviewDock(), true);
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
