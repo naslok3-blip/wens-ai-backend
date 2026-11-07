@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
 const [app, admin, owner, worker, index] = await Promise.all([
   readFile("app.js", "utf8"), readFile("admin.js", "utf8"),
   readFile("owner-panel.js", "utf8"), readFile("worker.js", "utf8"),
@@ -69,6 +70,15 @@ const checks = [
   [app, 'setAttribute("sandbox","allow-scripts")', "isolated generated project iframe"],
   [index, "إنشاء تطبيق أو لعبة", "chat tool shortcut for apps and games"],
 
+
+  [app, "const arabicVoices = voices.filter", "Arabic voice fallback when an Egyptian device voice is unavailable"],
+  [app, "utterance.voice = preferredVoice", "device speech uses an available voice when present"],
+  [app, "صوت عربي متاح على الهاتف", "speech UI identifies the Arabic fallback honestly"],
+  [worker, "function isProjectCreationIntent(message)", "explicit project-creation intent detector"],
+  [worker, "const projectCreationIntent = isProjectCreationIntent(message);", "project-creation intent routes to project builder"],
+  [worker, "autoSpeak: true", "Worker enables automatic voice replies by default"],
+  [app, "autoSpeak: true", "chat enables automatic voice replies by default"],
+  [admin, "autoSpeak: true", "owner settings enable automatic voice replies by default"],
   [worker, "تم استلام المستندات المرفقة وقراءة محتواها بالفعل", "document context instruction"]
 ];
 for (const [source, token, label] of checks) {
@@ -90,4 +100,28 @@ if (!index.includes('id="voiceBtn" class="voice-input-btn"')) throw new Error("V
 if (!index.includes('id="voiceStatus"')) throw new Error("Accessible voice status is missing.");
 if (app.includes("voiceTestBtn") || app.includes("heroPortrait")) throw new Error("Removed hero controls are still referenced by app.js.");
 if (!admin.includes("metricAccountsEntered") || !admin.includes("metricSuccessfulLogins")) throw new Error("Login-history metrics missing from owner panel.");
+
+const intentStart = worker.indexOf("function isProjectCreationIntent(message) {");
+const intentEnd = worker.indexOf("\nasync function handleAgent", intentStart);
+if (intentStart < 0 || intentEnd < 0) throw new Error("Project intent detector could not be isolated for tests.");
+const isProjectCreationIntent = runInNewContext(worker.slice(intentStart, intentEnd) + "\nisProjectCreationIntent");
+const projectIntentCases = [
+  ["إنشاء تطبيقات", true],
+  ["إنشاء تطبيق بسيط لإدارة المخزن", true],
+  ["عاوز إنشاء تطبيق", true],
+  ["عايزك تعملي تطبيق موبايل", true],
+  ["ممكن تعملي برنامج حسابات", true],
+  ["ابنيلي لعبة بسيطة", true],
+  ["create a web app", true],
+  ["ازاي اتعلم إنشاء تطبيقات؟", false],
+  ["اشرح خطوات إنشاء تطبيق", false],
+  ["مش عاوز إنشاء تطبيق", false],
+  ["عايز أتكلم معاك", false]
+];
+for (const [message, expected] of projectIntentCases) {
+  const actual = isProjectCreationIntent(message);
+  if (actual !== expected) throw new Error("Project intent mismatch for: " + message + " (expected " + expected + ", got " + actual + ")");
+}
+console.log("Wens app/game intent tests passed for Arabic creation phrases and non-creation questions.");
+
 console.log("Wens feature contracts passed: document reading, agent routing, project editing and rollback, reply deduplication, Egyptian voice handling and admin features.");
