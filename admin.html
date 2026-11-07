@@ -94,6 +94,15 @@
             <article class="metric-card"><span>المهام النشطة</span><strong id="metricTasks">—</strong></article>
             <article class="metric-card"><span>أدوات الوكيل</span><strong id="metricTools">—</strong></article>
           </div>
+          <section class="online-users-section" aria-labelledby="onlineUsersTitle">
+            <div class="online-users-heading">
+              <div><h3 id="onlineUsersTitle">المتصلون الآن</h3><p>يعرض الحسابات التي أرسلت إشارة حضور خلال آخر دقيقتين. تتحدث القائمة تلقائيًا.</p></div>
+              <strong id="onlineUsersCount" class="online-count">— متصل</strong>
+            </div>
+            <div id="onlineUsersList" class="online-users-list" aria-live="polite"><p class="muted">جارٍ تحميل قائمة المتصلين…</p></div>
+            <p class="muted online-privacy-note">البيانات المعروضة: الاسم والبريد وتاريخ إنشاء الحساب وآخر نشاط وعدد الجلسات والرسائل. لا تعرض لوحة الإدارة نصوص المحادثات أو كلمات المرور أو عناوين IP أو مفاتيح الخدمات.</p>
+            <button id="refreshOnlineUsersBtn" class="btn secondary" type="button">تحديث المتصلين</button>
+          </section>
           <div class="diagnostic-grid">
             <div class="diagnostic-item"><b>Workers AI</b><strong id="diagWorkersAI" class="state-pending">لم يُفحص</strong></div>
             <div class="diagnostic-item"><b>قاعدة D1</b><strong id="diagDatabase" class="state-pending">لم يُفحص</strong></div>
