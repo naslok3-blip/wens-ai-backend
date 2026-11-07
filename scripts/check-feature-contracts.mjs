@@ -39,7 +39,7 @@ const checks = [
   [worker, "Content-Security-Policy", "sandboxed project preview security policy"],
   [worker, "generatedProjects", "project result returned to chat"],
   [app, "generated-project-preview", "in-chat interactive project preview"],
-  [app, 'setAttribute("sandbox", "allow-scripts")', "isolated generated project iframe"],
+  [app, 'setAttribute("sandbox","allow-scripts")', "isolated generated project iframe"],
   [index, "إنشاء تطبيق أو لعبة", "chat tool shortcut for apps and games"],
 
   [worker, "تم استلام المستندات المرفقة وقراءة محتواها بالفعل", "document context instruction"]
