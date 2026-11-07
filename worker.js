@@ -60,12 +60,27 @@ function requireDb(env) {
   if (!env.DB) throw new Error("DB_NOT_CONFIGURED");
   return env.DB;
 }
+let presenceSchemaReady;
+async function ensurePresenceSchema(db) {
+  if (!presenceSchemaReady) {
+    presenceSchemaReady = (async () => {
+      const info = await db.prepare("PRAGMA table_info(sessions)").all();
+      const columns = new Set((info.results || []).map(column => column.name));
+      if (!columns.has("last_seen_at")) await db.prepare("ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_last_seen ON sessions(last_seen_at)").run();
+    })().catch(error => { presenceSchemaReady = null; throw error; });
+  }
+  await presenceSchemaReady;
+}
 async function currentUser(request, env) {
   if (!env.DB) return null;
   const raw = cookieValue(request.headers.get("Cookie"), COOKIE);
   if (!raw) return null;
   const tokenHash = await digest(raw);
   const now = Math.floor(Date.now() / 1000);
+  await ensurePresenceSchema(env.DB);
+  await env.DB.prepare("UPDATE sessions SET last_seen_at=? WHERE token_hash=? AND (last_seen_at IS NULL OR last_seen_at<?)")
+    .bind(now, tokenHash, now - 30).run();
   return await env.DB.prepare(
     "SELECT u.id, u.email, u.display_name FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? LIMIT 1"
   ).bind(tokenHash, now).first();
@@ -77,12 +92,14 @@ function adminSessionCookie(token, maxAge = 4 * 60 * 60) {
   return ADMIN_COOKIE + "=" + encodeURIComponent(token) + "; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=" + maxAge;
 }
 async function issueSession(db, user) {
+  await ensurePresenceSchema(db);
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const token = b64url(bytes);
   const tokenHash = await digest(token);
-  const expires = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
-  await db.prepare("INSERT INTO sessions (id,user_id,token_hash,expires_at,created_at) VALUES (?,?,?,?,?)")
-    .bind(crypto.randomUUID(), user.id, tokenHash, expires, Math.floor(Date.now() / 1000)).run();
+  const now = Math.floor(Date.now() / 1000);
+  const expires = now + SESSION_SECONDS;
+  await db.prepare("INSERT INTO sessions (id,user_id,token_hash,expires_at,created_at,last_seen_at) VALUES (?,?,?,?,?,?)")
+    .bind(crypto.randomUUID(), user.id, tokenHash, expires, now, now).run();
   return json({ ok: true, user: { id: user.id, email: user.email, name: user.display_name } }, 200, { "Set-Cookie": sessionCookie(token) });
 }
 function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثناء تنفيذ طلب الحساب. جرّب مرة أخرى.") {
@@ -115,6 +132,10 @@ async function authRoute(request, env, path, requestId) {
   if (path === "/api/auth/me" && request.method === "GET") {
     const user = await currentUser(request, env);
     return user ? json({ ok: true, user: { id: user.id, email: user.email, name: user.display_name } }) : json({ ok: false }, 401);
+  }
+  if (path === "/api/auth/presence" && request.method === "POST") {
+    const user = await currentUser(request, env);
+    return user ? json({ ok: true, checkedAt: new Date().toISOString() }) : json({ ok: false }, 401);
   }
   if (path === "/api/auth/logout" && request.method === "POST") {
     const raw = cookieValue(request.headers.get("Cookie"), COOKIE);
@@ -445,6 +466,7 @@ async function adminRoute(request, env, path) {
             return Number(row?.total || 0);
           };
           const now = Math.floor(Date.now() / 1000);
+          if (tableNames.has("sessions")) await ensurePresenceSchema(env.DB);
           counts.users = await countRows("users");
           counts.activeSessions = await countRows("sessions", "WHERE expires_at>?", [now]);
           counts.messages = await countRows("messages");
@@ -470,6 +492,17 @@ async function adminRoute(request, env, path) {
         agentToolingConfigured: Boolean(env.AI && tools.length)
       },
       counts,
+      onlineUsers: databaseConnected && tableNames.has("sessions") && tableNames.has("users") && tableNames.has("messages")
+        ? await env.DB.prepare(
+            "SELECT u.id, u.display_name AS name, u.email, u.created_at AS accountCreatedAt, MAX(COALESCE(s.last_seen_at,s.created_at)) AS lastSeenAt, COUNT(DISTINCT s.id) AS activeSessions, (SELECT COUNT(*) FROM messages m WHERE m.user_id=u.id) AS messageCount FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.expires_at>? AND COALESCE(s.last_seen_at,s.created_at)>? GROUP BY u.id ORDER BY lastSeenAt DESC LIMIT 100"
+          ).bind(Math.floor(Date.now() / 1000), Math.floor(Date.now() / 1000) - 120).all().then(result => (result.results || []).map(row => ({
+            id: row.id, name: row.name, email: row.email,
+            accountCreatedAt: Number(row.accountCreatedAt || 0),
+            lastSeenAt: Number(row.lastSeenAt || 0),
+            activeSessions: Number(row.activeSessions || 0),
+            messageCount: Number(row.messageCount || 0)
+          })))
+        : [],
       agent: { toolCount: tools.length },
       tables: {
         present: [...tableNames].filter(name => requiredTables.includes(name)),
