@@ -33,6 +33,15 @@ const checks = [
   [worker, "documentAudit", "file extraction audit"],
   [worker, "documentExtractionText", "explicit extracted-document context"],
   [worker, "documentRefusalPattern", "fallback when the model falsely denies uploaded files"],
+  [worker, "create_web_project", "AI web app and game creation tool"],
+  [worker, "generated_projects", "per-user saved generated projects"],
+  [worker, "generatedProjectRoute(request", "authenticated project preview and download route"],
+  [worker, "Content-Security-Policy", "sandboxed project preview security policy"],
+  [worker, "generatedProjects", "project result returned to chat"],
+  [app, "generated-project-preview", "in-chat interactive project preview"],
+  [app, 'setAttribute("sandbox","allow-scripts")', "isolated generated project iframe"],
+  [index, "إنشاء تطبيق أو لعبة", "chat tool shortcut for apps and games"],
+
   [worker, "تم استلام المستندات المرفقة وقراءة محتواها بالفعل", "document context instruction"]
 ];
 for (const [source, token, label] of checks) {
@@ -54,4 +63,4 @@ if (!index.includes('id="voiceBtn" class="voice-input-btn"')) throw new Error("V
 if (!index.includes('id="voiceStatus"')) throw new Error("Accessible voice status is missing.");
 if (app.includes("voiceTestBtn") || app.includes("heroPortrait")) throw new Error("Removed hero controls are still referenced by app.js.");
 if (!admin.includes("metricAccountsEntered") || !admin.includes("metricSuccessfulLogins")) throw new Error("Login-history metrics missing from owner panel.");
-console.log("Wens feature contracts passed: document reading, calculator validation, login history, account listing, voice fallback and white chat layout.");
+console.log("Wens feature contracts passed: document reading, calculator validation, login history, account listing, app/game generation, isolated previews, voice fallback and white chat layout.");

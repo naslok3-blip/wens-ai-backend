@@ -319,6 +319,34 @@ jobs:
           assert not missing_from_reply, {'missing_from_reply':missing_from_reply,'reply':reply,'audit':audit}
           print("PDF/DOCX/XLSX contents read and all three marker strings returned: OK")
           PY
+          echo "Testing authenticated creation and preview of a browser game"
+          PROJECT_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 240 -o /tmp/wens-generated-project.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt -H 'Content-Type: application/json' -X POST --data '{"message":"أنشئي لعبة متصفح كاملة اسمها اختبار ونس: لعبة تخمين رقم من 1 إلى 20، واجهة عربية، إدخال رقم، نتيجة أعلى أو أقل، عدد محاولات، وزر لعبة جديدة. استخدمي أداة إنشاء التطبيق أو اللعبة واحفظي المشروع واعرضي معاينته."}' "$BASE/api/chat")
+          if [ "$PROJECT_STATUS" != "200" ]; then cat /tmp/wens-generated-project.json; exit 1; fi
+          python - <<'PY'
+          import json
+          d=json.load(open("/tmp/wens-generated-project.json",encoding="utf-8"))
+          projects=d.get("generatedProjects") or []
+          assert d.get("ok") is True, d.get("error") or d
+          assert len(projects)==1, {"reply":d.get("reply"),"steps":d.get("steps"),"projects":projects}
+          p=projects[0]
+          assert p.get("kind")=="game" and p.get("id"), p
+          assert p.get("previewPath","").startswith("/api/projects/") and p.get("previewPath","").endswith("/preview"), p
+          assert p.get("downloadPath","").endswith("/download"), p
+          json.dump({"previewPath":p["previewPath"],"downloadPath":p["downloadPath"]},open("/tmp/wens-project-paths.json","w"))
+          print("Game project generated and saved: OK")
+          PY
+          PROJECT_PREVIEW_PATH=$(python -c 'import json; print(json.load(open("/tmp/wens-project-paths.json"))["previewPath"])')
+          PROJECT_DOWNLOAD_PATH=$(python -c 'import json; print(json.load(open("/tmp/wens-project-paths.json"))["downloadPath"])')
+          PREVIEW_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 -o /tmp/wens-project-preview.html -w '%{http_code}' -b /tmp/wens-accept-cookie.txt "$BASE$PROJECT_PREVIEW_PATH")
+          test "$PREVIEW_STATUS" = "200"
+          grep -qi '<html' /tmp/wens-project-preview.html
+          DOWNLOAD_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 -D /tmp/wens-project-download-headers.txt -o /tmp/wens-project-download.html -w '%{http_code}' -b /tmp/wens-accept-cookie.txt "$BASE$PROJECT_DOWNLOAD_PATH")
+          test "$DOWNLOAD_STATUS" = "200"
+          grep -qi 'content-disposition: attachment' /tmp/wens-project-download-headers.txt
+          cmp /tmp/wens-project-preview.html /tmp/wens-project-download.html
+          UNAUTH_PROJECT_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 20 -o /tmp/wens-project-unauthorized.json -w '%{http_code}' "$BASE$PROJECT_PREVIEW_PATH")
+          test "$UNAUTH_PROJECT_STATUS" = "401"
+          echo "Isolated project preview, HTML download and account-only access: OK"
           echo "Live agent and three-format document acceptance: OK"
       - name: Verify deployed HTML, JavaScript, CSS and avatar assets
         if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
