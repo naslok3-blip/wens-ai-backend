@@ -299,7 +299,7 @@ jobs:
           SEARCH_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 150 \
             -o /tmp/wens-accept-search.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt \
             -H 'Content-Type: application/json' -X POST \
-            --data '{"message":"ايه عاصمة اليابان؟"}' "$BASE/api/chat")
+            --data '{"message":"ايه عاصمة اليابان؟ ابحث في المواقع الخارجية واعرض المصادر داخل الشات."}' "$BASE/api/chat")
           if [ "$SEARCH_STATUS" != "200" ]; then cat /tmp/wens-accept-search.json; exit 1; fi
           python - <<'PY'
           import json
