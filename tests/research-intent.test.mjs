@@ -22,16 +22,17 @@ const helpers = [
   extractFunction("isLiveDataRequest", "hasVerifiableLiveSources"),
   extractFunction("isExplicitExternalSearchRequest", "isExternalResearchIntent"),
   extractFunction("isExternalResearchIntent", "extractExternalSources"),
+  extractFunction("buildExternalSearchQuery", "extractExternalSources"),
   extractFunction("extractExternalSources", "handleAgent"),
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
 const sandbox = { URL, atob, module: { exports: {} } };
 vm.runInNewContext(
-  `${helpers}\nmodule.exports = { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources };`,
+  `${helpers}\nmodule.exports = { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
   sandbox
 );
-const { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources } = sandbox.module.exports;
+const { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -112,4 +113,15 @@ test("extracts source links from HTML and structured search responses", () => {
     sources: [{ title: "Example Source", url: "https://example.edu/reference" }]
   });
   assert.equal(structured[0]?.url, "https://example.edu/reference");
+});
+
+test("removes search-interface instructions before querying engines", () => {
+  assert.equal(
+    buildExternalSearchQuery("ايه عاصمة اليابان؟ ابحث في المواقع الخارجية واعرض المصادر داخل الشات."),
+    "ايه عاصمة اليابان"
+  );
+  assert.equal(
+    buildExternalSearchQuery("ابحث عن أفضل مصادر تعلم البرمجة"),
+    "أفضل مصادر تعلم البرمجة"
+  );
 });
