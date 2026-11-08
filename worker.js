@@ -1479,7 +1479,7 @@ async function executeAgentTool(name, args, env, user) {
     if (!env.BROWSER) return { error: "خاصية البحث الخارجي غير مربوطة بعد." };
     const query = String(args.query || "").trim().slice(0, 300);
     if (query.length < 2) return { error: "اكتبي موضوع بحث أو سؤالًا واضحًا." };
-    const encoded = encodeURIComponent(query);
+    const encoded = encodeURIComponent(buildExternalSearchQuery(query));
     const providers = [
       { name: "DuckDuckGo", url: "https://html.duckduckgo.com/html/?q=" + encoded },
       { name: "Bing", url: "https://www.bing.com/search?q=" + encoded },
@@ -1855,6 +1855,21 @@ function isExternalResearchIntent(message) {
   return (isQuestion || researchLead) && !actionLead;
 }
 
+
+function buildExternalSearchQuery(message) {
+  const original = String(message || "").trim();
+  if (!original) return "";
+  let query = original
+    .replace(/^\s*(?:من\s+فضلك\s*)?(?:ابحث|ابحثي|دور|دوري|search|look\s+up)\s+(?:(?:في|على)\s+(?:المواقع\s+الخارجية|الانترنت|الويب)\s*)?(?:عن\s+)?/i, "")
+    .replace(/(?:^|[\s،؛.])(?:ابحث|ابحثي|دور|دوري)\s+(?:(?:في|على)\s+(?:المواقع\s+الخارجية|الانترنت|الويب)\s*)?[\s\S]*$/i, "")
+    .replace(/(?:واعرض|اعرض|اظهر|أظهر|حط)\s+(?:لي\s+)?(?:المصادر|الروابط)(?:\s+داخل\s+الشات|\s+في\s+الشات|\s+مع\s+الإجابة)?[\s\S]*$/i, "")
+    .replace(/[«»“”"]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[؟?!،,؛:.\s]+|[؟?!،,؛:.\s]+$/g, "")
+    .trim();
+  return query || original;
+}
+
 function extractExternalSources(searchResult, maximum = 8) {
   const flatten = (value, depth = 0) => {
     if (typeof value === "string") return value;
@@ -2147,11 +2162,12 @@ async function handleAgent(request, env, user, options = {}) {
     const goldPriceRequest = isEgyptGoldPriceRequest(message);
     const liveDataRequest = isLiveDataRequest(message);
     const explicitSearchRequest = isExplicitExternalSearchRequest(message);
+    const researchTopic = buildExternalSearchQuery(message);
     const searchQuery = goldPriceRequest
-      ? String(message) + " في مصر أسعار جرام عيار 21 و24 و18 بيع وشراء بالجنيه المصري تاريخ ووقت آخر تحديث"
+      ? researchTopic + " في مصر أسعار جرام عيار 21 و24 و18 بيع وشراء بالجنيه المصري تاريخ ووقت آخر تحديث"
       : liveDataRequest
-        ? String(message) + " آخر تحديث اليوم مصادر موثوقة"
-        : String(message) + " معلومات ومراجع من مواقع موثوقة";
+        ? researchTopic + " آخر تحديث اليوم مصادر موثوقة"
+        : researchTopic + " معلومات ومراجع من مواقع موثوقة";
     const liveSearch = await executeAgentTool("search_web", { query: searchQuery }, env, user);
     const searchText = String(liveSearch?.results || "");
     const hasSearchText = !liveSearch?.error && searchText.length >= 80;
