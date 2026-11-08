@@ -1,7 +1,7 @@
 import { scrypt } from "node:crypto";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 
-const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
+const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
 
 const enc = new TextEncoder();
 const COOKIE = "wens_session";
@@ -1051,7 +1051,7 @@ function agentTools() {
   const taskId = { type: "string", description: "Exact task id returned by list_tasks." };
   const webUrl = { type: "string", description: "A public HTTPS page URL. Do not use private network or localhost URLs." };
   return [
-    fn("get_current_time", "Get the current date and time in ISO format."),
+    fn("get_current_time", "Get the authoritative current date and time in Egypt (Africa/Cairo). Return both UTC ISO and formatted Cairo local time/date; never label UTC as local time."),
     fn("generate_image", "Generate an original image from the user's description. Use when the user asks to create, draw, design, or generate a new picture. Return one image in chat.", {
       prompt: { type: "string", description: "Detailed visual description of the requested image." },
       size: { type: "string", description: "Image shape: square, landscape, portrait, wide, or tall." }
@@ -1439,8 +1439,42 @@ async function restoreWebProjectRevision(env, user, args = {}) {
   };
 }
 
+function getEgyptCurrentDateTime() {
+  const now = new Date();
+  const timeZone = "Africa/Cairo";
+  const dateParts = new Intl.DateTimeFormat("en-GB-u-ca-gregory-nu-latn", {
+    timeZone, day: "2-digit", month: "2-digit", year: "numeric"
+  }).formatToParts(now);
+  const part = type => dateParts.find(item => item.type === type)?.value || "";
+  const localDateISO = part("year") + "-" + part("month") + "-" + part("day");
+  const localDate = new Intl.DateTimeFormat("ar-EG-u-ca-gregory", {
+    timeZone, weekday: "long"
+  }).format(now) + " " + part("day") + "/" + part("month") + "/" + part("year");
+  const localTime = new Intl.DateTimeFormat("ar-EG", {
+    timeZone, hour: "numeric", minute: "2-digit", hour12: true
+  }).format(now);
+  const offset = new Intl.DateTimeFormat("en", {
+    timeZone, timeZoneName: "longOffset"
+  }).formatToParts(now).find(item => item.type === "timeZoneName")?.value || "";
+  return {
+    now: now.toISOString(),
+    timeZone,
+    localDate,
+    localDateISO,
+    localTime,
+    utcOffset: offset
+  };
+}
+
+function getEgyptDateTimeIntent(message) {
+  const value = normalizeLiveDataText(message);
+  const asksTime = /(?:الساعه|الوقت|كام\\s+(?:الساعه|الوقت)|(?:الساعه|الوقت)\\s+كام|كم\\s+(?:الساعه|الوقت)|what\\s+time|current\\s+time|time\\s+now)/i.test(value);
+  const asksDate = /(?:النهارده|النهارده|انهارده|اليوم\\s*(?:كام|ايه)?|(?:تاريخ|التاريخ)\\s+(?:اليوم|النهارده|انهارده)|ايه\\s+تاريخ\\s+(?:اليوم|النهارده)|what(?:'s|\\s+is)?\\s+(?:the\\s+)?date|what\\s+day\\s+is\\s+it)/i.test(value);
+  return { asksTime, asksDate, matched: asksTime || asksDate };
+}
+
 async function executeAgentTool(name, args, env, user) {
-  if (name === "get_current_time") return { now: new Date().toISOString() };
+  if (name === "get_current_time") return getEgyptCurrentDateTime();
   if (name === "calculate") {
     const expression = String(args.expression || "").trim();
     if (!expression || expression.length > 160 || !/^[\d\s.+*/()%-]+$/.test(expression)) {
@@ -2069,7 +2103,6 @@ function extractExternalSources(searchResult, maximum = 8) {
   return found;
 }
 async function handleAgent(request, env, user, options = {}) {
-  if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
   let body;
   try { body = await request.json(); } catch { return json({ error: "بيانات المهمة غير صالحة." }, 400); }
   const message = typeof body.message === "string" ? body.message.trim() : "";
@@ -2078,6 +2111,40 @@ async function handleAgent(request, env, user, options = {}) {
   if ((!message && !attachments.length) || message.length > 4000) {
     return json({ error: "اكتب رسالة أو أرفق ملفًا، وبحد أقصى 4000 حرف." }, 400);
   }
+
+  // Current time/date answers are deterministic server data, not model-generated guesses.
+  const dateTimeIntent = getEgyptDateTimeIntent(message);
+  if (dateTimeIntent.matched && attachments.length === 0) {
+    const current = getEgyptCurrentDateTime();
+    const reply = dateTimeIntent.asksTime && dateTimeIntent.asksDate
+      ? "الساعة دلوقتي في مصر " + current.localTime + "، والنهارده " + current.localDate + "."
+      : dateTimeIntent.asksTime
+        ? "الساعة دلوقتي في مصر " + current.localTime + "."
+        : "النهارده " + current.localDate + ".";
+    if (options.persist && env.DB && user) {
+      const timestamp = Math.floor(Date.now() / 1000);
+      await env.DB.batch([
+        env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
+          .bind(crypto.randomUUID(), user.id, "user", message, timestamp),
+        env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
+          .bind(crypto.randomUUID(), user.id, "assistant", reply, timestamp)
+      ]);
+    }
+    return json({
+      ok: true,
+      model: "server-clock",
+      steps: [],
+      activity: [{
+        label: "قراءة الوقت والتاريخ المحلي في مصر",
+        status: "completed",
+        detail: "المنطقة الزمنية: Africa/Cairo · " + current.utcOffset
+      }],
+      sources: [],
+      reply
+    });
+  }
+
+  if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
   let imageBase64 = "";
   let imageMimeType = "";
   let textAttachmentContext = "";
