@@ -24,6 +24,8 @@ jobs:
           node --check public/admin.js
           node --check owner-panel.js
           node --check public/owner-panel.js
+      - name: Build production Worker with Wrangler
+        run: npx --yes wrangler@4.158.0 deploy --dry-run
       - name: Verify published assets are in sync
         run: |
           cmp index.html public/index.html
