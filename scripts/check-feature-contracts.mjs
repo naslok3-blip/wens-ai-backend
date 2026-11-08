@@ -74,6 +74,11 @@ const checks = [
   [app, "const arabicVoices = voices.filter", "Arabic voice fallback when an Egyptian device voice is unavailable"],
   [app, "utterance.voice = preferredVoice", "device speech uses an available voice when present"],
   [app, "صوت عربي متاح على الهاتف", "speech UI identifies the Arabic fallback honestly"],
+
+  [worker, "function isLiveDataRequest(message)", "changing information is routed through mandatory live verification"],
+  [worker, 'executeAgentTool("search_web", { query: searchQuery }, env, user)', "live verification searches before model response"],
+  [worker, "hasVerifiableLiveSources(liveSearch, goldPriceRequest ? 2 : 1)", "gold prices require multiple timestamped sources"],
+  [worker, "STRICT LIVE-DATA VERIFICATION RULE:", "live source-grounding instructions block invented current values"],
   [worker, "function isProjectCreationIntent(message)", "explicit project-creation intent detector"],
   [worker, "const projectCreationIntent = isProjectCreationIntent(message);", "project-creation intent routes to project builder"],
   [worker, "autoSpeak: true", "Worker enables automatic voice replies by default"],
@@ -123,5 +128,35 @@ for (const [message, expected] of projectIntentCases) {
   if (actual !== expected) throw new Error("Project intent mismatch for: " + message + " (expected " + expected + ", got " + actual + ")");
 }
 console.log("Wens app/game intent tests passed for Arabic creation phrases and non-creation questions.");
+
+
+const liveStart = worker.indexOf("function normalizeLiveDataText(value) {");
+const liveEnd = worker.indexOf("\nasync function handleAgent", liveStart);
+if (liveStart < 0 || liveEnd < 0) throw new Error("Live-data detector could not be isolated for tests.");
+const liveHelpers = runInNewContext(worker.slice(liveStart, liveEnd) + "\n({ isLiveDataRequest, isEgyptGoldPriceRequest, hasVerifiableLiveSources })");
+const liveIntentCases = [
+  ["سعر الذهب اليوم في مصر", true],
+  ["سعر الذهب", true],
+  ["كام الدولار دلوقتي", true],
+  ["الطقس في القاهرة الآن", true],
+  ["سعر اليورو", true],
+  ["اشرح لي ما هو الذهب", false],
+  ["what is gold", false],
+  ["علمني حساب النسبة المئوية", false]
+];
+for (const [message, expected] of liveIntentCases) {
+  const actual = liveHelpers.isLiveDataRequest(message);
+  if (actual !== expected) throw new Error("Live-data intent mismatch for: " + message + " (expected " + expected + ", got " + actual + ")");
+}
+if (!liveHelpers.isEgyptGoldPriceRequest("سعر الذهب عيار 21 اليوم")) throw new Error("Egypt gold-price query detection failed.");
+const goodGoldResults = {
+  results: "آخر تحديث اليوم 03:45 ص: عيار 21 6205 جنيه https://shashetelsagha.com/\nآخر تحديث اليوم 02:53 ص: عيار 21 6205 جنيه https://officialtibr.com/gold/egypt/21/"
+};
+const oneGoldSource = { results: "آخر تحديث اليوم 03:45 ص: عيار 21 6205 جنيه https://shashetelsagha.com/" };
+const staleResults = { results: "عيار 21 سعره 6205 جنيه https://example.com/" };
+if (!liveHelpers.hasVerifiableLiveSources(goodGoldResults, 2)) throw new Error("Two timestamped sources should pass live-price verification.");
+if (liveHelpers.hasVerifiableLiveSources(oneGoldSource, 2)) throw new Error("Gold price must fail with only one source.");
+if (liveHelpers.hasVerifiableLiveSources(staleResults, 1)) throw new Error("Results without a freshness marker must fail.");
+console.log("Wens live-data verification tests passed for gold, exchange rates, weather, and stale/missing sources.");
 
 console.log("Wens feature contracts passed: document reading, agent routing, project editing and rollback, reply deduplication, Egyptian voice handling and admin features.");
