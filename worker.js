@@ -1456,20 +1456,13 @@ function getEgyptCurrentDateTime() {
   const offset = new Intl.DateTimeFormat("en", {
     timeZone, timeZoneName: "longOffset"
   }).formatToParts(now).find(item => item.type === "timeZoneName")?.value || "";
-  return {
-    now: now.toISOString(),
-    timeZone,
-    localDate,
-    localDateISO,
-    localTime,
-    utcOffset: offset
-  };
+  return { now: now.toISOString(), timeZone, localDate, localDateISO, localTime, utcOffset: offset };
 }
 
 function getEgyptDateTimeIntent(message) {
   const value = normalizeLiveDataText(message);
-  const asksTime = /(?:الساعه|الوقت|كام\\s+(?:الساعه|الوقت)|(?:الساعه|الوقت)\\s+كام|كم\\s+(?:الساعه|الوقت)|what\\s+time|current\\s+time|time\\s+now)/i.test(value);
-  const asksDate = /(?:النهارده|النهارده|انهارده|اليوم\\s*(?:كام|ايه)?|(?:تاريخ|التاريخ)\\s+(?:اليوم|النهارده|انهارده)|ايه\\s+تاريخ\\s+(?:اليوم|النهارده)|what(?:'s|\\s+is)?\\s+(?:the\\s+)?date|what\\s+day\\s+is\\s+it)/i.test(value);
+  const asksTime = /(?:الساعه|الوقت|كام\s+(?:الساعه|الوقت)|(?:الساعه|الوقت)\s+كام|كم\s+(?:الساعه|الوقت)|what\s+time|current\s+time|time\s+now)/i.test(value);
+  const asksDate = /(?:النهارده|انهارده|اليوم\s*(?:كام|ايه)?|(?:تاريخ|التاريخ)\s+(?:اليوم|النهارده|انهارده)|ايه\s+تاريخ\s+(?:اليوم|النهارده)|what(?:'s|\s+is)?\s+(?:the\s+)?date|what\s+day\s+is\s+it)/i.test(value);
   return { asksTime, asksDate, matched: asksTime || asksDate };
 }
 
