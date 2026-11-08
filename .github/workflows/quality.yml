@@ -295,6 +295,25 @@ jobs:
           assert '437' in str(d.get('reply','')), d.get('reply')
           print("Agent calculator tool and exact 437 response: OK")
           PY
+          echo "Testing automatic external web search through the production chat route"
+          SEARCH_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 150 \
+            -o /tmp/wens-accept-search.json -w '%{http_code}' -b /tmp/wens-accept-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data '{"message":"ايه عاصمة اليابان؟"}' "$BASE/api/chat")
+          if [ "$SEARCH_STATUS" != "200" ]; then cat /tmp/wens-accept-search.json; exit 1; fi
+          python - <<'PY'
+          import json
+          d=json.load(open('/tmp/wens-accept-search.json',encoding='utf-8'))
+          activity=d.get('activity') or []
+          sources=d.get('sources') or []
+          assert d.get('ok') is True, d
+          search=[item for item in activity if item.get('label') == 'البحث في المواقع الخارجية']
+          assert search, {'activity':activity,'reply':d.get('reply')}
+          assert search[0].get('status') == 'completed', {'search':search,'sources':sources}
+          assert len(sources) > 0, {'activity':activity,'sources':sources,'reply':d.get('reply')}
+          assert any('tokyo' in str(d.get('reply','')).lower() or 'طوكيو' in str(d.get('reply','')) for _ in [0]), d.get('reply')
+          print("Production chat pre-search, completion state and source links: OK")
+          PY
           echo "Generating non-sensitive PDF, DOCX and XLSX samples"
           python scripts/make-acceptance-documents.py > /tmp/wens-accept-documents.json
           DOC_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 150 \
