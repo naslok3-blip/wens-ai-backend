@@ -1487,88 +1487,172 @@ async function executeAgentTool(name, args, env, user) {
     }
   }
   if (name === "search_web") {
-    if (!env.BROWSER) return { error: "خاصية البحث الخارجي غير مربوطة بعد." };
     const query = String(args.query || "").trim().slice(0, 300);
     if (query.length < 2) return { error: "اكتبي موضوع بحث أو سؤالًا واضحًا." };
-    const encoded = encodeURIComponent(buildExternalSearchQuery(query));
-    const providers = [
-      { name: "DuckDuckGo", url: "https://html.duckduckgo.com/html/?q=" + encoded },
-      { name: "Bing", url: "https://www.bing.com/search?q=" + encoded },
-      { name: "Google", url: "https://www.google.com/search?q=" + encoded }
-    ];
-    const texts = [];
-    const sources = [];
-    const usedProviders = [];
-    const errors = [];
-    const goldQuery = isEgyptGoldPriceRequest(query);
-    for (const provider of providers) {
+
+    // Free, keyless public sources. Do not depend on Browser Run or paid search credits.
+    const diagnostics = [];
+    const engines = [];
+    const sourceLinks = [];
+    const sections = [];
+    const seenUrls = new Set();
+    const arabicQuery = /[\u0600-\u06FF]/.test(query);
+
+    const cleanText = value => String(value || "")
+      .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const addSource = (title, rawUrl) => {
       try {
-        const data = await browserQuickAction(env, "markdown", {
-          url: provider.url,
-          gotoOptions: { waitUntil: "domcontentloaded", timeout: 20000 }
+        const url = new URL(String(rawUrl || ""));
+        if (url.protocol !== "https:" || seenUrls.has(url.href)) return;
+        if (/^(?:localhost|127\.|10\.|192\.168\.|169\.254\.)/i.test(url.hostname)) return;
+        seenUrls.add(url.href);
+        sourceLinks.push({
+          title: String(title || url.hostname).slice(0, 160),
+          url: url.href,
+          domain: url.hostname.replace(/^www\./, "")
         });
-        const raw = typeof data?.result === "string" ? data.result
-          : typeof data?.markdown === "string" ? data.markdown
-          : typeof data?.content === "string" ? data.content
-          : typeof data?.text === "string" ? data.text
-          : typeof data === "string" ? data : "";
-        const pageText = String(raw || "").trim();
-        if (pageText.length < 80) {
-          errors.push(provider.name + ": empty result");
-          continue;
-        }
-        let pageSources = extractExternalSources({ results: pageText }, 8);
-        if (!pageSources.length) {
-          try {
-            const linkData = await browserQuickAction(env, "links", {
-              url: provider.url,
-              gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }
-            });
-            const linkItems = Array.isArray(linkData?.result) ? linkData.result
-              : Array.isArray(linkData?.links) ? linkData.links : [];
-            const linkMarkdown = linkItems.map(item => {
-              const url = typeof item === "string" ? item : String(item?.url || item?.href || "");
-              const title = typeof item === "object" ? String(item?.title || item?.text || url) : url;
-              return url ? "[" + title.slice(0, 160) + "](" + url + ")" : "";
-            }).filter(Boolean).join("\n");
-            if (linkMarkdown) pageSources = extractExternalSources({
-              results: pageText + "\n" + linkMarkdown
-            }, 8);
-          } catch (error) {
-            errors.push(provider.name + " links: " + String(error?.message || error).slice(0, 100));
-          }
-        }
-        texts.push("SEARCH ENGINE: " + provider.name + "\n" + pageText);
-        usedProviders.push(provider.name);
-        for (const source of pageSources) {
-          if (!sources.some(item => item.url === source.url)) sources.push(source);
-        }
-        if (!goldQuery && sources.length >= 1) break;
-        if (goldQuery && sources.length >= 4) break;
-      } catch (error) {
-        errors.push(provider.name + ": " + String(error?.message || error).slice(0, 120));
+      } catch {}
+    };
+
+    const fetchText = async (url, accept = "application/json, application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8") => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 9000);
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          redirect: "follow",
+          headers: {
+            "Accept": accept,
+            "User-Agent": "WensAI/1.0 (free public search)"
+          },
+          signal: controller.signal
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const body = await response.text();
+        if (body.length > 1200000) throw new Error("response too large");
+        return body;
+      } finally {
+        clearTimeout(timer);
       }
-    }
-    const sourceMarkdown = sources.slice(0, 8)
-      .map(item => "[" + item.title + "](" + item.url + ")")
-      .join("\n");
-    const results = (texts.join("\n\n") +
-      (sourceMarkdown ? "\n\nVERIFIED EXTERNAL SOURCE LINKS:\n" + sourceMarkdown : "")
-    ).slice(0, 14000);
-    if (results.length < 80) {
+    };
+
+    const jobs = [];
+
+    // Google News RSS is a free public feed; useful for recent news and dated sources.
+    jobs.push((async () => {
+      const locale = arabicQuery
+        ? "hl=ar&gl=EG&ceid=EG:ar"
+        : "hl=en-US&gl=US&ceid=US:en";
+      const url = "https://news.google.com/rss/search?q=" + encodeURIComponent(query) + "&" + locale;
+      const xml = await fetchText(url, "application/rss+xml, application/xml, text/xml, */*");
+      const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 6);
+      for (const match of items) {
+        const block = match[1];
+        const field = tag => {
+          const found = block.match(new RegExp("<" + tag + "\\b[^>]*>([\\s\\S]*?)<\\/" + tag + ">", "i"));
+          return found ? cleanText(found[1]) : "";
+        };
+        const title = field("title");
+        const articleUrl = field("link");
+        const description = field("description");
+        const published = field("pubDate");
+        const sourceMatch = block.match(/<source\b[^>]*url=["']([^"']+)["'][^>]*>([\s\S]*?)<\/source>/i);
+        const publisher = sourceMatch ? cleanText(sourceMatch[2]) : "Google News";
+        if (!title || !articleUrl) continue;
+        addSource(title + (publisher ? " — " + publisher : ""), articleUrl);
+        sections.push(
+          "خبر: " + title +
+          (publisher ? "\nالناشر: " + publisher : "") +
+          (published ? "\nتاريخ النشر: " + published : "") +
+          (description ? "\nتفاصيل: " + description : "") +
+          "\nالرابط: " + articleUrl
+        );
+      }
+      if (items.length) engines.push("Google News RSS");
+      else diagnostics.push("Google News RSS: no matching items");
+    })().catch(error => diagnostics.push("Google News RSS: " + String(error?.message || error).slice(0, 100))));
+
+    // DuckDuckGo Instant Answers are keyless. They are useful as a concise secondary source,
+    // but are not treated as a complete list of web search results.
+    jobs.push((async () => {
+      const url = "https://api.duckduckgo.com/?q=" + encodeURIComponent(query) +
+        "&format=json&no_html=1&skip_disambig=1";
+      const raw = await fetchText(url);
+      const data = JSON.parse(raw);
+      let count = 0;
+      if (data.AbstractText && data.AbstractURL) {
+        addSource(data.Heading || "DuckDuckGo — instant answer", data.AbstractURL);
+        sections.push("معلومة فورية: " + cleanText(data.AbstractText) + "\nالرابط: " + data.AbstractURL);
+        count++;
+      }
+      const visitTopics = items => {
+        for (const item of (Array.isArray(items) ? items : [])) {
+          if (count >= 3) break;
+          if (item.Topics) { visitTopics(item.Topics); continue; }
+          if (!item.FirstURL || !item.Text) continue;
+          addSource(cleanText(item.Text).slice(0, 120), item.FirstURL);
+          sections.push("موضوع مرتبط: " + cleanText(item.Text) + "\nالرابط: " + item.FirstURL);
+          count++;
+        }
+      };
+      visitTopics(data.RelatedTopics);
+      if (count) engines.push("DuckDuckGo Instant Answer");
+      else diagnostics.push("DuckDuckGo Instant Answer: no instant answer");
+    })().catch(error => diagnostics.push("DuckDuckGo: " + String(error?.message || error).slice(0, 100))));
+
+    // Wikipedia's public API provides free encyclopedic search results without a key.
+    jobs.push((async () => {
+      const lang = arabicQuery ? "ar" : "en";
+      const url = "https://" + lang + ".wikipedia.org/w/api.php?action=query&list=search&srsearch=" +
+        encodeURIComponent(query) + "&format=json&utf8=1&srlimit=5";
+      const raw = await fetchText(url);
+      const data = JSON.parse(raw);
+      const pages = data?.query?.search || [];
+      for (const page of pages.slice(0, 5)) {
+        const title = cleanText(page.title);
+        const snippet = cleanText(page.snippet);
+        const pageUrl = "https://" + lang + ".wikipedia.org/wiki/" + encodeURIComponent(String(page.title || "").replace(/ /g, "_"));
+        if (!title) continue;
+        addSource(title + " — Wikipedia", pageUrl);
+        sections.push("مرجع موسوعي: " + title + (snippet ? "\nملخص: " + snippet : "") + "\nالرابط: " + pageUrl);
+      }
+      if (pages.length) engines.push(lang === "ar" ? "Arabic Wikipedia" : "Wikipedia");
+      else diagnostics.push("Wikipedia: no matching pages");
+    })().catch(error => diagnostics.push("Wikipedia: " + String(error?.message || error).slice(0, 100))));
+
+    await Promise.allSettled(jobs);
+    const results = sections.join("\n\n").slice(0, 12000);
+    if (!results || sourceLinks.length === 0) {
       return {
-        error: "تعذر الحصول على محتوى من محركات البحث الخارجية.",
+        error: "جربت مصادر بحث مجانية، لكن مفيش نتائج موثوقة متاحة للطلب ده دلوقتي. مش هألف نتائج.",
         query,
-        attempted: providers.map(item => item.name),
-        diagnostics: errors.slice(0, 3)
+        attempted: ["Google News RSS", "DuckDuckGo Instant Answer", "Wikipedia"],
+        diagnostics: diagnostics.slice(0, 4),
+        sources: []
       };
     }
+    const sourceMarkdown = sourceLinks.slice(0, 8)
+      .map(item => "[" + item.title + "](" + item.url + ")")
+      .join("\n");
     return {
       query,
-      results,
-      sources: sources.slice(0, 8),
-      engines: usedProviders,
-      searchedAt: new Date().toISOString()
+      results: (results + "\n\nروابط المصادر:\n" + sourceMarkdown).slice(0, 14000),
+      sources: sourceLinks.slice(0, 8),
+      engines,
+      diagnostics: diagnostics.slice(0, 3),
+      searchedAt: new Date().toISOString(),
+      freeSearch: true
     };
   }
   if (name === "open_webpage") {
