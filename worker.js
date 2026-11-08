@@ -1813,7 +1813,7 @@ function isExternalResearchIntent(message) {
   const isQuestion = /[؟?]/.test(value) ||
     /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|ماهي|اشرح|شرح|قارن|معلومات عن|افضل|احدث|اخر|اخر\s+اخبار|اخر\s+تحديث|what|who|when|where|why|how|which|is|are|can|should)(?:\s|[؟?!]|$)/i.test(text);
   const researchLead = /^(?:ممكن\s+(?:تقولي|تقول|تعرفني|تعرف|تشرحي|تشرح|تدور|تدوري)|عايز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|عاوز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|محتاج(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|قولي\s+(?:لي|لنا)?|احكيلي\s+عن|اعرفني\s+على|اتكلم(?:ي)?\s+عن|الفرق\s+بين|مقارنة\s+بين|رشح(?:ي)?\s+لي|رشح(?:ي)?\s+لنا|ما\s+أفضل|افضل\s+اختيار|تاريخ\s+تأسيس|تأسس\s+امتى|اخر\s+اخبار|احدث\s+اخبار|اخر\s+تحديث|احدث\s+تحديث|tell me about|can you tell me|find out|compare|recommend|review|difference between)(?:\s|[؟?!]|$)/i.test(text);
-  return (isQuestion || researchLead) && !isAction;
+  return (isQuestion || researchLead) && !actionLead;
 }
 
 function extractExternalSources(searchResult, maximum = 8) {
