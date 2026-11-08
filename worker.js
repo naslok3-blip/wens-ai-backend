@@ -2203,6 +2203,8 @@ async function handleAgent(request, env, user, options = {}) {
       status: searchVerified ? "completed" : "failed",
       detail: [
         ...(liveSearch?.engines?.length ? ["محركات البحث: " + liveSearch.engines.join(" + ")] : []),
+        ...(liveSearch?.error ? ["سبب التعذر: " + String(liveSearch.error).slice(0, 120)] : []),
+        ...(liveSearch?.diagnostics?.length ? ["ملاحظات المحركات: " + liveSearch.diagnostics.join(" | ").slice(0, 180)] : []),
         "المصادر المستخرجة: " + sources.length,
         searchQuery
       ].join(" · ")
