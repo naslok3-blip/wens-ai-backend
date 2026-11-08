@@ -1747,50 +1747,49 @@ function isLiveDataRequest(message) {
 function hasVerifiableLiveSources(searchResult, minimumSources = 1) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "");
-  if (results.length < 100 || !/\\d{2,}/.test(results)) return false;
-  const hasFreshness = /(?:آخر\\s*تحديث|اخر\\s*تحديث|تم\\s*التحديث|تحديث\\s*(?:الآن|اليوم)|اليوم|today|updated|published|منذ\\s*\\d+|\\b\\d{1,2}:\\d{2}\\b)/i.test(results);
-  const urls = results.match(/(?:https?:)?\\/\\/[^\\s<>"')\\]]+/g) || [];
+  if (results.length < 100 || !/\d{2,}/.test(results)) return false;
+  const hasFreshness = /(?:آخر\s*تحديث|اخر\s*تحديث|تم\s*التحديث|تحديث\s*(?:الآن|اليوم)|اليوم|today|updated|published|منذ\s*\d+|\b\d{1,2}:\d{2}\b)/i.test(results);
+  const urls = results.match(/(?:https?:)?\/\/[^\s<>"')\]]+/g) || [];
   const domains = new Set();
   for (const raw of urls) {
     try {
       const parsed = new URL((raw.startsWith("//") ? "https:" : "") + raw.replace(/[.,;]+$/, ""));
       let target = parsed;
-      if (/(?:^|\\.)duckduckgo\\.com$/i.test(parsed.hostname)) {
+      if (/(?:^|\.)duckduckgo\.com$/i.test(parsed.hostname)) {
         const destination = parsed.searchParams.get("uddg") || parsed.searchParams.get("url");
         if (!destination) continue;
         target = new URL(destination);
       }
-      const host = target.hostname.toLowerCase().replace(/^www\\./, "");
-      if (host && !/(?:^|\\.)duckduckgo\\.com$/.test(host)) domains.add(host);
+      const host = target.hostname.toLowerCase().replace(/^www\./, "");
+      if (host && !/(?:^|\.)duckduckgo\.com$/.test(host)) domains.add(host);
     } catch {}
   }
   return hasFreshness && domains.size >= Math.max(1, Number(minimumSources) || 1);
 }
 
-// Gold prices are particularly sensitive to stale snippets. Verify each source independently:
-// it must contain gold/karat context, an explicit EGP price, and a freshness marker.
+// Gold prices require independent source evidence, not merely unrelated numbers and links.
 function hasVerifiableGoldPriceSources(searchResult) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "");
   if (results.length < 150) return false;
   const links = [];
-  const pattern = /\\[([^\\]]{1,240})\\]\\((https?:\\/\\/[^)\\s]+)\\)|(https?:\\/\\/[^\\s<>"')\\]]+)/g;
+  const pattern = /\[([^\]]{1,240})\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s<>"')\]]+)/g;
   let match;
   while ((match = pattern.exec(results))) {
     const rawUrl = match[2] || match[3];
     try {
       const url = new URL(rawUrl);
-      const host = url.hostname.toLowerCase().replace(/^www\\./, "");
-      if (!host || /(?:^|\\.)duckduckgo\\.com$/.test(host)) continue;
-      links.push({ host, index: match.index, end: pattern.lastIndex });
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      if (!host || /(?:^|\.)duckduckgo\.com$/.test(host)) continue;
+      links.push({ host, index: match.index });
     } catch {}
   }
   const verifiedHosts = new Set();
   for (let i = 0; i < links.length; i++) {
     const sourceText = results.slice(links[i].index, links[i + 1]?.index ?? Math.min(results.length, links[i].index + 1800));
-    const hasGoldContext = /(?:ذهب|دهب|gold|عيار\\s*(?:21|24|18|14)|(?:21|24|18|14)\\s*عيار)/i.test(sourceText);
-    const hasExplicitPrice = /(?:\\d{1,3}(?:,\\d{3})+|\\d{4,6})(?:\\.\\d+)?\\s*(?:جنيه|ج\\.?م\\.?|EGP)|(?:سعر|جرام|عيار).{0,70}(?:\\d{1,3}(?:,\\d{3})+|\\d{4,6})/i.test(sourceText);
-    const hasFreshness = /(?:آخر\\s*تحديث|اخر\\s*تحديث|تم\\s*التحديث|تحديث\\s*(?:الآن|اليوم)|اليوم|النهارده|today|updated|published|منذ\\s*\\d+|\\b\\d{1,2}:\\d{2}\\b|202[5-9][/-]\\d{1,2}[/-]\\d{1,2})/i.test(sourceText);
+    const hasGoldContext = /(?:ذهب|دهب|gold|عيار\s*(?:21|24|18|14)|(?:21|24|18|14)\s*عيار)/i.test(sourceText);
+    const hasExplicitPrice = /(?:\d{1,3}(?:,\d{3})+|\d{4,6})(?:\.\d+)?\s*(?:جنيه|ج\.?م\.?|EGP)|(?:سعر|جرام|عيار).{0,70}(?:\d{1,3}(?:,\d{3})+|\d{4,6})/i.test(sourceText);
+    const hasFreshness = /(?:آخر\s*تحديث|اخر\s*تحديث|تم\s*التحديث|تحديث\s*(?:الآن|اليوم)|اليوم|النهارده|today|updated|published|منذ\s*\d+|\b\d{1,2}:\d{2}\b|202[5-9][/-]\d{1,2}[/-]\d{1,2})/i.test(sourceText);
     if (hasGoldContext && hasExplicitPrice && hasFreshness) verifiedHosts.add(links[i].host);
   }
   return verifiedHosts.size >= 2;
