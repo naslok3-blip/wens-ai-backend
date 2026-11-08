@@ -1788,7 +1788,7 @@ function hasVerifiableGoldPriceSources(searchResult) {
   for (let i = 0; i < links.length; i++) {
     const sourceText = results.slice(links[i].index, links[i + 1]?.index ?? Math.min(results.length, links[i].index + 1800));
     const hasGoldContext = /(?:ذهب|دهب|gold|عيار\s*(?:21|24|18|14)|(?:21|24|18|14)\s*عيار)/i.test(sourceText);
-    const hasExplicitPrice = /(?:\d{1,3}(?:,\d{3})+|\d{4,6})(?:\.\d+)?\s*(?:جنيه|ج\.?م\.?|EGP)|(?:سعر|جرام|عيار).{0,70}(?:\d{1,3}(?:,\d{3})+|\d{4,6})/i.test(sourceText);
+    const hasExplicitPrice = /(?:\d{1,3}(?:,\d{3})+|\d{4,6})(?:\.\d+)?\s*(?:جنيه|ج\.?م\.?|EGP)/i.test(sourceText);
     const hasFreshness = /(?:آخر\s*تحديث|اخر\s*تحديث|تم\s*التحديث|تحديث\s*(?:الآن|اليوم)|اليوم|النهارده|today|updated|published|منذ\s*\d+|\b\d{1,2}:\d{2}\b|202[5-9][/-]\d{1,2}[/-]\d{1,2})/i.test(sourceText);
     if (hasGoldContext && hasExplicitPrice && hasFreshness) verifiedHosts.add(links[i].host);
   }
@@ -1810,7 +1810,8 @@ function isExternalResearchIntent(message) {
   const isAction = /(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|تعديل|حدث|حدّث|طور|طوري|ابني|ابنيلي|اصنع|اصنعي|احفظ|استعيد|ارشف|سجل دخول|سجل خروج|افتحلي|شغل|ارفع|انشر|جهز|جهزي|create|build|edit|update|modify|deploy|upload)/i.test(text);
   const isQuestion = /[؟?]/.test(value) ||
     /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|ماهي|اشرح|شرح|قارن|معلومات عن|افضل|احدث|آخر|what|who|when|where|why|how|which|is|are|can|should)(?:\s|[؟?!]|$)/i.test(text);
-  return isQuestion && !isAction;
+  const researchLead = /^(?:ممكن\s+(?:تقولي|تقول|تعرفني|تعرف|تشرحي|تشرح|تدور|تدوري)|عايز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|عاوز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|محتاج(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|قولي\s+(?:لي|لنا)?|احكيلي\s+عن|اعرفني\s+على|اتكلم(?:ي)?\s+عن|الفرق\s+بين|مقارنة\s+بين|رشح(?:ي)?\s+لي|رشح(?:ي)?\s+لنا|ما\s+أفضل|افضل\s+اختيار|تاريخ\s+تأسيس|تأسس\s+امتى|tell me about|can you tell me|find out|compare|recommend|review|difference between)(?:\s|[؟?!]|$)/i.test(text);
+  return (isQuestion || researchLead) && !isAction;
 }
 
 function extractExternalSources(searchResult, maximum = 8) {
