@@ -17,12 +17,12 @@ function extractFunction(name, nextName) {
 }
 
 const helpers = [
-  extractFunction("normalizeLiveDataText", "isExplicitExternalSearchRequest"),
-  extractFunction("isExplicitExternalSearchRequest", "isEgyptGoldPriceRequest"),
+  extractFunction("normalizeLiveDataText", "isEgyptGoldPriceRequest"),
   extractFunction("isEgyptGoldPriceRequest", "isLiveDataRequest"),
-  extractFunction("isLiveDataRequest", "isExternalResearchIntent"),
+  extractFunction("isLiveDataRequest", "hasVerifiableLiveSources"),
+  extractFunction("isExplicitExternalSearchRequest", "isExternalResearchIntent"),
   extractFunction("isExternalResearchIntent", "extractExternalSources"),
-  extractFunction("hasVerifiableGoldPriceSources", "handleAgent")
+  extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
 const sandbox = { URL, module: { exports: {} } };
