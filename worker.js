@@ -1529,7 +1529,12 @@ async function executeAgentTool(name, args, env, user) {
         errors.push(provider.name + ": " + String(error?.message || error).slice(0, 120));
       }
     }
-    const results = texts.join("\n\n").slice(0, 14000);
+    const sourceMarkdown = sources.slice(0, 8)
+      .map(item => "[" + item.title + "](" + item.url + ")")
+      .join("\n");
+    const results = (texts.join("\n\n") +
+      (sourceMarkdown ? "\n\nVERIFIED EXTERNAL SOURCE LINKS:\n" + sourceMarkdown : "")
+    ).slice(0, 14000);
     if (results.length < 80) {
       return {
         error: "تعذر الحصول على محتوى من محركات البحث الخارجية.",
@@ -1867,8 +1872,12 @@ function extractExternalSources(searchResult, maximum = 8) {
     if (depth > 4 || value == null) return "";
     if (Array.isArray(value)) return value.map(item => flatten(item, depth + 1)).filter(Boolean).join("\n");
     if (typeof value !== "object") return "";
+    if (typeof value.url === "string" && /^https:\/\//i.test(value.url)) {
+      const label = String(value.title || value.domain || "مصدر خارجي").replace(/[\[\]]/g, "").slice(0, 160);
+      return "[" + label + "](" + value.url + ")";
+    }
     const parts = [];
-    for (const key of ["results", "result", "markdown", "content", "text", "html", "body", "items", "links"]) {
+    for (const key of ["results", "result", "markdown", "content", "text", "html", "body", "items", "links", "sources"]) {
       if (value[key] !== undefined) {
         const part = flatten(value[key], depth + 1);
         if (part) parts.push(part);
@@ -1892,6 +1901,14 @@ function extractExternalSources(searchResult, maximum = 8) {
         const destination = url.searchParams.get("q") || url.searchParams.get("url");
         if (!destination) return;
         url = new URL(destination);
+      } else if (/^(?:bing\.com)$/.test(initialHost) && url.pathname === "/ck/a") {
+        const encoded = url.searchParams.get("u") || "";
+        if (encoded.startsWith("a1")) {
+          try {
+            const decoded = atob(encoded.slice(2).replace(/-/g, "+").replace(/_/g, "/"));
+            if (/^https?:\/\//i.test(decoded)) url = new URL(decoded);
+          } catch {}
+        }
       }
       if (url.protocol !== "https:") return;
       const host = url.hostname.toLowerCase().replace(/^www\./, "");
@@ -2159,7 +2176,11 @@ async function handleAgent(request, env, user, options = {}) {
     activity.push({
       label: "البحث في المواقع الخارجية",
       status: searchVerified ? "completed" : "failed",
-      detail: searchQuery
+      detail: [
+        ...(liveSearch?.engines?.length ? ["محركات البحث: " + liveSearch.engines.join(" + ")] : []),
+        "المصادر المستخرجة: " + sources.length,
+        searchQuery
+      ].join(" · ")
     });
     if (liveDataRequest && !searchVerified) {
       const reply = goldPriceRequest
@@ -2293,7 +2314,11 @@ async function handleAgent(request, env, user, options = {}) {
           rememberSources({ results: "[" + String(output.title || output.url) + "](" + String(output.url) + ")" });
         }
         const activityDetail = name === "search_web"
-          ? String(args?.query || "").slice(0, 220)
+          ? [
+              ...(output?.engines?.length ? [output.engines.join(" + ")] : []),
+              "مصادر: " + (Array.isArray(output?.sources) ? output.sources.length : extractExternalSources(output).length),
+              String(args?.query || "").slice(0, 180)
+            ].join(" · ")
           : name === "open_webpage" || name === "browser_open"
             ? String(output?.url || args?.url || "").slice(0, 220)
             : output?.error ? String(output.error).slice(0, 180) : "";
