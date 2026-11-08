@@ -1806,10 +1806,10 @@ function isExternalResearchIntent(message) {
   if (!value) return false;
   if (isExplicitExternalSearchRequest(value) || isLiveDataRequest(value)) return true;
   const text = normalizeLiveDataText(value);
-  if (/^(?:ازيك|عامل ايه|عامله ايه|اخبارك|صباح الخير|مساء الخير|تصبحي على خير|شكرا|متشكر|تمام|حاضر)\b/i.test(text)) return false;
-  const isAction = /(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|تعديل|حدث|حدّث|طور|طوري|ابني|ابنيلي|اصنع|اصنعي|احفظ|استعيد|ارشف|سجل دخول|سجل خروج|افتحلي|شغل|ارفع|انشر|جهز|جهزي|create|build|edit|update|modify|deploy|upload)\b/i.test(text);
+  if (/^(?:ازيك|عامل ايه|عامله ايه|اخبارك|صباح الخير|مساء الخير|تصبحي على خير|شكرا|متشكر|تمام|حاضر)(?:\s|[؟?!]|$)/i.test(text)) return false;
+  const isAction = /(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|تعديل|حدث|حدّث|طور|طوري|ابني|ابنيلي|اصنع|اصنعي|احفظ|استعيد|ارشف|سجل دخول|سجل خروج|افتحلي|شغل|ارفع|انشر|جهز|جهزي|create|build|edit|update|modify|deploy|upload)/i.test(text);
   const isQuestion = /[؟?]/.test(value) ||
-    /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|ماهي|اشرح|شرح|قارن|معلومات عن|افضل|احدث|آخر|what|who|when|where|why|how|which|is|are|can|should)\b/i.test(text);
+    /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|ماهي|اشرح|شرح|قارن|معلومات عن|افضل|احدث|آخر|what|who|when|where|why|how|which|is|are|can|should)(?:\s|[؟?!]|$)/i.test(text);
   return isQuestion && !isAction;
 }
 
@@ -2042,7 +2042,7 @@ async function handleAgent(request, env, user, options = {}) {
   const documentInstructions = documentExtractionText
     ? "\n\nتأكيد مهم: تم استلام المستندات المرفقة وقراءة محتواها بالفعل. محتواها المستخرج موجود في رسالة المستخدم التالية. اعتمدي على هذا المحتوى في الإجابة، ولا تقولي إن الملفات غير مرفقة أو إنك لا تستطيعين قراءتها."
     : "";
-  const researchInstructions = "\\n\\nفي الأسئلة الواقعية والمعلوماتية، اعتمدي على البحث الخارجي الذي تم قبل الإجابة متى كان متاحًا. لا تدّعي البحث أو فتح موقع من غير تنفيذ أداة فعلية. اذكري أسماء المواقع وروابطها كمصادر عند توفرها، ووضحي بصدق عندما لا ينجح البحث أو لا تكون المصادر كافية. لا تعتمدي على مقتطفات قديمة لتأكيد معلومات متغيرة.";
+  const researchInstructions = "\n\nفي الأسئلة الواقعية والمعلوماتية، اعتمدي على البحث الخارجي الذي تم قبل الإجابة متى كان متاحًا. لا تدّعي البحث أو فتح موقع من غير تنفيذ أداة فعلية. اذكري أسماء المواقع وروابطها كمصادر عند توفرها، ووضحي بصدق عندما لا ينجح البحث أو لا تكون المصادر كافية. لا تعتمدي على مقتطفات قديمة لتأكيد معلومات متغيرة.";
   const finalSystemPrompt = effectiveSystemPrompt + imageInstructions + documentInstructions + researchInstructions;
   const messages = [
     { role: "system", content: finalSystemPrompt },
