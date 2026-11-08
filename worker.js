@@ -1750,11 +1750,18 @@ function hasVerifiableLiveSources(searchResult, minimumSources = 1) {
   if (results.length < 100 || !/\d{2,}/.test(results)) return false;
   const hasFreshness = /(?:آخر\s*تحديث|اخر\s*تحديث|تم\s*التحديث|تحديث\s*(?:الآن|اليوم)|اليوم|today|updated|published|منذ\s*\d+|\b\d{1,2}:\d{2}\b)/i.test(results);
   if (!hasFreshness) return false;
-  const urls = results.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
+  const urls = results.match(/(?:https?:)?\/\/[^\s<>"')\]]+/g) || [];
   const domains = new Set();
   for (const raw of urls) {
     try {
-      const host = new URL(raw.replace(/[.,;]+$/, "")).hostname.toLowerCase();
+      const parsed = new URL((raw.startsWith("//") ? "https:" : "") + raw.replace(/[.,;]+$/, ""));
+      let target = parsed;
+      if (/(?:^|\.)duckduckgo\.com$/i.test(parsed.hostname)) {
+        const destination = parsed.searchParams.get("uddg") || parsed.searchParams.get("url");
+        if (!destination) continue;
+        target = new URL(destination);
+      }
+      const host = target.hostname.toLowerCase().replace(/^www\./, "");
       if (host && !/(?:^|\.)duckduckgo\.com$/.test(host)) domains.add(host);
     } catch {}
   }
