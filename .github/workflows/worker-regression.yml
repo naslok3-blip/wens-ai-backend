@@ -1,0 +1,23 @@
+name: Wens worker regression tests
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'worker.js'
+      - 'tests/**'
+      - '.github/workflows/worker-regression.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'worker.js'
+      - 'tests/**'
+      - '.github/workflows/worker-regression.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/research-intent.test.mjs
