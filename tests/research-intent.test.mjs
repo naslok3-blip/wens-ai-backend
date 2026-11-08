@@ -61,7 +61,7 @@ test("does not misclassify create, edit, or update requests as research", () => 
 
 test("Egypt gold verification rejects one source and non-EGP prices", () => {
   assert.equal(
-    hasVerifiableGoldPriceSources("[سعر الذهب](https://one.example/gold) عيار 21: 2,200 جنيه اليوم"),
+    hasVerifiableGoldPriceSources({ results: "[سعر الذهب](https://one.example/gold) عيار 21: 2,200 جنيه اليوم" }),
     false
   );
   assert.equal(
