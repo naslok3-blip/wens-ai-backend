@@ -1490,16 +1490,61 @@ async function executeAgentTool(name, args, env, user) {
     if (!env.BROWSER) return { error: "خاصية البحث الخارجي غير مربوطة بعد." };
     const query = String(args.query || "").trim().slice(0, 300);
     if (query.length < 2) return { error: "اكتبي موضوع بحث أو سؤالًا واضحًا." };
-    const searchUrl = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
-    try {
-      const data = await browserQuickAction(env, "markdown", {
-        url: searchUrl,
-        gotoOptions: { waitUntil: "domcontentloaded", timeout: 25000 }
-      });
-      return { query, source: searchUrl, results: String(data?.result || data?.markdown || data?.content || JSON.stringify(data)).slice(0, 12000) };
-    } catch (error) {
-      return { error: "تعذر البحث في الويب: " + String(error?.message || error).slice(0, 180) };
+    const encoded = encodeURIComponent(query);
+    const providers = [
+      { name: "DuckDuckGo", url: "https://html.duckduckgo.com/html/?q=" + encoded },
+      { name: "Bing", url: "https://www.bing.com/search?q=" + encoded },
+      { name: "Google", url: "https://www.google.com/search?q=" + encoded }
+    ];
+    const texts = [];
+    const sources = [];
+    const usedProviders = [];
+    const errors = [];
+    const goldQuery = isEgyptGoldPriceRequest(query);
+    for (const provider of providers) {
+      try {
+        const data = await browserQuickAction(env, "markdown", {
+          url: provider.url,
+          gotoOptions: { waitUntil: "domcontentloaded", timeout: 20000 }
+        });
+        const raw = typeof data?.result === "string" ? data.result
+          : typeof data?.markdown === "string" ? data.markdown
+          : typeof data?.content === "string" ? data.content
+          : typeof data?.text === "string" ? data.text
+          : typeof data === "string" ? data : "";
+        const pageText = String(raw || "").trim();
+        if (pageText.length < 80) {
+          errors.push(provider.name + ": empty result");
+          continue;
+        }
+        const pageSources = extractExternalSources({ results: pageText }, 8);
+        texts.push("SEARCH ENGINE: " + provider.name + "\n" + pageText);
+        usedProviders.push(provider.name);
+        for (const source of pageSources) {
+          if (!sources.some(item => item.url === source.url)) sources.push(source);
+        }
+        if (!goldQuery && sources.length >= 1) break;
+        if (goldQuery && sources.length >= 4) break;
+      } catch (error) {
+        errors.push(provider.name + ": " + String(error?.message || error).slice(0, 120));
+      }
     }
+    const results = texts.join("\n\n").slice(0, 14000);
+    if (results.length < 80) {
+      return {
+        error: "تعذر الحصول على محتوى من محركات البحث الخارجية.",
+        query,
+        attempted: providers.map(item => item.name),
+        diagnostics: errors.slice(0, 3)
+      };
+    }
+    return {
+      query,
+      results,
+      sources: sources.slice(0, 8),
+      engines: usedProviders,
+      searchedAt: new Date().toISOString()
+    };
   }
   if (name === "open_webpage") {
     if (!env.BROWSER) return { error: "خاصية قراءة المواقع غير مربوطة بعد." };
@@ -1817,22 +1862,40 @@ function isExternalResearchIntent(message) {
 }
 
 function extractExternalSources(searchResult, maximum = 8) {
-  const resultText = typeof searchResult === "string"
-    ? searchResult
-    : String(searchResult?.results || searchResult?.content || "");
+  const flatten = (value, depth = 0) => {
+    if (typeof value === "string") return value;
+    if (depth > 4 || value == null) return "";
+    if (Array.isArray(value)) return value.map(item => flatten(item, depth + 1)).filter(Boolean).join("\n");
+    if (typeof value !== "object") return "";
+    const parts = [];
+    for (const key of ["results", "result", "markdown", "content", "text", "html", "body", "items", "links"]) {
+      if (value[key] !== undefined) {
+        const part = flatten(value[key], depth + 1);
+        if (part) parts.push(part);
+      }
+    }
+    return parts.length ? parts.join("\n") : "";
+  };
+  const resultText = flatten(searchResult?.results ?? searchResult?.content ?? searchResult);
   const found = [];
   const seen = new Set();
+  const excluded = /^(?:duckduckgo\.com|html\.duckduckgo\.com|bing\.com|www\.bing\.com|google\.com|www\.google\.com|search\.yahoo\.com)$/i;
   const add = (title, rawUrl) => {
     try {
-      let url = new URL(String(rawUrl || ""));
-      if (/(?:^|\.)duckduckgo\.com$/i.test(url.hostname)) {
+      let url = new URL(String(rawUrl || "").replace(/&amp;/gi, "&"));
+      const initialHost = url.hostname.toLowerCase().replace(/^www\./, "");
+      if (/^(?:duckduckgo\.com|html\.duckduckgo\.com)$/.test(initialHost)) {
         const destination = url.searchParams.get("uddg") || url.searchParams.get("url");
+        if (!destination) return;
+        url = new URL(destination);
+      } else if (/^(?:google\.com)$/.test(initialHost) && url.pathname === "/url") {
+        const destination = url.searchParams.get("q") || url.searchParams.get("url");
         if (!destination) return;
         url = new URL(destination);
       }
       if (url.protocol !== "https:") return;
       const host = url.hostname.toLowerCase().replace(/^www\./, "");
-      if (!host || /(?:^|\.)duckduckgo\.com$/.test(host) ||
+      if (!host || excluded.test(host) ||
           /(?:^|\.)browser-binding\.invalid$/.test(host) ||
           /(?:^|\.)live\.browser\.run$/.test(host)) return;
       url.hash = "";
@@ -1853,6 +1916,15 @@ function extractExternalSources(searchResult, maximum = 8) {
   while ((match = markdownLink.exec(resultText)) && found.length < maximum) {
     add(match[1], match[2]);
   }
+  const htmlLink = /<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  while ((match = htmlLink.exec(resultText)) && found.length < maximum) {
+    const title = match[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    add(title, match[1]);
+  }
+  const hrefAttributes = /\bhref\s*=\s*["'](https?:\/\/[^"']+)["']/gi;
+  while ((match = hrefAttributes.exec(resultText)) && found.length < maximum) {
+    add("", match[1]);
+  }
   const bareLinks = resultText.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
   for (const rawUrl of bareLinks) {
     if (found.length >= maximum) break;
@@ -1860,7 +1932,6 @@ function extractExternalSources(searchResult, maximum = 8) {
   }
   return found;
 }
-
 async function handleAgent(request, env, user, options = {}) {
   if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
   let body;
