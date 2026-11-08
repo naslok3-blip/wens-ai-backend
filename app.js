@@ -282,12 +282,12 @@ function appendMessageText(container, text) {
   }
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
-function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = []) {
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = []) {
   const displayText = who === "assistant" ? cleanRepeatedReplyText(text) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
   const messageContainer = $("messages");
   const previousRow = messageContainer.lastElementChild;
-  const hasExtras = (steps?.length || attachments?.length || generatedImages?.length || generatedProjects?.length);
+  const hasExtras = (steps?.length || attachments?.length || generatedImages?.length || generatedProjects?.length || activity?.length || sources?.length);
   if (who === "assistant" && replyKey && !hasExtras &&
       previousRow?.classList.contains("assistant") && previousRow.dataset.replyKey === replyKey) {
     return previousRow;
@@ -362,7 +362,24 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       actions.append(open,download); card.append(heading,preview,actions); bubble.append(card);
     }
   }
-  if (who === "assistant" && Array.isArray(steps) && steps.length) {
+  if (who === "assistant" && Array.isArray(activity) && activity.length) {
+    const trace = document.createElement("details");
+    trace.className = "execution-trace research-trace";
+    const summary = document.createElement("summary");
+    summary.textContent = "بحث وتنفيذ ونس (" + activity.length + ")";
+    const list = document.createElement("ul");
+    for (const item of activity.slice(0, 16)) {
+      const li = document.createElement("li");
+      const status = item?.status === "completed" ? "✓ " : item?.status === "failed" ? "تعذّر " : "• ";
+      const label = String(item?.label || "خطوة تنفيذ").slice(0, 120);
+      const detail = String(item?.detail || "").slice(0, 240);
+      li.textContent = status + label + (detail ? " — " + detail : "");
+      li.className = "trace-" + (item?.status === "failed" ? "failed" : item?.status === "completed" ? "completed" : "pending");
+      list.appendChild(li);
+    }
+    trace.append(summary, list);
+    bubble.appendChild(trace);
+  } else if (who === "assistant" && Array.isArray(steps) && steps.length) {
     const trace = document.createElement("details");
     trace.className = "execution-trace";
     const summary = document.createElement("summary");
@@ -375,6 +392,31 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     }
     trace.append(summary, list);
     bubble.appendChild(trace);
+  }
+  if (who === "assistant" && Array.isArray(sources) && sources.length) {
+    const sourceTrace = document.createElement("details");
+    sourceTrace.className = "execution-trace source-trace";
+    const summary = document.createElement("summary");
+    summary.textContent = "المواقع والمصادر الخارجية (" + sources.length + ")";
+    const list = document.createElement("ul");
+    for (const item of sources.slice(0, 8)) {
+      try {
+        const url = new URL(String(item?.url || ""));
+        if (url.protocol !== "https:") continue;
+        const li = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = url.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = String(item?.title || item?.domain || url.hostname).slice(0, 160);
+        li.appendChild(link);
+        list.appendChild(li);
+      } catch {}
+    }
+    if (list.childNodes.length) {
+      sourceTrace.append(summary, list);
+      bubble.appendChild(sourceTrace);
+    }
   }
   if (who === "assistant") {
     const replay = document.createElement("button");
@@ -402,6 +444,40 @@ function setBusy(busy) {
   $("messageInput").disabled = busy;
   $("attachMenuBtn").disabled = busy;
   document.querySelector(".send-btn").textContent = busy ? "ونس بتفكر…" : "إرسال";
+}
+function pendingActivityLabel(message, attachments = []) {
+  const value = String(message || "").trim();
+  const normalized = value.normalize("NFKC").replace(/[أإآ]/g, "ا").toLowerCase();
+  const explicitSearch = /(?:ابحث|ابحثي|دور|دوري|المواقع الخارجية|مواقع خارجية|على الانترنت|الويب|search the web|browse the web|look up)/i.test(normalized);
+  const question = /[؟?]/.test(value) || /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|اشرح|شرح|قارن|what|who|when|where|why|how|which|is|are|can|should)\b/i.test(normalized);
+  const action = /(?:انشئ|اعمل|اعملي|صمم|نفذ|عدل|تعديل|حدث|طور|ابني|اصنع|احفظ|استعيد|ارشف|جهز|create|build|edit|update|modify|deploy)/i.test(normalized);
+  if (explicitSearch || (question && !action)) return "ونس بتبحث في المواقع الخارجية قبل الرد…";
+  if (attachments.some(item => item.kind === "image")) return "ونس بتفحص الصورة وبتجهز النتيجة…";
+  if (action) return "ونس بتراجع طلبك وبتنفّذ الخطوات المتاحة…";
+  return "ونس بتجهّز الرد…";
+}
+function addPendingActivityMessage(message, attachments = []) {
+  const row = document.createElement("div");
+  row.className = "message assistant activity-message";
+  const avatar = document.createElement("img");
+  avatar.className = "mini-avatar";
+  avatar.src = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
+  avatar.alt = "ونس";
+  avatar.width = 30;
+  avatar.height = 30;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble activity-bubble";
+  const spinner = document.createElement("span");
+  spinner.className = "activity-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.className = "activity-label";
+  label.textContent = pendingActivityLabel(message, attachments);
+  bubble.append(spinner, label);
+  row.append(avatar, bubble);
+  $("messages").appendChild(row);
+  $("messages").scrollTop = $("messages").scrollHeight;
+  return row;
 }
 function setAttachmentStatus(message, error = false) {
   $("attachmentStatus").textContent = message || "";
@@ -652,13 +728,20 @@ $("chatForm").addEventListener("submit", async event => {
   clearPendingAttachments();
   closeAttachmentMenu();
   setBusy(true);
+  const progressRow = addPendingActivityMessage(text, selected);
   try {
     const data = await api("/api/chat", {
       message: text, attachments: payload, deepThink
     });
-    const assistantRow = addMessage(data.reply, "assistant", data.steps || [], [], data.generatedImages || [], data.generatedProjects || []);
+    progressRow.remove();
+    const assistantRow = addMessage(
+      data.reply, "assistant", data.steps || [], [],
+      data.generatedImages || [], data.generatedProjects || [],
+      data.activity || [], data.sources || []
+    );
     if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
   } catch (error) {
+    progressRow.remove();
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);
   } finally {
     setBusy(false);
