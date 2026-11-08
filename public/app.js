@@ -449,7 +449,7 @@ function pendingActivityLabel(message, attachments = []) {
   const value = String(message || "").trim();
   const normalized = value.normalize("NFKC").replace(/[أإآ]/g, "ا").toLowerCase();
   const explicitSearch = /(?:ابحث|ابحثي|دور|دوري|المواقع الخارجية|مواقع خارجية|على الانترنت|الويب|search the web|browse the web|look up)/i.test(normalized);
-  const question = /[؟?]/.test(value) || /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|اشرح|شرح|قارن|what|who|when|where|why|how|which|is|are|can|should)\b/i.test(normalized);
+  const question = /[؟?]/.test(value) || /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|اشرح|شرح|قارن|what|who|when|where|why|how|which|is|are|can|should)(?:\s|[؟?!]|$)/i.test(normalized);
   const action = /(?:انشئ|اعمل|اعملي|صمم|نفذ|عدل|تعديل|حدث|طور|ابني|اصنع|احفظ|استعيد|ارشف|جهز|create|build|edit|update|modify|deploy)/i.test(normalized);
   if (explicitSearch || (question && !action)) return "ونس بتبحث في المواقع الخارجية قبل الرد…";
   if (attachments.some(item => item.kind === "image")) return "ونس بتفحص الصورة وبتجهز النتيجة…";
