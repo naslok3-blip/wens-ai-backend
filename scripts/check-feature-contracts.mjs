@@ -133,7 +133,7 @@ console.log("Wens app/game intent tests passed for Arabic creation phrases and n
 const liveStart = worker.indexOf("function normalizeLiveDataText(value) {");
 const liveEnd = worker.indexOf("\nasync function handleAgent", liveStart);
 if (liveStart < 0 || liveEnd < 0) throw new Error("Live-data detector could not be isolated for tests.");
-const liveHelpers = runInNewContext(worker.slice(liveStart, liveEnd) + "\n({ isLiveDataRequest, isEgyptGoldPriceRequest, hasVerifiableLiveSources })");
+const liveHelpers = runInNewContext(worker.slice(liveStart, liveEnd) + "\n({ isLiveDataRequest, isEgyptGoldPriceRequest, hasVerifiableLiveSources })", { URL });
 const liveIntentCases = [
   ["سعر الذهب اليوم في مصر", true],
   ["سعر الذهب", true],
