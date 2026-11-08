@@ -1726,7 +1726,7 @@ function normalizeLiveDataText(value) {
     .normalize("NFKC")
     .replace(/[أإآ]/g, "ا")
     .replace(/ى/g, "ي")
-    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .toLowerCase();
 }
 
@@ -1740,22 +1740,22 @@ function isLiveDataRequest(message) {
   const text = normalizeLiveDataText(message);
   const dynamicTopic = /(?:سعر|اسعار|ثمن|تكلفه|ذهب|دهب|gold|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|عملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|امطار|مباراه|مباريات|نتيجه|ترتيب|weather|forecast|exchange rate|currency|stock price|bitcoin|crypto|live score)/i.test(text);
   const explicitCurrent = /(?:اليوم|النهارده|دلوقتي|حاليا|الان|مباشر|اخر|احدث|today|current|now|latest|live)/i.test(text);
-  const intrinsicallyLive = /(?:سعر|اسعار|ثمن|تكلفه|ذهب|دهب|gold|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|مباراه|مباريات|weather|forecast|exchange rate|stock price|bitcoin|crypto|live score)/i.test(text);
+  const intrinsicallyLive = /(?:سعر|اسعار|ثمن|تكلفه|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|مباراه|مباريات|weather|forecast|exchange rate|stock price|bitcoin|crypto|live score)/i.test(text);
   return dynamicTopic && (explicitCurrent || intrinsicallyLive);
 }
 
 function hasVerifiableLiveSources(searchResult, minimumSources = 1) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "");
-  if (results.length < 100 || !/\\d{2,}/.test(results)) return false;
-  const hasFreshness = /(?:آخر\\s*تحديث|اخر\\s*تحديث|تم\\s*التحديث|تحديث\\s*(?:الآن|اليوم)|اليوم|today|updated|published|منذ\\s*\\d+|\\b\\d{1,2}:\\d{2}\\b)/i.test(results);
+  if (results.length < 100 || !/\d{2,}/.test(results)) return false;
+  const hasFreshness = /(?:آخر\s*تحديث|اخر\s*تحديث|تم\s*التحديث|تحديث\s*(?:الآن|اليوم)|اليوم|today|updated|published|منذ\s*\d+|\b\d{1,2}:\d{2}\b)/i.test(results);
   if (!hasFreshness) return false;
-  const urls = results.match(/https?:\\/\\/[^\\s<>"')\\]]+/g) || [];
+  const urls = results.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
   const domains = new Set();
   for (const raw of urls) {
     try {
       const host = new URL(raw.replace(/[.,;]+$/, "")).hostname.toLowerCase();
-      if (host && !/(?:^|\\.)duckduckgo\\.com$/.test(host)) domains.add(host);
+      if (host && !/(?:^|\.)duckduckgo\.com$/.test(host)) domains.add(host);
     } catch {}
   }
   return domains.size >= Math.max(1, Number(minimumSources) || 1);
