@@ -1461,8 +1461,8 @@ function getEgyptCurrentDateTime() {
 
 function getEgyptDateTimeIntent(message) {
   const value = normalizeLiveDataText(message);
-  const asksTime = /(?:الساعه|الوقت|كام\s+(?:الساعه|الوقت)|(?:الساعه|الوقت)\s+كام|كم\s+(?:الساعه|الوقت)|what\s+time|current\s+time|time\s+now)/i.test(value);
-  const asksDate = /(?:النهارده|انهارده|اليوم\s*(?:كام|ايه)?|(?:تاريخ|التاريخ)\s+(?:اليوم|النهارده|انهارده)|ايه\s+تاريخ\s+(?:اليوم|النهارده)|what(?:'s|\s+is)?\s+(?:the\s+)?date|what\s+day\s+is\s+it)/i.test(value);
+  const asksTime = /(?:الساع(?:ه|ة)|الوقت|كام\s+(?:الساع(?:ه|ة)|الوقت)|(?:الساع(?:ه|ة)|الوقت)\s+كام|كم\s+(?:الساع(?:ه|ة)|الوقت)|what\s+time|current\s+time|time\s+now)/i.test(value);
+  const asksDate = /(?:النهارده|النهاردة|انهارده|اليوم\s*(?:كام|ايه)?|(?:تاريخ|التاريخ)\s+(?:اليوم|النهارده|انهارده)|ايه\s+تاريخ\s+(?:اليوم|النهارده)|what(?:'s|\s+is)?\s+(?:the\s+)?date|what\s+day\s+is\s+it)/i.test(value);
   return { asksTime, asksDate, matched: asksTime || asksDate };
 }
 
