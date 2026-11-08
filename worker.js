@@ -1506,7 +1506,27 @@ async function executeAgentTool(name, args, env, user) {
           errors.push(provider.name + ": empty result");
           continue;
         }
-        const pageSources = extractExternalSources({ results: pageText }, 8);
+        let pageSources = extractExternalSources({ results: pageText }, 8);
+        if (!pageSources.length) {
+          try {
+            const linkData = await browserQuickAction(env, "links", {
+              url: provider.url,
+              gotoOptions: { waitUntil: "domcontentloaded", timeout: 15000 }
+            });
+            const linkItems = Array.isArray(linkData?.result) ? linkData.result
+              : Array.isArray(linkData?.links) ? linkData.links : [];
+            const linkMarkdown = linkItems.map(item => {
+              const url = typeof item === "string" ? item : String(item?.url || item?.href || "");
+              const title = typeof item === "object" ? String(item?.title || item?.text || url) : url;
+              return url ? "[" + title.slice(0, 160) + "](" + url + ")" : "";
+            }).filter(Boolean).join("\n");
+            if (linkMarkdown) pageSources = extractExternalSources({
+              results: pageText + "\n" + linkMarkdown
+            }, 8);
+          } catch (error) {
+            errors.push(provider.name + " links: " + String(error?.message || error).slice(0, 100));
+          }
+        }
         texts.push("SEARCH ENGINE: " + provider.name + "\n" + pageText);
         usedProviders.push(provider.name);
         for (const source of pageSources) {
