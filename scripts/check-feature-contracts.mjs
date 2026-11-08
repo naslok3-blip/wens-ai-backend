@@ -77,7 +77,8 @@ const checks = [
 
   [worker, "function isLiveDataRequest(message)", "changing information is routed through mandatory live verification"],
   [worker, 'executeAgentTool("search_web", { query: searchQuery }, env, user)', "live verification searches before model response"],
-  [worker, "hasVerifiableLiveSources(liveSearch, goldPriceRequest ? 2 : 1)", "gold prices require multiple timestamped sources"],
+  [worker, "hasVerifiableGoldPriceSources(liveSearch)", "gold prices require independent timestamped EGP sources"],
+  [worker, "hasVerifiableLiveSources(liveSearch, 1)", "other changing facts require a current external source"],
   [worker, "STRICT LIVE-DATA VERIFICATION RULE:", "live source-grounding instructions block invented current values"],
   [worker, "function isProjectCreationIntent(message)", "explicit project-creation intent detector"],
   [worker, "const projectCreationIntent = isProjectCreationIntent(message);", "project-creation intent routes to project builder"],
