@@ -1010,6 +1010,7 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
   return new Promise((resolve, reject) => {
     let started = false;
     let settled = false;
+    let playbackTimer = null;
     const startTimer = setTimeout(() => {
       if (!started && !settled) {
         settled = true;
@@ -1019,6 +1020,17 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
     utterance.onstart = () => {
       started = true;
       clearTimeout(startTimer);
+      if (!waitForPlayback) {
+        const playbackLimit = Math.max(25000, Math.min(120000, message.length * 75));
+        playbackTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          setAvatarSpeaking(false);
+          try { synth.cancel(); } catch {}
+          setVoiceStatus("محرك الصوت ما أنهـاش تشغيل الرد في الوقت المتوقع. تقدر تعيد المحاولة.");
+          reject(new Error("انتهى وقت تشغيل الصوت؛ جرّب تشغيل الرد مرة أخرى."));
+        }, playbackLimit);
+      }
       setAvatarSpeaking(true);
       setVoiceStatus(hasEgyptianVoice
         ? "ونس بتتكلم دلوقتي بصوت مصري 💜"
@@ -1027,11 +1039,13 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
     };
     utterance.onend = () => {
       clearTimeout(startTimer);
+      if (playbackTimer) clearTimeout(playbackTimer);
       setAvatarSpeaking(false);
       if (!settled) { settled = true; resolve(true); }
     };
     utterance.onerror = event => {
       clearTimeout(startTimer);
+      if (playbackTimer) clearTimeout(playbackTimer);
       setAvatarSpeaking(false);
       const reason = event?.error === "not-allowed"
         ? "اسمح للمتصفح بتشغيل الصوت من إعدادات الهاتف."
@@ -1043,6 +1057,7 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
       synth.resume?.();
     } catch (error) {
       clearTimeout(startTimer);
+      if (playbackTimer) clearTimeout(playbackTimer);
       reject(error);
     }
   });
