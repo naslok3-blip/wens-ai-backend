@@ -153,8 +153,13 @@ const goodGoldResults = {
   results: "آخر تحديث اليوم 03:45 ص: عيار 21 6205 جنيه https://shashetelsagha.com/\nآخر تحديث اليوم 02:53 ص: عيار 21 6205 جنيه https://officialtibr.com/gold/egypt/21/"
 };
 const oneGoldSource = { results: "آخر تحديث اليوم 03:45 ص: عيار 21 6205 جنيه https://shashetelsagha.com/" };
+const redirectedGoldSources = {
+  results: "آخر تحديث اليوم 03:45 ص: عيار 21 6205 جنيه https://duckduckgo.com/l/?uddg=https%3A%2F%2Fshashetelsagha.com%2Fgold\nآخر تحديث اليوم 02:53 ص: عيار 21 6205 جنيه https://duckduckgo.com/l/?uddg=https%3A%2F%2Fofficialtibr.com%2Fgold%2Fegypt"
+};
+
 const staleResults = { results: "عيار 21 سعره 6205 جنيه https://example.com/" };
 if (!liveHelpers.hasVerifiableLiveSources(goodGoldResults, 2)) throw new Error("Two timestamped sources should pass live-price verification.");
+if (!liveHelpers.hasVerifiableLiveSources(redirectedGoldSources, 2)) throw new Error("DuckDuckGo redirect links should resolve to independent source domains.");
 if (liveHelpers.hasVerifiableLiveSources(oneGoldSource, 2)) throw new Error("Gold price must fail with only one source.");
 if (liveHelpers.hasVerifiableLiveSources(staleResults, 1)) throw new Error("Results without a freshness marker must fail.");
 console.log("Wens live-data verification tests passed for gold, exchange rates, weather, and stale/missing sources.");
