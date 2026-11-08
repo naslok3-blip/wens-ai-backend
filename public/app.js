@@ -447,13 +447,14 @@ function setBusy(busy) {
 }
 function pendingActivityLabel(message, attachments = []) {
   const value = String(message || "").trim();
-  const normalized = value.normalize("NFKC").replace(/[أإآ]/g, "ا").toLowerCase();
-  const explicitSearch = /(?:ابحث|ابحثي|دور|دوري|المواقع الخارجية|مواقع خارجية|على الانترنت|الويب|search the web|browse the web|look up)/i.test(normalized);
-  const question = /[؟?]/.test(value) || /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|اشرح|شرح|قارن|what|who|when|where|why|how|which|is|are|can|should)(?:\s|[؟?!]|$)/i.test(normalized);
-  const action = /^(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|تعديل|طور|طوري|ابني|اصنع|اصنعي|احفظ|استعيد|ارشف|جهز|جهزي|create|build|edit|update|modify|deploy)(?:\\s|[؟?!]|$)/i.test(normalized) ||
-    /^(?:عايزك|عاوزك|عايزة|عاوزة|عايز|عاوز|محتاج|محتاجة|ممكن)\\s+(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|طور|طوري|ابني|اصنع|اصنعي|احفظ|استعيد|ارشف|جهز|جهزي|create|build|edit|update|modify|deploy)(?:\\s|[؟?!]|$)/i.test(normalized) ||
-    /(?:عدل|عدلي|تعديل|حدث|طور|طوري|ارفع|انشر|شغل)\\s+(?:ونس|التطبيق|الموقع|الملف|الكود|الخادم|الواجهة|الصورة|الصوره)/i.test(normalized);
-  if (explicitSearch || (question && !action)) return "ونس بتبحث في المواقع الخارجية قبل الرد…";
+  const normalized = value.normalize("NFKC").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").toLowerCase();
+  const explicitSearch = /(?:ابحث|ابحثي|بحث|دور|دوري|المواقع الخارجية|مواقع خارجية|على الانترنت|الانترنت|الويب|search the web|browse the web|look up)/i.test(normalized);
+  const question = /[؟?]/.test(value) || /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|اشرح|شرح|قارن|افضل|احدث|اخر|اخر\s+اخبار|اخر\s+تحديث|what|who|when|where|why|how|which|is|are|can|should)(?:\s|[؟?!]|$)/i.test(normalized);
+  const action = /^(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|تعديل|طور|طوري|ابني|اصنع|اصنعي|احفظ|استعيد|ارشف|جهز|جهزي|create|build|edit|update|modify|deploy)(?:\s|[؟?!]|$)/i.test(normalized) ||
+    /^(?:عايزك|عاوزك|عايزة|عاوزة|عايز|عاوز|محتاج|محتاجة|ممكن)\s+(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|طور|طوري|ابني|اصنع|اصنعي|احفظ|استعيد|ارشف|جهز|جهزي|create|build|edit|update|modify|deploy)(?:\s|[؟?!]|$)/i.test(normalized) ||
+    /(?:عدل|تعديل|حدث|تحدث|تحديث|طور|ارفع|انشر|شغل)(?:ي|وا|ت|نا)?\s+(?:ونس|التطبيق|الموقع|الملف|الكود|الخادم|الواجهة|الصورة|الصوره)/i.test(normalized);
+  const researchLead = /^(?:ممكن\s+(?:تقولي|تقول|تعرفني|تعرف|تشرحي|تشرح|تدور|تدوري)|عايز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|عاوز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|محتاج(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|قولي\s+(?:لي|لنا)?|احكيلي\s+عن|اعرفني\s+على|اتكلم(?:ي)?\s+عن|الفرق\s+بين|مقارنة\s+بين|رشح(?:ي)?\s+لي|رشح(?:ي)?\s+لنا|ما\s+افضل|افضل\s+اختيار|تاريخ\s+تأسيس|تأسس\s+امتى|اخر\s+اخبار|احدث\s+اخبار|اخر\s+تحديث|احدث\s+تحديث|tell me about|can you tell me|find out|compare|recommend|review|difference between)(?:\s|[؟?!]|$)/i.test(normalized);
+  if (explicitSearch || ((question || researchLead) && !action)) return "ونس بتبحث في المواقع الخارجية قبل الرد…";
   if (attachments.some(item => item.kind === "image")) return "ونس بتفحص الصورة وبتجهز النتيجة…";
   if (action) return "ونس بتراجع طلبك وبتنفّذ الخطوات المتاحة…";
   return "ونس بتجهّز الرد…";
