@@ -97,9 +97,9 @@ test("extracts original links from DuckDuckGo and Google redirects", () => {
       "[Example](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Farticle)\\n" +
       "[Reference](https://www.google.com/url?q=https%3A%2F%2Fexample.org%2Fguide)"
   });
-  assert.deepEqual(
-    sources.map(item => item.url),
-    ["https://example.com/article", "https://example.org/guide"]
+  assert.equal(
+    sources.map(item => item.url).join("|"),
+    "https://example.com/article|https://example.org/guide"
   );
 });
 
