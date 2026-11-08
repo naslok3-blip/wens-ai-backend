@@ -22,15 +22,16 @@ const helpers = [
   extractFunction("isLiveDataRequest", "hasVerifiableLiveSources"),
   extractFunction("isExplicitExternalSearchRequest", "isExternalResearchIntent"),
   extractFunction("isExternalResearchIntent", "extractExternalSources"),
+  extractFunction("extractExternalSources", "handleAgent"),
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
-const sandbox = { URL, module: { exports: {} } };
+const sandbox = { URL, atob, module: { exports: {} } };
 vm.runInNewContext(
-  `${helpers}\nmodule.exports = { isExternalResearchIntent, hasVerifiableGoldPriceSources };`,
+  `${helpers}\nmodule.exports = { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources };`,
   sandbox
 );
-const { isExternalResearchIntent, hasVerifiableGoldPriceSources } = sandbox.module.exports;
+const { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -81,4 +82,34 @@ test("Egypt gold verification accepts two independent, current EGP sources", () 
     }),
     true
   );
+});
+
+test("recognizes the exact explicit search request from chat", () => {
+  assert.equal(
+    isExternalResearchIntent("ايه عاصمة اليابان؟ ابحث في المواقع الخارجية واعرض المصادر داخل الشات."),
+    true
+  );
+});
+
+test("extracts original links from DuckDuckGo and Google redirects", () => {
+  const sources = extractExternalSources({
+    results:
+      "[Example](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Farticle)\\n" +
+      "[Reference](https://www.google.com/url?q=https%3A%2F%2Fexample.org%2Fguide)"
+  });
+  assert.deepEqual(
+    sources.map(item => item.url),
+    ["https://example.com/article", "https://example.org/guide"]
+  );
+});
+
+test("extracts source links from HTML and structured search responses", () => {
+  const htmlSources = extractExternalSources({
+    results: '<a href="https://example.net/page">Example Net</a>'
+  });
+  assert.equal(htmlSources[0]?.domain, "example.net");
+  const structured = extractExternalSources({
+    sources: [{ title: "Example Source", url: "https://example.edu/reference" }]
+  });
+  assert.equal(structured[0]?.url, "https://example.edu/reference");
 });
