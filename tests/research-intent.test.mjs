@@ -7,7 +7,11 @@ const worker = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 
 function extractFunction(name, nextName) {
   const start = worker.indexOf(`function ${name}(`);
-  const end = worker.indexOf(`function ${nextName}(`, start);
+  const candidates = [
+    worker.indexOf(`function ${nextName}(`, start),
+    worker.indexOf(`async function ${nextName}(`, start)
+  ].filter(position => position >= 0);
+  const end = candidates.length ? Math.min(...candidates) : -1;
   assert.ok(start >= 0 && end > start, `Could not locate ${name} in worker.js`);
   return worker.slice(start, end);
 }
