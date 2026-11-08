@@ -365,6 +365,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   if (who === "assistant" && Array.isArray(activity) && activity.length) {
     const trace = document.createElement("details");
     trace.className = "execution-trace research-trace";
+    trace.open = true;
     const summary = document.createElement("summary");
     summary.textContent = "بحث وتنفيذ ونس (" + activity.length + ")";
     const list = document.createElement("ul");
@@ -396,6 +397,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   if (who === "assistant" && Array.isArray(sources) && sources.length) {
     const sourceTrace = document.createElement("details");
     sourceTrace.className = "execution-trace source-trace";
+    sourceTrace.open = true;
     const summary = document.createElement("summary");
     summary.textContent = "المواقع والمصادر الخارجية (" + sources.length + ")";
     const list = document.createElement("ul");
