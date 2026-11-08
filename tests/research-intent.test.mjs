@@ -65,20 +65,20 @@ test("Egypt gold verification rejects one source and non-EGP prices", () => {
     false
   );
   assert.equal(
-    hasVerifiableGoldPriceSources(
+    hasVerifiableGoldPriceSources({ results:
       "[سعر الذهب](https://one.example/gold) عيار 21: 2,200 USD اليوم\n" +
       "[سعر الذهب](https://two.example/gold) عيار 21: 2,210 USD اليوم"
-    ),
+    }),
     false
   );
 });
 
 test("Egypt gold verification accepts two independent, current EGP sources", () => {
   assert.equal(
-    hasVerifiableGoldPriceSources(
+    hasVerifiableGoldPriceSources({ results:
       "[سعر الذهب](https://one.example/gold) عيار 21: 2,200 جنيه اليوم آخر تحديث 10:30\n" +
       "[سعر الذهب](https://two.example/gold) عيار 21: 2,210 EGP اليوم آخر تحديث 10:35"
-    ),
+    }),
     true
   );
 });
