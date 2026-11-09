@@ -63,6 +63,63 @@ async function api(path, body, method = "POST") {
   if (!response.ok) throw new Error(data.error || "حصل خطأ في الاتصال بالخادم.");
   return data;
 }
+
+let notificationItems = [];
+async function refreshNotifications() {
+  const button = $("notificationsBtn");
+  if (!currentUser || currentUser.id === "guest" || !button) return;
+  try {
+    const data = await api("/api/notifications", undefined, "GET");
+    notificationItems = Array.isArray(data.notifications) ? data.notifications : [];
+    const unread = Number(data.unread || 0);
+    $("notificationCount").textContent = unread > 99 ? "99+" : String(unread);
+    button.classList.toggle("has-unread", unread > 0);
+    const list = $("notificationList");
+    if (!list) return;
+    list.replaceChildren();
+    if (!notificationItems.length) {
+      const empty = document.createElement("p");
+      empty.className = "notification-empty";
+      empty.textContent = "لا توجد إشعارات بعد.";
+      list.append(empty);
+      return;
+    }
+    for (const item of notificationItems) {
+      const card = document.createElement("article");
+      card.className = "notification-item" + (item.read_at ? "" : " unread");
+      const title = document.createElement("strong");
+      title.textContent = String(item.title || "إشعار ونس");
+      const body = document.createElement("p");
+      body.textContent = String(item.body || "");
+      const time = document.createElement("small");
+      time.textContent = item.created_at
+        ? new Date(Number(item.created_at) * 1000).toLocaleString("ar-EG", { timeZone: "Africa/Cairo" })
+        : "";
+      card.append(title, body, time);
+      if (!item.read_at) {
+        const mark = document.createElement("button");
+        mark.type = "button";
+        mark.className = "notification-read-btn";
+        mark.textContent = "تحديد كمقروء";
+        mark.addEventListener("click", async () => {
+          mark.disabled = true;
+          try {
+            await api("/api/notifications", { id: item.id }, "PATCH");
+            await refreshNotifications();
+          } catch (error) {
+            mark.disabled = false;
+            $("voiceStatus").textContent = error.message;
+          }
+        });
+        card.append(mark);
+      }
+      list.append(card);
+    }
+  } catch (error) {
+    const list = $("notificationList");
+    if (list) list.textContent = "تعذّر تحميل الإشعارات: " + error.message;
+  }
+}
 function setAuthMessage(message, error = false) {
   $("authStatus").textContent = message || "";
   $("authStatus").style.color = error ? "#ff9fba" : "#9be7c1";
@@ -107,8 +164,11 @@ function showApp(user) {
     ? "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات"
     : "مسجّل الدخول: " + user.name;
   updateAdminShortcut();
+  $("notificationsBtn").hidden = user.id === "guest";
+  $("notificationsPanel").hidden = true;
   startPresenceHeartbeat();
   loadChatHistory();
+  if (user.id !== "guest") refreshNotifications();
 }
 async function updateAdminShortcut() {
   // الإدارة لا تظهر كزر عام؛ مدخلها المخفي هو الضغط خمس مرات على شعار ونس.
@@ -209,6 +269,8 @@ $("logoutBtn").addEventListener("click", async () => {
   try { await api("/api/auth/logout", {}); } catch {}
   currentUser = null;
   $("messages").replaceChildren();
+  $("notificationsBtn").hidden = true;
+  $("notificationsPanel").hidden = true;
   showAuth();
   setAuthMessage("تم تسجيل الخروج.");
 });
@@ -757,6 +819,25 @@ $("clearBtn").addEventListener("click", () => {
   $("messages").replaceChildren();
   addMessage("تم مسح عرض المحادثة من الشاشة. سجل الرسائل المحفوظ في الحساب لم يُحذف.");
 });
+$("notificationsBtn").addEventListener("click", async () => {
+  const panel = $("notificationsPanel");
+  panel.hidden = !panel.hidden;
+  $("notificationsBtn").setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+  if (!panel.hidden) await refreshNotifications();
+});
+$("markNotificationsReadBtn").addEventListener("click", async () => {
+  const button = $("markNotificationsReadBtn");
+  button.disabled = true;
+  try {
+    await api("/api/notifications", { allRead: true }, "PATCH");
+    await refreshNotifications();
+  } catch (error) {
+    $("voiceStatus").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
 let activeVoicePeer = null;
 let activeVoiceDataChannel = null;
 let activeVoiceAudio = null;
