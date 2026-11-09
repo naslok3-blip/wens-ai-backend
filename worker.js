@@ -2676,6 +2676,10 @@ async function agentTasksRoute(request, env, user) {
     if (typeof body.done === "boolean") {
       const result = await env.DB.prepare("UPDATE agent_tasks SET done=? WHERE id=? AND user_id=? AND archived=0")
         .bind(body.done ? 1 : 0, id, user.id).run();
+      if (result.meta?.changes > 0 && body.done) {
+        const task = await env.DB.prepare("SELECT title FROM agent_tasks WHERE id=? AND user_id=? LIMIT 1").bind(id,user.id).first();
+        await createUserNotification(env.DB,user.id,"task","تم إنجاز المهمة",task?.title || "مهمة محفوظة");
+      }
       return json({ ok: true, changes: result.meta?.changes || 0 });
     }
     return json({ error: "التعديل غير مدعوم من هذا الطلب." }, 400);
