@@ -482,6 +482,40 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       bubble.appendChild(sourceTrace);
     }
   }
+  if (who === "assistant" && currentUser && currentUser.id !== "guest" && displayText.trim().length > 1) {
+    const feedback = document.createElement("div");
+    feedback.className = "reply-feedback";
+    feedback.setAttribute("aria-label", "تقييم رد ونس");
+    const label = document.createElement("span");
+    label.textContent = "هل كان الرد مفيدًا؟";
+    const helpful = document.createElement("button");
+    helpful.type = "button";
+    helpful.textContent = "👍 مفيد";
+    helpful.setAttribute("aria-label", "الرد مفيد");
+    const notHelpful = document.createElement("button");
+    notHelpful.type = "button";
+    notHelpful.textContent = "👎 مش مفيد";
+    notHelpful.setAttribute("aria-label", "الرد غير مفيد");
+    const sendRating = async (rating, chosen, other) => {
+      helpful.disabled = true;
+      notHelpful.disabled = true;
+      try {
+        await api("/api/feedback", { reply: displayText, rating });
+        chosen.classList.add("selected");
+        chosen.textContent = rating === "helpful" ? "✓ شكرًا لتقييمك" : "✓ تم تسجيل ملاحظتك";
+        other.hidden = true;
+        label.textContent = "تم حفظ تقييمك";
+      } catch (error) {
+        helpful.disabled = false;
+        notHelpful.disabled = false;
+        label.textContent = error.message || "تعذّر حفظ التقييم";
+      }
+    };
+    helpful.addEventListener("click", () => sendRating("helpful", helpful, notHelpful));
+    notHelpful.addEventListener("click", () => sendRating("not_helpful", notHelpful, helpful));
+    feedback.append(label, helpful, notHelpful);
+    bubble.appendChild(feedback);
+  }
   if (who === "assistant") {
     const replay = document.createElement("button");
     replay.type = "button";
