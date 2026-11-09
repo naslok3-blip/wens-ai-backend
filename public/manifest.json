@@ -1,10 +1,21 @@
 {
   "name": "ونس AI",
   "short_name": "ونس AI",
-  "start_url": "./index.html",
+  "description": "مساعد ونس الذكي باللهجة المصرية",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#101020",
-  "theme_color": "#111124",
-  "lang": "ar",
-  "dir": "rtl"
+  "orientation": "any",
+  "background_color": "#f4f7fb",
+  "theme_color": "#6848c7",
+  "lang": "ar-EG",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/avatar.jpg",
+      "sizes": "any",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
 }
