@@ -46,7 +46,11 @@
 
 
 <section class="panel">
-  <div class="section-head"><div><h2>الدردشة مع ونس</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div><button id="clearBtn" class="text-btn">مسح العرض</button></div>
+  <div class="section-head"><div><h2>الدردشة مع ونس</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div><div class="chat-head-actions"><button id="notificationsBtn" class="notification-toggle" type="button" aria-expanded="false" aria-label="مركز الإشعارات" hidden>🔔 <span id="notificationCount">0</span></button><button id="clearBtn" class="text-btn">مسح العرض</button></div></div>
+  <section id="notificationsPanel" class="notification-center" hidden>
+    <div class="notification-heading"><strong>مركز الإشعارات</strong><button id="markNotificationsReadBtn" type="button">تحديد الكل كمقروء</button></div>
+    <div id="notificationList" class="notification-list"><p class="notification-empty">لا توجد إشعارات بعد.</p></div>
+  </section>
   <p id="voiceStatus" class="voice-status" role="status" aria-live="polite"></p>
   <div id="voicePlayerDock" class="voice-player-dock" aria-live="polite"></div>
   <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><img class="mini-avatar" src="/avatar.jpg?v=real-jpg-20261104" alt="ونس" width="30" height="30"><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
