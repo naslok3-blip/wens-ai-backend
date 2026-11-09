@@ -6,7 +6,7 @@ const defaults = {
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
   voiceRate: 0.96, theme: "purple",
-  enableVoice: true, autoSpeak: false, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "cloud", voiceName: "coral"
+  enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device"
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
@@ -46,8 +46,8 @@ function normalize(data) {
   }
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
   if (next.voiceLocale !== "ar-EG") next.voiceLocale = "ar-EG";
-  if (next.voiceEngine !== "cloud") next.voiceEngine = "cloud";
-  if (!["coral", "shimmer", "marin", "cedar", "sage"].includes(next.voiceName)) next.voiceName = defaults.voiceName;
+  if (next.voiceEngine !== "device") next.voiceEngine = "device";
+  if (next.voiceName !== "device") next.voiceName = "device";
   return next;
 }
 function fillSettingsForm() {
@@ -88,7 +88,7 @@ async function refreshStatus() {
     const f = data.features || {};
     setState("workersAiState", f.workersAI ? "متصل ويعمل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
-    setState("voiceState", f.naturalVoiceConfigured ? "المفتاح مربوط — اختبر السماع" : "غير مربوط", !!f.naturalVoiceConfigured);
+    setState("voiceState", "صوت الجهاز المجاني — يحتاج صوت ar-EG مثبت", false);
     setState("browserState", f.browserConfigured ? "الربط موجود" : "غير مربوط", !!f.browserConfigured);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
     $("databaseDetail").textContent = !f.databaseConfigured ? "لم يتم ربط D1 بعد" : !f.databaseConnected ? "تعذّر الاتصال بقاعدة البيانات" : f.settingsStorageReady ? "الجداول وحفظ الإعدادات جاهزة" : "تخزين الإعدادات يحتاج مراجعة";
@@ -246,7 +246,7 @@ async function refreshDiagnostics() {
     setDiagnostic("diagWorkersAI", features.workersAI ? "مربوط" : "غير مربوط", !!features.workersAI);
     setDiagnostic("diagDatabase", features.databaseConnected ? "متصلة" : "غير متصلة", !!features.databaseConnected);
     setDiagnostic("diagVoice", features.naturalVoiceConfigured ? "المفتاح موجود — يلزم سماع فعلي" : "غير مهيأ", !!features.naturalVoiceConfigured);
-    setDiagnostic("diagDocuments", features.documentReadingConfigured ? "المفتاح موجود — اختبر ملفًا" : "غير مهيأ", !!features.documentReadingConfigured);
+    setDiagnostic("diagDocuments", features.freeDocumentParsing ? "استخراج محلي مجاني — اختبر ملفًا" : "غير متاح", !!features.freeDocumentParsing);
     setDiagnostic("diagBrowser", features.browserConfigured ? "الربط موجود — لم يُختبر التصفح" : "غير مربوط", !!features.browserConfigured);
     setDiagnostic("diagTables", tables.missing?.length ? "جداول ناقصة: " + tables.missing.join("، ") : "الجداول الأساسية موجودة", !(tables.missing?.length));
     const when = data.checkedAt ? new Date(data.checkedAt).toLocaleString("ar-EG") : "";
@@ -375,17 +375,18 @@ $("testDocumentBtn").addEventListener("click", async () => {
   const types = {
     pdf: "application/pdf",
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
   };
   if (!types[extension]) {
-    $("documentTestStatus").textContent = "اختَر ملف PDF أو DOCX أو XLSX.";
+    $("documentTestStatus").textContent = "اختَر PDF أو DOCX أو XLSX أو PPTX.";
     $("documentTestStatus").style.color = "#ff9fba";
     return;
   }
   const button = $("testDocumentBtn");
   button.disabled = true;
   $("documentTestResult").textContent = "";
-  $("documentTestStatus").textContent = "جاري إرسال الملف للاختبار دون حفظه في قاعدة بيانات ونس...";
+  $("documentTestStatus").textContent = "جاري استخراج الملف محليًا على خادم ونس دون إرساله إلى خدمة مدفوعة...";
   try {
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -399,10 +400,10 @@ $("testDocumentBtn").addEventListener("click", async () => {
       name: file.name, type: types[extension], data
     }, "POST");
     $("documentTestResult").textContent =
-      "الملف: " + result.name + "\nالنموذج: " + result.model +
+      "الملف: " + result.name + "\nمحرك الاستخراج: " + (result.source || result.model) +
       "\nعدد الحروف المستخرجة: " + result.extractedCharacters +
       "\n\nمقتطف من المحتوى:\n" + result.preview;
-    $("documentTestStatus").textContent = "نجح اختبار وصول الملف والاستخراج الأولي. راجع المقتطف مقابل الملف الأصلي.";
+    $("documentTestStatus").textContent = "نجح الاستخراج المحلي المجاني. راجع المقتطف مقابل الملف الأصلي.";
     $("documentTestStatus").style.color = "#9be7c1";
   } catch (error) {
     $("documentTestStatus").textContent = error.message || "فشل اختبار قراءة الملف.";
@@ -474,14 +475,14 @@ $("resetBtn").addEventListener("click", async () => {
 $("voicePreviewBtn").addEventListener("click", async () => {
   $("voicePreviewBtn").disabled = true;
   $("voiceConfirmBtn").hidden = true;
-  $("voicePreviewStatus").textContent = "جاري فتح قناة الصوت وإرسال العينة...";
+  $("voicePreviewStatus").textContent = "جاري البحث عن صوت مصري مثبت على الهاتف...";
   try {
     const play = window.parent && window.parent.WensPlayVoicePreview;
     if (typeof play !== "function") throw new Error("افتح لوحة الإدارة من داخل صفحة ونس لتشغيل العينة.");
-    const started = await play("أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.", $("voiceName").value);
-    if (!started) throw new Error("لم يبدأ اتصال الصوت. راجع حالة الاتصال وحاول مرة أخرى.");
+    const started = await play("أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.");
+    if (!started) throw new Error("صوت مصري ar-EG مش مثبت على الهاتف أو تعذّر تشغيله.");
     $("voiceConfirmBtn").hidden = false;
-    $("voicePreviewStatus").textContent = "اتصل مشغل الصوت وأُرسلت العينة. شغّل المقطع من المشغل الظاهر في صفحة ونس، ثم أكّد السماع هنا.";
+    $("voicePreviewStatus").textContent = "تم تشغيل عينة صوت الهاتف. اسمعها فعلًا ثم أكّد السماع هنا.";
     $("voicePreviewStatus").style.color = "#ffcf8f";
   } catch (error) {
     $("voicePreviewStatus").textContent = error.message || "تعذّر اختبار الصوت.";
@@ -491,7 +492,7 @@ $("voicePreviewBtn").addEventListener("click", async () => {
   }
 });
 $("voiceConfirmBtn").addEventListener("click", () => {
-  $("voicePreviewStatus").textContent = "أكّدت سماع صوت ونس فعليًا من الهاتف.";
+  $("voicePreviewStatus").textContent = "أكّدت سماع صوت ونس المصري من الهاتف فعليًا.";
   $("voicePreviewStatus").style.color = "#9be7c1";
   $("voiceConfirmBtn").hidden = true;
 });
