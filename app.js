@@ -1156,4 +1156,13 @@ async function boot() {
     showAuth();
   }
 }
+async function registerWensServiceWorker() {
+  if (!("serviceWorker" in navigator) || location.protocol !== "https:") return;
+  try {
+    await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  } catch {
+    // Keep the app usable when the browser blocks service-worker installation.
+  }
+}
+registerWensServiceWorker();
 boot();
