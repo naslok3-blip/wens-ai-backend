@@ -1533,6 +1533,34 @@ function getEgyptDateTimeIntent(message) {
 }
 
 
+
+let replyFeedbackSchemaReady;
+async function ensureReplyFeedbackSchema(db) {
+  if (!replyFeedbackSchemaReady) {
+    replyFeedbackSchemaReady = (async () => {
+      await db.prepare("CREATE TABLE IF NOT EXISTS reply_feedback (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, response_hash TEXT NOT NULL, rating TEXT NOT NULL CHECK (rating IN ('helpful','not_helpful')), created_at INTEGER NOT NULL, UNIQUE(user_id,response_hash))").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_reply_feedback_owner_time ON reply_feedback(user_id,created_at DESC)").run();
+    })().catch(error => { replyFeedbackSchemaReady = null; throw error; });
+  }
+  await replyFeedbackSchemaReady;
+}
+async function replyFeedbackRoute(request, env, user) {
+  if (!env.DB || !user) return json({ error: "سجّل الدخول لتقييم الرد." }, 401);
+  await ensureReplyFeedbackSchema(env.DB);
+  if (request.method !== "POST") return json({ error: "طريقة الطلب غير مدعومة." }, 405);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "بيانات التقييم غير صالحة." }, 400); }
+  const reply = String(body.reply || "").trim().slice(0,2000);
+  const rating = body.rating === "helpful" || body.rating === "not_helpful" ? body.rating : "";
+  if (reply.length < 2 || !rating) return json({ error: "اختَر تقييمًا صالحًا للرد." }, 400);
+  const responseHash = await digest(reply.replace(/\s+/g," ").toLowerCase());
+  const now = Math.floor(Date.now()/1000);
+  const id = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO reply_feedback (id,user_id,response_hash,rating,created_at) VALUES (?,?,?,?,?) ON CONFLICT(user_id,response_hash) DO UPDATE SET rating=excluded.rating,created_at=excluded.created_at")
+    .bind(id,user.id,responseHash,rating,now).run();
+  return json({ ok:true, rating, stored:"hash-only" });
+}
+
 let userNotificationsSchemaReady;
 async function ensureUserNotificationsSchema(db) {
   if (!userNotificationsSchemaReady) {
@@ -2866,6 +2894,11 @@ export default {
         const notificationUser = env.DB ? await currentUser(request, env) : null;
         if (!notificationUser) return json({ error: "سجّل الدخول لعرض إشعاراتك." }, 401);
         return await userNotificationsRoute(request, env, notificationUser);
+      }
+      if (path === "/api/feedback") {
+        const feedbackUser = env.DB ? await currentUser(request, env) : null;
+        if (!feedbackUser) return json({ error: "سجّل الدخول لتقييم الرد." }, 401);
+        return await replyFeedbackRoute(request, env, feedbackUser);
       }
       if (path === "/api/voice/connect" && request.method === "POST") return await handleRealtimeVoice(request, env);
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
