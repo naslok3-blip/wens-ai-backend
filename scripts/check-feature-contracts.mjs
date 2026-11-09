@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
-const [app, admin, owner, worker, index] = await Promise.all([
+const [app, admin, owner, worker, index, style] = await Promise.all([
   readFile("app.js", "utf8"), readFile("admin.js", "utf8"),
   readFile("owner-panel.js", "utf8"), readFile("worker.js", "utf8"),
-  readFile("index.html", "utf8")
+  readFile("index.html", "utf8"), readFile("style.css", "utf8")
 ]);
 const checks = [
   [app, "window.WensPlayVoicePreview", "parent voice preview"],
@@ -93,7 +93,17 @@ const checks = [
   [worker, "ensureUserMemorySchema", "per-user memory database schema"],
   [worker, "memorySafetyError", "memory privacy filtering"],
   [worker, "لا تحفظي أي معلومة إلا إذا طلب المستخدم صراحةً", "explicit memory consent rule"],
-  [worker, "savedMemories", "private memory context injection"]
+  [worker, "savedMemories", "private memory context injection"],
+  [worker, "ensureUserNotificationsSchema", "private notifications database schema"],
+  [worker, "userNotificationsRoute", "per-user notification API"],
+  [worker, "createUserNotification", "task event notification creation"],
+  [worker, 'path === "/api/notifications"', "authenticated notifications endpoint"],
+  [worker, "WHERE id=? AND user_id=?", "notification ownership enforced"],
+  [app, "refreshNotifications", "chat notification center data refresh"],
+  [app, 'api("/api/notifications"', "chat notification API integration"],
+  [index, 'id="notificationsBtn"', "notification center control"],
+  [index, 'id="notificationsPanel"', "notification center panel"],
+  [style, ".notification-center", "notification center styling"]
 ];
 for (const [source, token, label] of checks) {
   if (!source.includes(token)) throw new Error("Missing feature contract: " + label);
