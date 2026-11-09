@@ -19,10 +19,23 @@ function xmlText(xml, tagPattern) {
 }
 
 function safeBase64Bytes(data) {
-  if (typeof data !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) {
-    throw new Error("بيانات الملف المشفرة غير صالحة.");
+  const maximumEncodedLength = Math.ceil((8 * 1024 * 1024) / 3) * 4 + 4;
+  if (typeof data !== "string" || !data.length || data.length > maximumEncodedLength || data.length % 4 !== 0) {
+    throw new Error("حجم الملف فارغ أو يتجاوز 8 ميجابايت، أو أن ترميزه غير صالح.");
+  }
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  const contentLength = data.length - padding;
+  for (let i = 0; i < contentLength; i++) {
+    const code = data.charCodeAt(i);
+    const valid = (code >= 65 && code <= 90) || (code >= 97 && code <= 122) ||
+      (code >= 48 && code <= 57) || code === 43 || code === 47;
+    if (!valid) throw new Error("بيانات الملف المشفرة غير صالحة.");
+  }
+  for (let i = contentLength; i < data.length; i++) {
+    if (data.charCodeAt(i) !== 61) throw new Error("بيانات الملف المشفرة غير صالحة.");
   }
   const binary = atob(data);
+  if (binary.length > 8 * 1024 * 1024) throw new Error("حجم الملف يتجاوز 8 ميجابايت.");
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
