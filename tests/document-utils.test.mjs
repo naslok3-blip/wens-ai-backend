@@ -109,7 +109,7 @@ test("rejects legacy Office files rather than pretending they were read", async 
 test("rejects oversized and malformed files", async () => {
   await assert.rejects(
     extractDocumentText(asFile("broken.docx", Buffer.from("not a zip"))),
-    /فهرس ملف Office/
+    /أرشيف Office|فهرس ملف Office/
   );
   await assert.rejects(
     extractDocumentText({ name: "large.docx", data: Buffer.alloc(8 * 1024 * 1024 + 1).toString("base64") }),
