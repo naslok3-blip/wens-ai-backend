@@ -87,14 +87,15 @@ const checks = [
   [app, "autoSpeak: true", "chat enables automatic voice replies by default"],
   [admin, "autoSpeak: true", "owner settings enable automatic voice replies by default"],
   [worker, "تم استلام المستندات المرفقة وقراءة محتواها بالفعل", "document context instruction"]
-];
+  [worker, "تم استلام المستندات المرفقة وقراءة محتواها بالفعل", "document context instruction"],
   [worker, 'fn("save_memory"', "user memory save tool"],
   [worker, 'fn("list_memories"', "user memory list tool"],
   [worker, 'fn("delete_memory"', "user memory delete tool"],
   [worker, "ensureUserMemorySchema", "per-user memory database schema"],
   [worker, "memorySafetyError", "memory privacy filtering"],
   [worker, "لا تحفظي أي معلومة إلا إذا طلب المستخدم صراحةً", "explicit memory consent rule"],
-  [worker, "savedMemories", "private memory context injection"],
+  [worker, "savedMemories", "private memory context injection"]
+];
 for (const [source, token, label] of checks) {
   if (!source.includes(token)) throw new Error("Missing feature contract: " + label);
 }
