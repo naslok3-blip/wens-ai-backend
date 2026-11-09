@@ -22,7 +22,9 @@ test("rejects passwords, tokens, and payment secrets", () => {
   for (const value of [
     "كلمة المرور الخاصة بي هي abc123",
     "OPENAI_API_KEY sk-secret-value",
-    "رقم البطاقة CVV 123"
+    "رقم البطاقة CVV 123",
+    "البريد الشخصي test@example.com",
+    "رقم الهاتف 01012345678"
   ]) assert.ok(memorySafetyError(value), value);
 });
 
