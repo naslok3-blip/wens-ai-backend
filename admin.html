@@ -150,12 +150,12 @@
         </section>
         <section class="tab-page" id="tab-files">
           <h2>اختبار قراءة الملفات من الهاتف</h2>
-          <p class="muted">اختر ملف PDF أو Word أو Excel حقيقيًا من هاتفك. سيُرسل الملف إلى خدمة OpenAI لاختبار الاستخراج، ولن يُحفظ في قاعدة بيانات ونس.</p>
+          <p class="muted">اختبر قراءة ملف PDF نصي أو Word (DOCX) أو Excel (XLSX) أو PowerPoint (PPTX). تتم محاولة استخراج النص محليًا مجانًا على خادم ونس دون إرسال الملف إلى OpenAI أو خدمة مدفوعة. ملفات PDF الممسوحة ضوئيًا وملفات Office القديمة تحتاج OCR أو تحويلًا خارجيًا غير متاح هنا.</p>
           <div class="field">
             <label for="documentTestFile">الملف المراد اختباره</label>
-            <input id="documentTestFile" type="file" accept=".pdf,.docx,.xlsx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+            <input id="documentTestFile" type="file" accept=".pdf,.docx,.xlsx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation">
           </div>
-          <label class="toggle-row"><span><b>أوافق على إرسال الملف للاختبار</b><small>قد يستهلك الاختبار رصيد OpenAI API. لا تختَر ملفًا يحتوي على بيانات حساسة.</small></span><input id="documentTestConsent" type="checkbox"></label>
+          <label class="toggle-row"><span><b>أوافق على إرسال الملف للاختبار</b><small>سيُرفع الملف إلى خادم ونس لمعالجته ثم يُحذف من الذاكرة بعد الطلب؛ لا تختَر ملفًا يحتوي على بيانات حساسة.</small></span><input id="documentTestConsent" type="checkbox"></label>
           <div class="actions left-actions"><button id="testDocumentBtn" class="btn primary" type="button" disabled>اختبار قراءة الملف</button></div>
           <p id="documentTestStatus" class="status-line" role="status" aria-live="polite"></p>
           <pre id="documentTestResult" class="diagnostic-output" dir="auto"></pre>
