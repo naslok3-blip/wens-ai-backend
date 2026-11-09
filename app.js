@@ -806,6 +806,7 @@ $("chatForm").addEventListener("submit", async event => {
       data.generatedImages || [], data.generatedProjects || [],
       data.activity || [], data.sources || []
     );
+    refreshNotifications();
     if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
   } catch (error) {
     progressRow.remove();
