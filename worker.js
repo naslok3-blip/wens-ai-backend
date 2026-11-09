@@ -2709,7 +2709,9 @@ export default {
           database: Boolean(env.DB),
           browser: Boolean(env.BROWSER),
           naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
-          documentReadingConfigured: Boolean(env.OPENAI_API_KEY),
+          documentReadingConfigured: true,
+          freeDocumentParsing: true,
+          documentAIConfigured: Boolean(env.AI),
           adminProtectionConfigured: Boolean(env.DB)
         },
         diagnostics: {
