@@ -478,6 +478,8 @@ async function adminRoute(request, env, path) {
         databaseConnected = Number(probe?.ok) === 1;
         if (databaseConnected) {
           await ensureLoginHistorySchema(env.DB);
+          await ensureUserMemorySchema(env.DB);
+          await ensureUserNotificationsSchema(env.DB);
           const listed = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
           for (const row of listed.results || []) tableNames.add(String(row.name || ""));
           const countRows = async (table, where = "", values = []) => {
@@ -501,7 +503,7 @@ async function adminRoute(request, env, path) {
         databaseConnected = false;
       }
     }
-    const requiredTables = ["users", "sessions", "messages", "app_settings", "admin_credentials", "admin_sessions", "user_login_events"];
+    const requiredTables = ["users", "sessions", "messages", "app_settings", "admin_credentials", "admin_sessions", "user_login_events", "user_memories", "user_notifications"];
     const missingTables = requiredTables.filter(name => !tableNames.has(name));
     const tools = agentTools();
     return json({
