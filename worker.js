@@ -1048,6 +1048,55 @@ async function runAgentImage(env, action, args, sourceImage) {
   }
 }
 
+
+let userMemorySchemaReady;
+async function ensureUserMemorySchema(db) {
+  if (!userMemorySchemaReady) {
+    userMemorySchemaReady = (async () => {
+      await db.prepare("CREATE TABLE IF NOT EXISTS user_memories (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, category TEXT NOT NULL DEFAULT 'preference', content TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE(user_id,category,content))").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_user_memories_owner_time ON user_memories(user_id, updated_at DESC)").run();
+    })().catch(error => { userMemorySchemaReady = null; throw error; });
+  }
+  await userMemorySchemaReady;
+}
+function memorySafetyError(value) {
+  const text = String(value || "").normalize("NFKC").toLowerCase();
+  if (/(?:password|passcode|pin|api[_ -]?key|secret|token|كلمة المرور|كلمه المرور|باسورد|رقم سري|مفتاح سري|رمز تحقق|otp|cvv|رقم البطاقة|رقم الكارت)/i.test(text)) return "مش هحفظ كلمات مرور أو مفاتيح سرية أو بيانات دفع أو رموز تحقق.";
+  if (/(?:مرض|تشخيص|دواء|علاج|حالة صحية|تحاليل|ضغط الدم|سكر الدم|حامل|حمل|صحة نفسية|اكتئاب|religion|دين|مذهب|طائفة|سياسة|حزب سياسي|توجه سياسي|تفضيل جنسي|حياة جنسية|عرق|إثنية|رقم قومي|بطاقة شخصية)/i.test(text)) return "مش هحوّل بيانات صحية أو دينية أو سياسية أو جنسية أو أرقام هوية إلى ذاكرة دائمة.";
+  return "";
+}
+async function handleUserMemoryTool(name, args, env, user) {
+  if (!env.DB || !user) return { error: "سجّل الدخول لحفظ ذكرياتك الخاصة." };
+  await ensureUserMemorySchema(env.DB);
+  if (name === "save_memory") {
+    const content = String(args.content || "").trim().replace(/\s+/g, " ").slice(0, 500);
+    const category = ["preference","interest","project","other"].includes(args.category) ? args.category : "preference";
+    if (content.length < 4) return { error: "اكتب معلومة واضحة من 4 أحرف على الأقل." };
+    const unsafe = memorySafetyError(content);
+    if (unsafe) return { error: unsafe };
+    const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM user_memories WHERE user_id=?").bind(user.id).first();
+    if (Number(count?.total || 0) >= 30) {
+      const existing = await env.DB.prepare("SELECT id FROM user_memories WHERE user_id=? AND category=? AND content=? LIMIT 1").bind(user.id, category, content).first();
+      if (!existing) return { error: "وصلت للحد الأقصى وهو 30 معلومة محفوظة. احذف معلومة قديمة قبل إضافة واحدة جديدة." };
+    }
+    const now = Math.floor(Date.now()/1000);
+    const id = crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO user_memories (id,user_id,category,content,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id,category,content) DO UPDATE SET updated_at=excluded.updated_at").bind(id,user.id,category,content,now,now).run();
+    return { saved:true, category, content, private:true };
+  }
+  if (name === "list_memories") {
+    const rows = await env.DB.prepare("SELECT id,category,content,created_at,updated_at FROM user_memories WHERE user_id=? ORDER BY updated_at DESC LIMIT 30").bind(user.id).all();
+    return { memories: rows.results || [] };
+  }
+  if (name === "delete_memory") {
+    const id = String(args.id || "").trim();
+    if (!id) return { error: "معرّف الذاكرة مطلوب. اعرض الذكريات أولًا." };
+    const result = await env.DB.prepare("DELETE FROM user_memories WHERE id=? AND user_id=?").bind(id,user.id).run();
+    return result.meta?.changes > 0 ? { deleted:true, id } : { error:"لم أجد هذه المعلومة في ذاكرتك." };
+  }
+  return { error: "أداة الذاكرة غير متاحة." };
+}
+
 function agentTools() {
   const fn = (name, description, properties = {}, required = []) => ({
     type: "function",
@@ -1057,6 +1106,14 @@ function agentTools() {
   const webUrl = { type: "string", description: "A public HTTPS page URL. Do not use private network or localhost URLs." };
   return [
     fn("get_current_time", "Get the authoritative current date and time in Egypt (Africa/Cairo). Return both UTC ISO and formatted Cairo local time/date; never label UTC as local time."),
+    fn("save_memory", "Save a non-sensitive preference, interest, or project detail only when the user explicitly asks you to remember or save it. Never save secrets, health, religion, politics, sexuality, identity, payment or sensitive personal data.", {
+      content: { type: "string", description: "One concise non-sensitive fact or preference to remember." },
+      category: { type: "string", description: "One of preference, interest, project, other." }
+    }, ["content"]),
+    fn("list_memories", "List this signed-in user's private saved memories so the user can review them.", {}),
+    fn("delete_memory", "Delete one saved memory owned by this user. Use the exact id from list_memories.", {
+      id: { type: "string", description: "Exact memory id returned by list_memories." }
+    }, ["id"]),
     fn("generate_image", "Generate an original image from the user's description. Use when the user asks to create, draw, design, or generate a new picture. Return one image in chat.", {
       prompt: { type: "string", description: "Detailed visual description of the requested image." },
       size: { type: "string", description: "Image shape: square, landscape, portrait, wide, or tall." }
@@ -1708,6 +1765,7 @@ async function executeAgentTool(name, args, env, user) {
   if (name === "edit_web_project") return await editWebProject(env,user,args || {});
   if (name === "list_web_project_revisions") return await listWebProjectRevisions(env,user,args || {});
   if (name === "restore_web_project_revision") return await restoreWebProjectRevision(env,user,args || {});
+  if (["save_memory","list_memories","delete_memory"].includes(name)) return await handleUserMemoryTool(name,args || {},env,user);
   await ensureAgentTasks(env.DB);
   if (name === "browser_open" || name === "browser_inspect" || name === "browser_click" || name === "browser_fill") {
     if (!env.BROWSER) return { error: "خدمة المتصفح الخارجي غير مربوطة على الخادم." };
@@ -2415,7 +2473,7 @@ async function handleAgent(request, env, user, options = {}) {
         const name = String(call.name || call.function?.name || "");
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
-        const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project","list_web_projects","edit_web_project","list_web_project_revisions","restore_web_project_revision"];
+        const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project","list_web_projects","edit_web_project","list_web_project_revisions","restore_web_project_revision","save_memory","list_memories","delete_memory"];
         if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
         let output;
         if (name === "generate_image" || name === "edit_image") {
@@ -2456,6 +2514,9 @@ async function handleAgent(request, env, user, options = {}) {
           edit_web_project: "تعديل مشروع محفوظ",
           list_web_project_revisions: "عرض نسخ المشروع السابقة",
           restore_web_project_revision: "استعادة نسخة سابقة من المشروع",
+          save_memory: "حفظ معلومة في ذاكرتك الخاصة",
+          list_memories: "عرض ذاكرتك المحفوظة",
+          delete_memory: "حذف معلومة من ذاكرتك",
           search_web: "البحث في المواقع العامة",
           open_webpage: "قراءة صفحة ويب",
           browser_open: "فتح موقع في المتصفح",
