@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deflateRawSync } from "node:zlib";
 import { extractDocumentText } from "../document-utils.mjs";
 
 function makeStoredZip(entries) {
@@ -77,9 +76,9 @@ test("extracts rows, shared strings, and sheet names from XLSX", async () => {
 });
 
 test("extracts text from uncompressed text-layer PDFs", async () => {
-  const pdf = Buffer.from("%PDF-1.4\n1 0 obj\nBT\n(مرحبا ونس) Tj\nET\nendobj\n%%EOF", "binary");
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj\nBT\n(Wens AI test) Tj\nET\nendobj\n%%EOF", "binary");
   const result = await extractDocumentText(asFile("sample.pdf", pdf));
-  assert.match(result.text, /مرحبا ونس/);
+  assert.match(result.text, /Wens AI test/);
 });
 
 test("reports scanned PDFs honestly when no text layer exists", async () => {
