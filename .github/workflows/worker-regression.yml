@@ -20,5 +20,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --check worker.js && node --check app.js && node --check public/app.js
-      - run: node --test tests/research-intent.test.mjs
+      - run: node --check worker.js && node --check app.js && node --check public/app.js && node --check document-utils.mjs
+      - run: node --test tests/research-intent.test.mjs tests/document-utils.test.mjs
