@@ -1527,6 +1527,53 @@ function getEgyptDateTimeIntent(message) {
   return { asksTime, asksDate, matched: asksTime || asksDate };
 }
 
+
+let userNotificationsSchemaReady;
+async function ensureUserNotificationsSchema(db) {
+  if (!userNotificationsSchemaReady) {
+    userNotificationsSchemaReady = (async () => {
+      await db.prepare("CREATE TABLE IF NOT EXISTS user_notifications (id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL DEFAULT 'info', title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '', read_at INTEGER, created_at INTEGER NOT NULL)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_user_notifications_owner_time ON user_notifications(user_id, created_at DESC)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_user_notifications_unread ON user_notifications(user_id, read_at, created_at DESC)").run();
+    })().catch(error => { userNotificationsSchemaReady = null; throw error; });
+  }
+  await userNotificationsSchemaReady;
+}
+async function createUserNotification(db, userId, kind, title, body = "") {
+  if (!db || !userId) return null;
+  await ensureUserNotificationsSchema(db);
+  const id = crypto.randomUUID();
+  const now = Math.floor(Date.now() / 1000);
+  await db.prepare("INSERT INTO user_notifications (id,user_id,kind,title,body,read_at,created_at) VALUES (?,?,?,?,?,NULL,?)")
+    .bind(id,userId,["task","system","info"].includes(kind) ? kind : "info",String(title || "إشعار جديد").slice(0,120),String(body || "").slice(0,500),now).run();
+  await db.prepare("DELETE FROM user_notifications WHERE user_id=? AND id NOT IN (SELECT id FROM user_notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 100)")
+    .bind(userId,userId).run();
+  return { id, created_at: now };
+}
+async function userNotificationsRoute(request, env, user) {
+  if (!env.DB || !user) return json({ error: "سجّل الدخول لعرض إشعاراتك." }, 401);
+  await ensureUserNotificationsSchema(env.DB);
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare("SELECT id,kind,title,body,read_at,created_at FROM user_notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 30").bind(user.id).all();
+    const unread = (rows.results || []).filter(item => !item.read_at).length;
+    return json({ notifications: rows.results || [], unread });
+  }
+  if (request.method === "PATCH") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "طلب الإشعارات غير صالح." }, 400); }
+    const now = Math.floor(Date.now()/1000);
+    if (body.allRead === true) {
+      const result = await env.DB.prepare("UPDATE user_notifications SET read_at=? WHERE user_id=? AND read_at IS NULL").bind(now,user.id).run();
+      return json({ ok:true, changes:result.meta?.changes || 0 });
+    }
+    const id = String(body.id || "").trim();
+    if (!id) return json({ error: "معرّف الإشعار مطلوب." }, 400);
+    const result = await env.DB.prepare("UPDATE user_notifications SET read_at=? WHERE id=? AND user_id=? AND read_at IS NULL").bind(now,id,user.id).run();
+    return result.meta?.changes > 0 ? json({ ok:true, id }) : json({ ok:true, id, changes:0 });
+  }
+  return json({ error: "طريقة الطلب غير مدعومة." }, 405);
+}
+
 async function executeAgentTool(name, args, env, user) {
   if (name === "get_current_time") return getEgyptCurrentDateTime();
   if (name === "calculate") {
@@ -1800,6 +1847,7 @@ async function executeAgentTool(name, args, env, user) {
     await env.DB.prepare(
       "INSERT INTO agent_tasks (id,user_id,title,details,done,created_at,due_at,priority,archived) VALUES (?,?,?,?,0,?,?,?,0)"
     ).bind(id, user.id, title, details, now, dueAt, priority).run();
+    await createUserNotification(env.DB,user.id,"task","تم حفظ مهمة جديدة",title);
     return { saved: true, id, title, due_at: dueAt ? new Date(dueAt * 1000).toISOString() : null, priority };
   }
 
@@ -1858,6 +1906,10 @@ async function executeAgentTool(name, args, env, user) {
     const result = await env.DB.prepare(
       "UPDATE agent_tasks SET done=? WHERE id=? AND user_id=? AND archived=0"
     ).bind(args.done ? 1 : 0, id, user.id).run();
+    if (result.meta?.changes > 0 && args.done) {
+      const task = await env.DB.prepare("SELECT title FROM agent_tasks WHERE id=? AND user_id=? LIMIT 1").bind(id,user.id).first();
+      await createUserNotification(env.DB,user.id,"task","تم إنجاز المهمة",task?.title || "مهمة محفوظة");
+    }
     return result.meta?.changes > 0 ? { updated: true, id, done: args.done } : { error: "لم أجد المهمة المطلوبة." };
   }
 
@@ -2801,6 +2853,11 @@ export default {
     }
     try {
       if (path === "/api/settings" && request.method === "GET") return json({ settings: await readAppSettings(env) });
+      if (path === "/api/notifications") {
+        const notificationUser = env.DB ? await currentUser(request, env) : null;
+        if (!notificationUser) return json({ error: "سجّل الدخول لعرض إشعاراتك." }, 401);
+        return await userNotificationsRoute(request, env, notificationUser);
+      }
       if (path === "/api/voice/connect" && request.method === "POST") return await handleRealtimeVoice(request, env);
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
