@@ -176,6 +176,16 @@ test("rejects an old-season schedule even when an unrelated current year appears
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
 });
 
+test("rejects old fixtures when a separate article merely mentions the current season", () => {
+  const season = getCurrentEgyptFootballSeason();
+  const result = {
+    results:
+      "[جدول الأهلي 2024-25](https://one.example/fixtures) مواعيد مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\\nالرابط: https://one.example/fixtures\\n\\n" +
+      "خبر عن موسم " + season.short + " من غير جدول أو مواعيد\\nالرابط: https://two.example/news"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
+
 test("current-season validator accepts the short season notation only with schedule evidence", () => {
   const season = getCurrentEgyptFootballSeason();
   const result = {
