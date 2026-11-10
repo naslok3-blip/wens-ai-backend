@@ -2042,6 +2042,11 @@ function isLiveDataRequest(message) {
   return dynamicTopic && (explicitCurrent || intrinsicallyLive);
 }
 
+function isSportsScheduleRequest(message) {
+  const text = normalizeLiveDataText(message);
+  return /(?:مباريات|مباراة|مواعيد.{0,40}(?:مباراة|الدوري|الاهلي)|الدوري.{0,40}(?:مواعيد|جدول|مباريات)|جدول.{0,30}مباريات|fixtures|match schedule|league schedule)/i.test(text);
+}
+
 function hasVerifiableLiveSources(searchResult, minimumSources = 1) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "");
@@ -2063,6 +2068,21 @@ function hasVerifiableLiveSources(searchResult, minimumSources = 1) {
     } catch {}
   }
   return hasFreshness && domains.size >= Math.max(1, Number(minimumSources) || 1);
+}
+
+function hasVerifiableSportsScheduleSources(searchResult) {
+  if (!searchResult || searchResult.error) return false;
+  const results = String(searchResult.results || "");
+  const currentYear = new Date().getUTCFullYear();
+  const nextYear = currentYear + 1;
+  const currentSeason = new RegExp(
+    "(?:" + currentYear + "\\s*[-/–]\\s*" + nextYear + "|" + currentYear + ")",
+    "i"
+  );
+  // A schedule without an explicit current-season year is not current evidence.
+  if (!currentSeason.test(results)) return false;
+  // Require at least two independent source domains and a visible freshness signal.
+  return hasVerifiableLiveSources(searchResult, 2);
 }
 
 // Gold prices require independent source evidence, not merely unrelated numbers and links.
@@ -2469,14 +2489,17 @@ async function handleAgent(request, env, user, options = {}) {
   const requiresExternalSearch = isExternalResearchIntent(message);
   if (requiresExternalSearch) {
     const goldPriceRequest = isEgyptGoldPriceRequest(message);
+    const sportsScheduleRequest = isSportsScheduleRequest(message);
     const liveDataRequest = isLiveDataRequest(message);
     const explicitSearchRequest = isExplicitExternalSearchRequest(message);
     const researchTopic = buildExternalSearchQuery(message);
     const searchQuery = goldPriceRequest
       ? researchTopic + " في مصر أسعار جرام عيار 21 و24 و18 بيع وشراء بالجنيه المصري تاريخ ووقت آخر تحديث"
-      : liveDataRequest
-        ? researchTopic + " آخر تحديث اليوم مصادر موثوقة"
-        : researchTopic + " معلومات ومراجع من مواقع موثوقة";
+      : sportsScheduleRequest
+        ? researchTopic + " جدول الموسم الحالي " + (new Date().getUTCFullYear()) + "-" + (new Date().getUTCFullYear() + 1) + " مواعيد رسمية محدثة مصادر مستقلة"
+        : liveDataRequest
+          ? researchTopic + " آخر تحديث اليوم مصادر موثوقة"
+          : researchTopic + " معلومات ومراجع من مواقع موثوقة";
     const liveSearch = await executeAgentTool("search_web", { query: searchQuery }, env, user);
     preSearchResult = liveSearch;
     searchResultCache.set(searchCacheKey(searchQuery), liveSearch);
@@ -2487,7 +2510,9 @@ async function handleAgent(request, env, user, options = {}) {
       ? hasSearchText && sources.length > 0
       : goldPriceRequest
         ? hasVerifiableGoldPriceSources(liveSearch)
-        : hasVerifiableLiveSources(liveSearch, 1);
+        : sportsScheduleRequest
+          ? hasVerifiableSportsScheduleSources(liveSearch)
+          : hasVerifiableLiveSources(liveSearch, 1);
     steps.push("البحث في المواقع الخارجية قبل صياغة الإجابة");
     activity.push({
       label: "البحث في المواقع الخارجية",
@@ -2503,7 +2528,9 @@ async function handleAgent(request, env, user, options = {}) {
     if (liveDataRequest && !searchVerified) {
       const reply = goldPriceRequest
         ? "بحثت في المواقع الخارجية، لكن ما لقيتش مصدرين مستقلين واضحين فيهم سعر الذهب بالجنيه ووقت تحديثه. مش هخمن أرقام؛ جرّب تاني بعد شوية."
-        : "بحثت في المواقع الخارجية، لكن النتائج ما أثبتتش معلومة حديثة برقم أو توقيت ومصدر واضح. مش هخمن معلومة متغيرة.";
+        : sportsScheduleRequest
+          ? "دورت على مواعيد مباريات الدوري المصري، لكن النتائج ما أثبتتش جدول الموسم الحالي " + (new Date().getUTCFullYear()) + "-" + (new Date().getUTCFullYear() + 1) + " من مصدرين مستقلين. مش هعرض مواعيد موسم قديم زي 2024-25 على إنها مواعيد حالية."
+          : "بحثت في المواقع الخارجية، لكن النتائج ما أثبتتش معلومة حديثة برقم أو توقيت ومصدر واضح. مش هخمن معلومة متغيرة.";
       if (options.persist && env.DB && user) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
