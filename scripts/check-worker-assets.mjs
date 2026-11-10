@@ -44,7 +44,7 @@ const checks = [
 ];
 
 const errors = [];
-const hotfixRoutes = new Set(["/", "/index.html", "/app.js", "/style.css"]);
+const hotfixRoutes = new Set(["/", "/index.html", "/app.js", "/style.css", "/owner-panel.js", "/owner-panel.css"]);
 for (const [route, file] of checks) {
   const expected = await read(file);
   for (const [mapName, entries, required] of [
