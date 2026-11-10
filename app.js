@@ -284,8 +284,18 @@ async function loadChatHistory() {
     addMessage("تعذّر تحميل المحادثة: " + error.message);
   }
 }
+function stripInternalToolMarkup(value) {
+  return String(value ?? "")
+    .replace(/(?:<\\s*tool_call\\b[^>]*>|tool_call\\s*>|<\\|tool_call\\|>)[\\s\\S]*?(?:<\\s*\\/\\s*tool_call\\s*>|<<\\s*\\/\\s*tool_call\\s*>?|<\\|tool_call_end\\|>|$)/gi, " ")
+    .replace(/<\\s*\\/?\\s*arg_key\\b[^>]*>/gi, " ")
+    .replace(/<\\s*\\/?\\s*arg_value\\b[^>]*>/gi, " ")
+    .replace(/<\\s*\\/?\\s*arg\\b[^>]*>/gi, " ")
+    .replace(/[ \\t]{2,}/g, " ")
+    .replace(/\\n{3,}/g, "\\n\\n")
+    .trim();
+}
 function cleanRepeatedReplyText(value) {
-  const source = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+  const source = stripInternalToolMarkup(value).replace(/\r\n?/g, "\n").trim();
   if (!source) return "";
   const seen = new Set();
   const output = [];
