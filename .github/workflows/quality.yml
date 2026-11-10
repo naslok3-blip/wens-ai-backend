@@ -416,24 +416,39 @@ jobs:
           grep -q 'id="adminSetupForm"' /tmp/wens-admin.html
           grep -q 'id="showAdminResetBtn"' /tmp/wens-admin.html
           owner_js_ready=0
-          for attempt in $(seq 1 8); do
-            if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js?assetCheck=$GITHUB_SHA" -o /tmp/wens-admin.js; then
-              if grep -q 'voicePreviewBtn' /tmp/wens-admin.js; then owner_js_ready=1; break; fi
+          owner_js_status="not-requested"
+          for attempt in $(seq 1 12); do
+            owner_js_status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
+              -D /tmp/wens-owner-panel.headers -o /tmp/wens-admin.js -w '%{http_code}' \
+              "$BASE/owner-panel.js?assetCheck=$GITHUB_SHA" || true)
+            if [ "$owner_js_status" = "200" ] && grep -q 'voicePreviewBtn' /tmp/wens-admin.js; then
+              owner_js_ready=1
+              break
             fi
             sleep 3
           done
-          OWNER_JS_READY="$owner_js_ready" python - <<'PY'
+          echo "Owner panel JS HTTP status: $owner_js_status"
+          echo "Owner panel response headers:"
+          cat /tmp/wens-owner-panel.headers || true
+          OWNER_JS_READY="$owner_js_ready" OWNER_JS_STATUS="$owner_js_status" python - <<'PY'
           import os
           from pathlib import Path
-          source=Path('/tmp/wens-admin.js').read_text(encoding='utf-8') if Path('/tmp/wens-admin.js').exists() else ''
+          source=Path('/tmp/wens-admin.js').read_text(encoding='utf-8', errors='replace') if Path('/tmp/wens-admin.js').exists() else ''
           required=['/api/admin/status','/api/admin/diagnostics','/api/admin/settings','voicePreviewBtn']
           missing=[token for token in required if token not in source]
           print('Owner panel JS bytes:', len(source))
           print('Missing owner panel tokens:', missing)
+          print('Owner panel response preview:', source[:500])
+          print('Owner panel HTTP status:', os.environ.get('OWNER_JS_STATUS'))
           assert os.environ['OWNER_JS_READY']=='1' and not missing, {
-              'ready':os.environ['OWNER_JS_READY'],'missing':missing,'preview':source[:250]
+              'ready':os.environ['OWNER_JS_READY'],'http':os.environ.get('OWNER_JS_STATUS'),
+              'missing':missing,'preview':source[:500]
           }
           PY
+          curl --silent --show-error --connect-timeout 10 --max-time 20 -D /tmp/wens-owner-panel-css.headers \
+            -o /tmp/wens-owner-panel.css -w 'Owner panel CSS HTTP status: %{http_code} bytes: %{size_download}\n' \
+            "$BASE/owner-panel.css?assetCheck=$GITHUB_SHA"
+          grep -q '.admin-wrap' /tmp/wens-owner-panel.css
           echo "Production Wens portrait, chat and same-page admin assets: OK"
       - name: Verify owner-only admin and shared settings API
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main'
