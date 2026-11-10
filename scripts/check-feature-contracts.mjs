@@ -20,7 +20,7 @@ const checks = [
   [app, "synth.getVoices()", "selects installed device voices"],
   [app, "femaleVoice(egyptianVoices)", "prefers installed Egyptian voices before Arabic fallback"],
   [app, "cleanRepeatedReplyText", "legacy repeated replies cleaned in chat UI"],
-  [worker, "cleanRepeatedResponseText(finalText)", "model output deduplicated before save and response"],
+  [worker, "cleanRepeatedResponseText(stripToolCallMarkup(finalText))", "model output deduplicated before save and response"],
   [worker, "hasProjectTarget", "project target terms are normalized before routing"],
   [worker, "const maxTurns = deepThink ? 6 : 4", "reduced default agent round trips"],
   [worker, 'voiceEngine: "device"', "free device voice is the default"],
