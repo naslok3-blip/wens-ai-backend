@@ -19,20 +19,23 @@ function extractFunction(name, nextName) {
 const helpers = [
   extractFunction("normalizeLiveDataText", "isEgyptGoldPriceRequest"),
   extractFunction("isEgyptGoldPriceRequest", "isLiveDataRequest"),
+  extractFunction("isLiveDataRequest", "isSportsScheduleRequest"),
+  extractFunction("isSportsScheduleRequest", "hasVerifiableLiveSources"),
   extractFunction("isLiveDataRequest", "hasVerifiableLiveSources"),
   extractFunction("isExplicitExternalSearchRequest", "isExternalResearchIntent"),
   extractFunction("isExternalResearchIntent", "extractExternalSources"),
   extractFunction("buildExternalSearchQuery", "extractExternalSources"),
   extractFunction("extractExternalSources", "handleAgent"),
+  extractFunction("hasVerifiableSportsScheduleSources", "hasVerifiableGoldPriceSources"),
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
 const sandbox = { URL, atob, module: { exports: {} } };
 vm.runInNewContext(
-  `${helpers}\nmodule.exports = { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
+  `${helpers}\nmodule.exports = { isExternalResearchIntent, isSportsScheduleRequest, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
   sandbox
 );
-const { isExternalResearchIntent, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
+const { isExternalResearchIntent, isSportsScheduleRequest, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -125,3 +128,40 @@ test("removes search-interface instructions before querying engines", () => {
     "أفضل مصادر تعلم البرمجة"
   );
 });
+
+test("recognizes Egyptian football fixture and league schedule requests", () => {
+  assert.equal(isSportsScheduleRequest("مواعيد مباريات الأهلي في الدوري المصري الممتاز"), true);
+  assert.equal(isSportsScheduleRequest("جدول مباريات الدوري المصري"), true);
+  assert.equal(isSportsScheduleRequest("ما هي كرة القدم؟"), false);
+});
+
+test("rejects old-season league schedules even when they contain dates and links", () => {
+  const result = {
+    results:
+      "[مواعيد الأهلي 2024-25](https://one.example/fixtures) جدول مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\\n" +
+      "[جدول الدوري 2024-25](https://two.example/league) مباريات الدوري المصري 2024-25 اليوم منشور"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
+
+test("requires two independent fresh sources mentioning the current season for sports fixtures", () => {
+  const year = new Date().getUTCFullYear();
+  const next = year + 1;
+  const season = year + "-" + next;
+  const result = {
+    results:
+      "[جدول الدوري المصري " + season + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season + " اليوم آخر تحديث 10:30\\n" +
+      "[مباريات الأهلي " + season + "](https://two.example/alahly) جدول الدوري موسم " + season + " منشور اليوم"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), true);
+});
+
+test("rejects a one-source current-season fixture even if the page is fresh", () => {
+  const year = new Date().getUTCFullYear();
+  const result = {
+    results:
+      "[جدول الدوري " + year + "](https://one.example/fixtures) مباريات الأهلي اليوم آخر تحديث 10:30"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
+
