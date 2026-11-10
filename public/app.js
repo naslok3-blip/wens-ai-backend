@@ -544,9 +544,21 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     replay.addEventListener("click", async () => {
       replay.disabled = true;
       replay.textContent = "جاري تجهيز الصوت…";
-      await speak(displayText, null, bubble);
-      replay.disabled = false;
-      replay.textContent = "🔊 اسمع رد ونس";
+      try {
+        const started = await speak(displayText, null, bubble);
+        replay.textContent = started ? "🔊 الصوت يعمل" : "تعذّر تشغيل الصوت";
+        replay.disabled = false;
+        setTimeout(() => {
+          if (replay.isConnected) replay.textContent = "🔊 اسمع رد ونس";
+        }, started ? 1800 : 3500);
+      } catch (error) {
+        replay.disabled = false;
+        replay.textContent = "تعذّر تشغيل الصوت";
+        setVoiceStatus(String(error?.message || error).slice(0, 220));
+        setTimeout(() => {
+          if (replay.isConnected) replay.textContent = "🔊 اسمع رد ونس";
+        }, 3500);
+      }
     });
     bubble.appendChild(replay);
   }
@@ -1093,26 +1105,33 @@ function speakWithAndroidNative(message, playerTarget, waitForPlayback = false) 
     const id = "wens-tts-" + (globalThis.crypto?.randomUUID?.() || (Date.now() + "-" + Math.random().toString(36).slice(2)));
     let settled = false;
     let started = false;
+    let timer = null;
     const finish = () => {
       clearTimeout(timer);
       nativeSpeechWaiters.delete(id);
       setAvatarSpeaking(false);
     };
-    const timer = setTimeout(() => {
+    const failBeforeStart = () => {
       finish();
       try { bridge.stop?.(); } catch {}
       if (!settled) {
         settled = true;
-        reject(new Error("محرك الصوت في تطبيق Android لم يُكمل التشغيل. راجع خدمة تحويل النص إلى كلام في الهاتف."));
+        reject(new Error("محرك الصوت في تطبيق Android لم يبدأ التشغيل خلال 12 ثانية. راجع خدمة تحويل النص إلى كلام في الهاتف."));
       }
-    }, Math.max(30000, Math.min(180000, message.length * 110)));
+    };
     nativeSpeechWaiters.set(id, {
       handle(event) {
         if (event === "start") {
           started = true;
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            finish();
+            try { bridge.stop?.(); } catch {}
+            setVoiceStatus("الصوت اتأخر في الإنهاء. تقدر تعيد المحاولة.");
+          }, Math.max(30000, Math.min(180000, message.length * 110)));
           setAvatarSpeaking(true);
           setVoiceStatus("ونس بتتكلم من محرك Android المحلي 💜");
-          if (waitForPlayback && !settled) {
+          if (!settled) {
             settled = true;
             resolve(true);
           }
@@ -1136,6 +1155,7 @@ function speakWithAndroidNative(message, playerTarget, waitForPlayback = false) 
         }
       }
     });
+    timer = setTimeout(failBeforeStart, 12000);
     let accepted = false;
     try { accepted = bridge.speak(message.slice(0, 4000), id) === true; } catch {}
     if (!accepted) {
