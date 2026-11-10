@@ -354,8 +354,20 @@ function appendMessageText(container, text) {
   }
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
+function hideExternalLinksFromDisplay(value) {
+  let text = String(value ?? "");
+  // Keep readable Markdown labels, but never expose external destinations.
+  text = text.replace(/\\[([^\\]]{1,240})\\]\\(\\s*https?:\\/\\/[^)\\s]+(?:\\s+"[^"]*")?\\s*\\)/gi, "$1");
+  text = text.replace(/<https?:\\/\\/[^>\\s]+>/gi, "");
+  text = text.replace(/https?:\\/\\/[^\\s<>{}\\[\\]"']+/gi, "");
+  text = text.replace(/[ \\t]{2,}/g, " ");
+  text = text.replace(/[ \\t]+([،؛,.!?؟])/g, "$1");
+  text = text.replace(/\\n[ \\t]+/g, "\\n").replace(/\\n{3,}/g, "\\n\\n");
+  return text.trim();
+}
+
 function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = []) {
-  const displayText = who === "assistant" ? cleanRepeatedReplyText(text) : String(text ?? "");
+  const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
   const messageContainer = $("messages");
   const previousRow = messageContainer.lastElementChild;
@@ -445,7 +457,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       const li = document.createElement("li");
       const status = item?.status === "completed" ? "✓ " : item?.status === "failed" ? "تعذّر " : "• ";
       const label = String(item?.label || "خطوة تنفيذ").slice(0, 120);
-      const detail = String(item?.detail || "").slice(0, 240);
+      const detail = hideExternalLinksFromDisplay(item?.detail || "").slice(0, 240);
       li.textContent = status + label + (detail ? " — " + detail : "");
       li.className = "trace-" + (item?.status === "failed" ? "failed" : item?.status === "completed" ? "completed" : "pending");
       list.appendChild(li);
@@ -469,23 +481,20 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   if (who === "assistant" && Array.isArray(sources) && sources.length) {
     const sourceTrace = document.createElement("details");
     sourceTrace.className = "execution-trace source-trace";
-    sourceTrace.open = true;
+    sourceTrace.open = false;
     const summary = document.createElement("summary");
-    summary.textContent = "المواقع والمصادر الخارجية (" + sources.length + ")";
+    summary.textContent = "مصادر تم التحقق منها (" + sources.length + ")";
     const list = document.createElement("ul");
+    const seenSources = new Set();
     for (const item of sources.slice(0, 8)) {
-      try {
-        const url = new URL(String(item?.url || ""));
-        if (url.protocol !== "https:") continue;
-        const li = document.createElement("li");
-        const link = document.createElement("a");
-        link.href = url.href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = String(item?.title || item?.domain || url.hostname).slice(0, 160);
-        li.appendChild(link);
-        list.appendChild(li);
-      } catch {}
+      const label = hideExternalLinksFromDisplay(item?.title || item?.domain || "مصدر موثوق")
+        .replace(/[?#].*$/, "").slice(0, 160);
+      const key = label.toLocaleLowerCase();
+      if (!label || seenSources.has(key)) continue;
+      seenSources.add(key);
+      const li = document.createElement("li");
+      li.textContent = label;
+      list.appendChild(li);
     }
     if (list.childNodes.length) {
       sourceTrace.append(summary, list);
