@@ -20,6 +20,8 @@ const checks = [
   [app, "synth.getVoices()", "selects installed device voices"],
   [app, "femaleVoice(egyptianVoices)", "prefers installed Egyptian voices before Arabic fallback"],
   [app, "cleanRepeatedReplyText", "legacy repeated replies cleaned in chat UI"],
+  [app, "function stripInternalToolMarkup(value)", "old saved tool protocol is hidden from chat history"],
+  [app, "stripInternalToolMarkup(value).replace", "chat sanitizer runs before rendering saved assistant replies"],
   [worker, "cleanRepeatedResponseText(stripToolCallMarkup(finalText))", "model output deduplicated before save and response"],
   [worker, "hasProjectTarget", "project target terms are normalized before routing"],
   [worker, "const maxTurns = deepThink ? 6 : 4", "reduced default agent round trips"],
