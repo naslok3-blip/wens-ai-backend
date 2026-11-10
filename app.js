@@ -1249,6 +1249,7 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
     let started = false;
     let settled = false;
     let playbackTimer = null;
+    let playbackFinished = false;
     const startTimer = setTimeout(() => {
       if (!started && !settled) {
         settled = true;
@@ -1261,8 +1262,8 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
       if (!waitForPlayback) {
         const playbackLimit = Math.max(25000, Math.min(120000, message.length * 75));
         playbackTimer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
+          if (playbackFinished) return;
+          playbackFinished = true;
           setAvatarSpeaking(false);
           try { synth.cancel(); } catch {}
           setVoiceStatus("محرك الصوت ما أنهـاش تشغيل الرد في الوقت المتوقع. تقدر تعيد المحاولة.");
@@ -1273,17 +1274,19 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
       setVoiceStatus(hasEgyptianVoice
         ? "ونس بتتكلم دلوقتي بصوت مصري 💜"
         : "ونس بتتكلم دلوقتي بصوت عربي من الهاتف 💜");
-      if (waitForPlayback && !settled) { settled = true; resolve(true); }
+      if (!settled) { settled = true; resolve(true); }
     };
     utterance.onend = () => {
       clearTimeout(startTimer);
       if (playbackTimer) clearTimeout(playbackTimer);
+      playbackFinished = true;
       setAvatarSpeaking(false);
       if (!settled) { settled = true; resolve(true); }
     };
     utterance.onerror = event => {
       clearTimeout(startTimer);
       if (playbackTimer) clearTimeout(playbackTimer);
+      playbackFinished = true;
       setAvatarSpeaking(false);
       const reason = event?.error === "not-allowed"
         ? "اسمح للمتصفح بتشغيل الصوت من إعدادات الهاتف."
