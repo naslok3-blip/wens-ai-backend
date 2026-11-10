@@ -5,24 +5,26 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.webkit.PermissionRequest
-import android.webkit.JavascriptInterface
 import android.speech.tts.TextToSpeech
-import java.util.Locale
+import android.speech.tts.UtteranceProgressListener
+import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var pendingRequest: PermissionRequest? = null
-    private var textToSpeech: TextToSpeech? = null
+    @Volatile private var textToSpeech: TextToSpeech? = null
+    @Volatile private var ttsReady = false
+    @Volatile private var nativeVoiceLabel = "صوت Android العربي المحلي"
     private val appHost = "wens-ai-backend-b142.naqashy1.workers.dev"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,10 +34,42 @@ class MainActivity : Activity() {
 
         textToSpeech = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                val result = textToSpeech?.setLanguage(Locale("ar", "EG")) ?: TextToSpeech.ERROR
-                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    textToSpeech?.language = Locale("ar")
+                val engine = textToSpeech
+                val egyptianResult = engine?.setLanguage(Locale("ar", "EG")) ?: TextToSpeech.ERROR
+                val supportsEgyptian = egyptianResult != TextToSpeech.LANG_MISSING_DATA &&
+                    egyptianResult != TextToSpeech.LANG_NOT_SUPPORTED
+                if (!supportsEgyptian) {
+                    val arabicResult = engine?.setLanguage(Locale("ar")) ?: TextToSpeech.ERROR
+                    nativeVoiceLabel = if (arabicResult == TextToSpeech.LANG_MISSING_DATA ||
+                        arabicResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        "محرك Android متاح لكن حزمة الصوت العربي غير مثبتة"
+                    } else {
+                        "صوت Android عربي محلي (لهجة الجهاز)"
+                    }
+                } else {
+                    nativeVoiceLabel = "صوت Android للمصرية إذا كانت الحزمة المثبتة تدعمها"
                 }
+
+                // Prefer an Egyptian Arabic voice when the device exposes one; otherwise use its Arabic fallback.
+                try {
+                    val voices = engine?.voices.orEmpty().filter { it.locale.language.equals("ar", true) }
+                    val egyptian = voices.filter { it.locale.country.equals("EG", true) }
+                    val preferred = (egyptian + voices).distinct().firstOrNull { voice ->
+                        Regex("female|woman|salma|hoda|هدى|سلمى|ليلى|فاطمة", RegexOption.IGNORE_CASE)
+                            .containsMatchIn(voice.name)
+                    } ?: egyptian.firstOrNull()
+                    if (preferred != null) {
+                        engine?.voice = preferred
+                        nativeVoiceLabel = if (preferred.locale.country.equals("EG", true)) {
+                            "صوت Android مصري مثبت على الهاتف"
+                        } else {
+                            "صوت Android عربي مثبت على الهاتف"
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Keep the system-selected Arabic voice if voice enumeration is unavailable.
+                }
+                ttsReady = engine != null && nativeVoiceLabel != "محرك Android متاح لكن حزمة الصوت العربي غير مثبتة"
             }
         }
 
@@ -52,15 +86,39 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 26) safeBrowsingEnabled = true
         }
         webView.addJavascriptInterface(object {
-            @JavascriptInterface fun speak(message: String) {
+            @JavascriptInterface fun speak(message: String, utteranceId: String): Boolean {
+                if (!ttsReady) return false
+                val safeId = utteranceId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(80)
+                if (safeId.isBlank()) return false
+                val safeMessage = message.take(4000)
                 runOnUiThread {
-                    textToSpeech?.speak(message.take(4000), TextToSpeech.QUEUE_FLUSH, null, "wens-ai-reply")
+                    val engine = textToSpeech
+                    val result = engine?.speak(
+                        safeMessage,
+                        TextToSpeech.QUEUE_FLUSH,
+                        Bundle(),
+                        safeId
+                    ) ?: TextToSpeech.ERROR
+                    if (result == TextToSpeech.ERROR) dispatchTtsEvent("error", safeId)
                 }
+                return true
             }
+
+            @JavascriptInterface fun getVoiceLabel(): String = nativeVoiceLabel
+
             @JavascriptInterface fun stop() {
                 runOnUiThread { textToSpeech?.stop() }
             }
         }, "WensNative")
+
+        textToSpeech?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String) = dispatchTtsEvent("start", utteranceId)
+            override fun onDone(utteranceId: String) = dispatchTtsEvent("done", utteranceId)
+            @Deprecated("Deprecated in Android")
+            override fun onError(utteranceId: String) = dispatchTtsEvent("error", utteranceId)
+            override fun onError(utteranceId: String, errorCode: Int) = dispatchTtsEvent("error", utteranceId)
+            override fun onStop(utteranceId: String, interrupted: Boolean) = dispatchTtsEvent("stop", utteranceId)
+        })
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -94,6 +152,19 @@ class MainActivity : Activity() {
             webView.loadUrl("https://$appHost/")
         } else {
             webView.restoreState(savedInstanceState)
+        }
+    }
+
+    private fun dispatchTtsEvent(event: String, utteranceId: String) {
+        val safeId = org.json.JSONObject.quote(utteranceId)
+        val safeEvent = org.json.JSONObject.quote(event)
+        runOnUiThread {
+            if (::webView.isInitialized) {
+                webView.evaluateJavascript(
+                    "window.onWensNativeTtsEvent && window.onWensNativeTtsEvent($safeEvent,$safeId)",
+                    null
+                )
+            }
         }
     }
 
@@ -142,6 +213,7 @@ class MainActivity : Activity() {
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         textToSpeech = null
+        ttsReady = false
         super.onDestroy()
     }
 }
