@@ -151,7 +151,7 @@ test("requires two independent fresh sources mentioning the current season for s
   const season = year + "-" + next;
   const result = {
     results:
-      "[جدول الدوري المصري " + season + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season + " اليوم آخر تحديث 10:30\n" +
+      "[جدول الدوري المصري " + season + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season + " اليوم آخر تحديث 10:30\n\n" +
       "[مباريات الأهلي " + season + "](https://two.example/alahly) جدول الدوري موسم " + season + " منشور اليوم"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
