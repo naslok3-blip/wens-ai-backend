@@ -1,6 +1,7 @@
 import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
+import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
 
@@ -2345,6 +2346,10 @@ async function handleAgent(request, env, user, options = {}) {
       if (!sources.some(source => source.url === item.url)) sources.push(item);
     }
   };
+  // Keep one source result per user request so tool-call fallbacks cannot repeat the same search.
+  let preSearchResult = null;
+  const searchResultCache = new Map();
+  const searchCacheKey = value => normalizeLiveDataText(value).replace(/\\s+/g, " ").trim();
   if (documentsWereRead) steps.push("قراءة محتوى PDF / Word / Excel");
   const generatedImages = [];
   const generatedProjects = [];
@@ -2473,6 +2478,8 @@ async function handleAgent(request, env, user, options = {}) {
         ? researchTopic + " آخر تحديث اليوم مصادر موثوقة"
         : researchTopic + " معلومات ومراجع من مواقع موثوقة";
     const liveSearch = await executeAgentTool("search_web", { query: searchQuery }, env, user);
+    preSearchResult = liveSearch;
+    searchResultCache.set(searchCacheKey(searchQuery), liveSearch);
     const searchText = String(liveSearch?.results || "");
     const hasSearchText = !liveSearch?.error && searchText.length >= 80;
     rememberSources(liveSearch);
@@ -2560,10 +2567,37 @@ async function handleAgent(request, env, user, options = {}) {
       }
       const result = await env.AI.run(model, runOptions);
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
-      const calls = Array.isArray(assistantMessage?.tool_calls) ? assistantMessage.tool_calls : (Array.isArray(result?.tool_calls) ? result.tool_calls : []);
-      if (!calls.length) { finalText = typeof assistantMessage?.content === "string" ? assistantMessage.content.trim() : (typeof result?.response === "string" ? result.response.trim() : ""); break; }
-      const nativeToolResponse = Array.isArray(result?.tool_calls) && !Array.isArray(assistantMessage?.tool_calls);
-      if (!nativeToolResponse) {
+      const rawAssistantText = typeof assistantMessage?.content === "string"
+        ? assistantMessage.content.trim()
+        : typeof result?.response === "string" ? result.response.trim() : "";
+      let calls = Array.isArray(assistantMessage?.tool_calls)
+        ? assistantMessage.tool_calls
+        : (Array.isArray(result?.tool_calls) ? result.tool_calls : []);
+      let parsedTextToolCalls = false;
+      if (!calls.length && containsToolCallMarkup(rawAssistantText)) {
+        const parsed = parseTextToolCalls(rawAssistantText);
+        if (parsed.length) {
+          calls = parsed.map((call, index) => ({
+            id: "wens_text_tool_" + turn + "_" + index,
+            type: "function",
+            function: { name: call.name, arguments: JSON.stringify(call.arguments || {}) }
+          }));
+          parsedTextToolCalls = true;
+        } else {
+          steps.push("تعذّر فهم صيغة استدعاء الأداة — لم يتم تنفيذها");
+          finalText = "حاولت أنفّذ خطوة بحث، لكن النموذج أرسل صيغة تقنية غير مكتملة. مش هعرض الصيغة دي ليك ولا هاعتبر البحث ناجح.";
+          break;
+        }
+      }
+      if (!calls.length) {
+        finalText = stripToolCallMarkup(rawAssistantText);
+        break;
+      }
+      const nativeToolResponse = !parsedTextToolCalls &&
+        Array.isArray(result?.tool_calls) && !Array.isArray(assistantMessage?.tool_calls);
+      if (parsedTextToolCalls) {
+        messages.push({ role: "assistant", content: "", tool_calls: calls });
+      } else if (!nativeToolResponse) {
         messages.push({ role: "assistant", content: assistantMessage.content || "", tool_calls: calls });
       }
       for (const call of calls.slice(0, 6)) {
@@ -2573,7 +2607,21 @@ async function handleAgent(request, env, user, options = {}) {
         const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project","list_web_projects","edit_web_project","list_web_project_revisions","restore_web_project_revision","save_memory","list_memories","delete_memory"];
         if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
         let output;
-        if (name === "generate_image" || name === "edit_image") {
+        let reusedSearchResult = false;
+        if (name === "search_web") {
+          const requestedQuery = String(args?.query || buildExternalSearchQuery(message) || message).trim();
+          const key = searchCacheKey(requestedQuery);
+          if (preSearchResult) {
+            output = preSearchResult;
+            reusedSearchResult = true;
+          } else if (searchResultCache.has(key)) {
+            output = searchResultCache.get(key);
+            reusedSearchResult = true;
+          } else {
+            output = await executeAgentTool(name, { ...(args || {}), query: requestedQuery }, env, user);
+            searchResultCache.set(key, output);
+          }
+        } else if (name === "generate_image" || name === "edit_image") {
           if (generatedImages.length >= 1) {
             output = { error: "يمكن إنشاء صورة واحدة فقط في كل رسالة حاليًا." };
           } else {
@@ -2622,25 +2670,29 @@ async function handleAgent(request, env, user, options = {}) {
           browser_fill: "ملء حقل غير حساس",
           browser_close: "إغلاق جلسة المتصفح"
         };
-        steps.push(labels[name] + (output.error ? " — " + output.error : " — تم"));
+        if (!reusedSearchResult) {
+          steps.push(labels[name] + (output.error ? " — " + output.error : " — تم"));
+        }
         if (name === "search_web") rememberSources(output);
         if (name === "open_webpage" && !output?.error && output?.url) {
           rememberSources({ results: "[" + String(output.title || output.url) + "](" + String(output.url) + ")" });
         }
-        const activityDetail = name === "search_web"
-          ? [
-              ...(output?.engines?.length ? [output.engines.join(" + ")] : []),
-              "مصادر: " + (Array.isArray(output?.sources) ? output.sources.length : extractExternalSources(output).length),
-              String(args?.query || "").slice(0, 180)
-            ].join(" · ")
-          : name === "open_webpage" || name === "browser_open"
-            ? String(output?.url || args?.url || "").slice(0, 220)
-            : output?.error ? String(output.error).slice(0, 180) : "";
-        activity.push({
-          label: labels[name] || name,
-          status: output?.error ? "failed" : "completed",
-          ...(activityDetail ? { detail: activityDetail } : {})
-        });
+        if (!reusedSearchResult) {
+          const activityDetail = name === "search_web"
+            ? [
+                ...(output?.engines?.length ? [output.engines.join(" + ")] : []),
+                "مصادر: " + (Array.isArray(output?.sources) ? output.sources.length : extractExternalSources(output).length),
+                String(args?.query || "").slice(0, 180)
+              ].join(" · ")
+            : name === "open_webpage" || name === "browser_open"
+              ? String(output?.url || args?.url || "").slice(0, 220)
+              : output?.error ? String(output.error).slice(0, 180) : "";
+          activity.push({
+            label: labels[name] || name,
+            status: output?.error ? "failed" : "completed",
+            ...(activityDetail ? { detail: activityDetail } : {})
+          });
+        }
         if (nativeToolResponse) {
           messages.push({ role: "assistant", content: JSON.stringify({ name, arguments: args || {} }) });
           messages.push({ role: "tool", content: JSON.stringify(output) });
@@ -2669,7 +2721,11 @@ async function handleAgent(request, env, user, options = {}) {
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
     if (!finalText && generatedProjects.length) finalText = "خلصت النسخة الأولى من مشروعك. جرّب المعاينة وحمّل ملف HTML من البطاقة تحت الرد.";
-    finalText = cleanRepeatedResponseText(finalText);
+    const containedToolProtocol = containsToolCallMarkup(finalText);
+    finalText = cleanRepeatedResponseText(stripToolCallMarkup(finalText));
+    if (!finalText && containedToolProtocol) {
+      finalText = "حاولت أجهّز نتيجة التنفيذ، لكن النموذج رجّع صيغة أدوات داخلية غير صالحة. ما عرضتش الصيغة التقنية دي، ومفيش نتيجة تنفيذ مؤكدة.";
+    }
     if (!finalText) return json({ error: "نفذت الوكيلة الأدوات لكن النموذج لم يرجع ملخصًا نهائيًا." }, 502);
     if (options.persist && env.DB && user) {
       const safeStoredReply = finalText.replace(/https:\/\/live\.browser\.run\/[^\s)]+/g, "[رابط متصفح مؤقت]");
