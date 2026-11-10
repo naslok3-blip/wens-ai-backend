@@ -2095,11 +2095,23 @@ function hasVerifiableSportsScheduleSources(searchResult) {
       String(season.endYear).slice(-2) + "|" + season.endYear + "))",
     "i"
   );
-  // A bare calendar year or an old season in chat history is never current fixture evidence.
-  if (!seasonPattern.test(results)) return false;
-  if (!/(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off)/i.test(results)) return false;
-  // Require at least two independent source domains and a visible freshness signal.
-  return hasVerifiableLiveSources(searchResult, 2);
+  // Require the exact season and fixture wording inside each source's own result block.
+  // A current-season mention elsewhere must not validate an old-season fixture snippet.
+  const evidenceDomains = new Set();
+  const evidenceSections = results.split(/\\n{2,}/);
+  for (const section of evidenceSections) {
+    if (!seasonPattern.test(section)) continue;
+    if (!/(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off)/i.test(section)) continue;
+    const urls = section.match(/https?:\\/\\/[^\\s<>"')\\]]+/g) || [];
+    for (const rawUrl of urls) {
+      try {
+        const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\\./, "");
+        if (host) evidenceDomains.add(host);
+      } catch {}
+    }
+  }
+  // At least two separate current-season fixture pages plus a freshness signal are mandatory.
+  return evidenceDomains.size >= 2 && hasVerifiableLiveSources(searchResult, 2);
 }
 
 // Gold prices require independent source evidence, not merely unrelated numbers and links.
