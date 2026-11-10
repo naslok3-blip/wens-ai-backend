@@ -26,13 +26,14 @@ const helpers = [
   extractFunction("isExternalResearchIntent", "extractExternalSources"),
   extractFunction("buildExternalSearchQuery", "extractExternalSources"),
   extractFunction("extractExternalSources", "handleAgent"),
+  extractFunction("getCurrentEgyptFootballSeason", "hasVerifiableSportsScheduleSources"),
   extractFunction("hasVerifiableSportsScheduleSources", "hasVerifiableGoldPriceSources"),
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  `${helpers}\nmodule.exports = { isExternalResearchIntent, isSportsScheduleRequest, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
+  `${helpers}\nmodule.exports = { isExternalResearchIntent, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
   sandbox
 );
 const { isExternalResearchIntent, isSportsScheduleRequest, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
