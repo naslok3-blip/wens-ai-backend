@@ -99,7 +99,7 @@ test("recognizes the exact explicit search request from chat", () => {
 test("extracts original links from DuckDuckGo and Google redirects", () => {
   const sources = extractExternalSources({
     results:
-      "[Example](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Farticle)\\n" +
+      "[Example](https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Farticle)\n" +
       "[Reference](https://www.google.com/url?q=https%3A%2F%2Fexample.org%2Fguide)"
   });
   assert.equal(
@@ -139,7 +139,7 @@ test("recognizes Egyptian football fixture and league schedule requests", () => 
 test("rejects old-season league schedules even when they contain dates and links", () => {
   const result = {
     results:
-      "[مواعيد الأهلي 2024-25](https://one.example/fixtures) جدول مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\\n" +
+      "[مواعيد الأهلي 2024-25](https://one.example/fixtures) جدول مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\n" +
       "[جدول الدوري 2024-25](https://two.example/league) مباريات الدوري المصري 2024-25 اليوم منشور"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
@@ -151,7 +151,7 @@ test("requires two independent fresh sources mentioning the current season for s
   const season = year + "-" + next;
   const result = {
     results:
-      "[جدول الدوري المصري " + season + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season + " اليوم آخر تحديث 10:30\\n" +
+      "[جدول الدوري المصري " + season + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season + " اليوم آخر تحديث 10:30\n" +
       "[مباريات الأهلي " + season + "](https://two.example/alahly) جدول الدوري موسم " + season + " منشور اليوم"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
@@ -170,7 +170,7 @@ test("rejects a one-source current-season fixture even if the page is fresh", ()
 test("rejects an old-season schedule even when an unrelated current year appears in the result", () => {
   const result = {
     results:
-      "[جدول 2024-25](https://one.example/fixtures) مواعيد مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\\n" +
+      "[جدول 2024-25](https://one.example/fixtures) مواعيد مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\n" +
       "[خبر موسم 2026](https://two.example/news) خبر منشور في 2026 اليوم"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
@@ -180,8 +180,8 @@ test("rejects old fixtures when a separate article merely mentions the current s
   const season = getCurrentEgyptFootballSeason();
   const result = {
     results:
-      "[جدول الأهلي 2024-25](https://one.example/fixtures) مواعيد مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\\nالرابط: https://one.example/fixtures\\n\\n" +
-      "خبر عن موسم " + season.short + " من غير جدول أو مواعيد\\nالرابط: https://two.example/news"
+      "[جدول الأهلي 2024-25](https://one.example/fixtures) مواعيد مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\nالرابط: https://one.example/fixtures\n\n" +
+      "خبر عن موسم " + season.short + " من غير جدول أو مواعيد\nالرابط: https://two.example/news"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
 });
@@ -190,7 +190,7 @@ test("current-season validator accepts the short season notation only with sched
   const season = getCurrentEgyptFootballSeason();
   const result = {
     results:
-      "[جدول الدوري " + season.short + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season.short + " اليوم آخر تحديث 10:30\\n" +
+      "[جدول الدوري " + season.short + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season.short + " اليوم آخر تحديث 10:30\n" +
       "[مباريات الأهلي " + season.short + "](https://two.example/alahly) جدول الدوري موسم " + season.short + " منشور اليوم"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
