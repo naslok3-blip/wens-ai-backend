@@ -165,3 +165,22 @@ test("rejects a one-source current-season fixture even if the page is fresh", ()
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
 });
 
+
+test("rejects an old-season schedule even when an unrelated current year appears in the result", () => {
+  const result = {
+    results:
+      "[جدول 2024-25](https://one.example/fixtures) مواعيد مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\\n" +
+      "[خبر موسم 2026](https://two.example/news) خبر منشور في 2026 اليوم"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
+
+test("current-season validator accepts the short season notation only with schedule evidence", () => {
+  const season = getCurrentEgyptFootballSeason();
+  const result = {
+    results:
+      "[جدول الدوري " + season.short + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season.short + " اليوم آخر تحديث 10:30\\n" +
+      "[مباريات الأهلي " + season.short + "](https://two.example/alahly) جدول الدوري موسم " + season.short + " منشور اليوم"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), true);
+});
