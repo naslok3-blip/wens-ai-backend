@@ -2098,14 +2098,14 @@ function hasVerifiableSportsScheduleSources(searchResult) {
   // Require the exact season and fixture wording inside each source's own result block.
   // A current-season mention elsewhere must not validate an old-season fixture snippet.
   const evidenceDomains = new Set();
-  const evidenceSections = results.split(/\\n{2,}/);
+  const evidenceSections = results.split(/\n{2,}/);
   for (const section of evidenceSections) {
     if (!seasonPattern.test(section)) continue;
     if (!/(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off)/i.test(section)) continue;
-    const urls = section.match(/https?:\\/\\/[^\\s<>"')\\]]+/g) || [];
+    const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     for (const rawUrl of urls) {
       try {
-        const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\\./, "");
+        const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\./, "");
         if (host) evidenceDomains.add(host);
       } catch {}
     }
