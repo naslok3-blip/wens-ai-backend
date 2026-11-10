@@ -373,7 +373,7 @@ jobs:
           echo "Isolated project preview, HTML download and account-only access: OK"
           echo "Live agent and three-format document acceptance: OK"
       - name: Verify deployed HTML, JavaScript, CSS and avatar assets
-        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
@@ -422,7 +422,7 @@ jobs:
           grep -q 'voicePreviewBtn' /tmp/wens-admin.js
           echo "Production Wens portrait, chat and same-page admin assets: OK"
       - name: Verify owner-only admin and shared settings API
-        if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
