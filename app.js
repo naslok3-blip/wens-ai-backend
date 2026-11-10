@@ -286,12 +286,12 @@ async function loadChatHistory() {
 }
 function stripInternalToolMarkup(value) {
   return String(value ?? "")
-    .replace(/(?:<\\s*tool_call\\b[^>]*>|tool_call\\s*>|<\\|tool_call\\|>)[\\s\\S]*?(?:<\\s*\\/\\s*tool_call\\s*>|<<\\s*\\/\\s*tool_call\\s*>?|<\\|tool_call_end\\|>|$)/gi, " ")
-    .replace(/<\\s*\\/?\\s*arg_key\\b[^>]*>/gi, " ")
-    .replace(/<\\s*\\/?\\s*arg_value\\b[^>]*>/gi, " ")
-    .replace(/<\\s*\\/?\\s*arg\\b[^>]*>/gi, " ")
-    .replace(/[ \\t]{2,}/g, " ")
-    .replace(/\\n{3,}/g, "\\n\\n")
+    .replace(/(?:<\s*tool_call\b[^>]*>|tool_call\s*>|<\|tool_call\|>)[\s\S]*?(?:<\s*\/\s*tool_call\s*>|<<\s*\/\s*tool_call\s*>?|<\|tool_call_end\|>|$)/gi, " ")
+    .replace(/<\s*\/?\s*arg_key\b[^>]*>/gi, " ")
+    .replace(/<\s*\/?\s*arg_value\b[^>]*>/gi, " ")
+    .replace(/<\s*\/?\s*arg\b[^>]*>/gi, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 function cleanRepeatedReplyText(value) {
