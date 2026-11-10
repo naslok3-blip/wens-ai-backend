@@ -36,7 +36,7 @@ vm.runInNewContext(
   `${helpers}\nmodule.exports = { isExternalResearchIntent, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
   sandbox
 );
-const { isExternalResearchIntent, isSportsScheduleRequest, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
+const { isExternalResearchIntent, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
