@@ -1061,7 +1061,88 @@ async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = fa
   scheduleStop(120000);
 }
 
+const nativeSpeechWaiters = new Map();
+window.onWensNativeTtsEvent = (event, utteranceId) => {
+  const waiter = nativeSpeechWaiters.get(String(utteranceId || ""));
+  if (waiter) waiter.handle(String(event || ""));
+};
+
+function speakWithAndroidNative(message, playerTarget, waitForPlayback = false) {
+  const bridge = window.WensNative;
+  if (!bridge || typeof bridge.speak !== "function") return Promise.resolve(null);
+  return new Promise((resolve, reject) => {
+    const id = "wens-tts-" + (globalThis.crypto?.randomUUID?.() || (Date.now() + "-" + Math.random().toString(36).slice(2)));
+    let settled = false;
+    let started = false;
+    const finish = () => {
+      clearTimeout(timer);
+      nativeSpeechWaiters.delete(id);
+      setAvatarSpeaking(false);
+    };
+    const timer = setTimeout(() => {
+      finish();
+      try { bridge.stop?.(); } catch {}
+      if (!settled) {
+        settled = true;
+        reject(new Error("محرك الصوت في تطبيق Android لم يُكمل التشغيل. راجع خدمة تحويل النص إلى كلام في الهاتف."));
+      }
+    }, Math.max(30000, Math.min(180000, message.length * 110)));
+    nativeSpeechWaiters.set(id, {
+      handle(event) {
+        if (event === "start") {
+          started = true;
+          setAvatarSpeaking(true);
+          setVoiceStatus("ونس بتتكلم من محرك Android المحلي 💜");
+          if (waitForPlayback && !settled) {
+            settled = true;
+            resolve(true);
+          }
+        } else if (event === "done") {
+          finish();
+          if (!settled) {
+            settled = true;
+            resolve(true);
+          }
+        } else if (event === "error" || event === "stop") {
+          finish();
+          const error = new Error(event === "stop"
+            ? "تم إيقاف تشغيل الصوت."
+            : "محرك الصوت المحلي في Android تعذّر عليه نطق الرد.");
+          if (!settled) {
+            settled = true;
+            reject(error);
+          } else {
+            setVoiceStatus(error.message);
+          }
+        }
+      }
+    });
+    let accepted = false;
+    try { accepted = bridge.speak(message.slice(0, 4000), id) === true; } catch {}
+    if (!accepted) {
+      finish();
+      resolve(null);
+      return;
+    }
+    const bubble = playerTarget && typeof playerTarget.querySelector === "function" ? playerTarget : null;
+    let note = bubble?.querySelector(".voice-device-note");
+    if (bubble && !note) {
+      note = document.createElement("p");
+      note.className = "voice-device-note";
+      bubble.appendChild(note);
+    }
+    let description = "صوت Android المحلي";
+    try {
+      if (typeof bridge.getVoiceLabel === "function") description = String(bridge.getVoiceLabel() || description);
+    } catch {}
+    if (note) note.textContent = "🔊 " + description;
+    setVoiceStatus("جاري تشغيل صوت ونس من الهاتف…");
+  });
+}
+
 async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
+  const nativePlayback = await speakWithAndroidNative(String(text || "").trim().slice(0, 4000), playerTarget, waitForPlayback);
+  if (nativePlayback !== null) return nativePlayback;
   const synth = window.speechSynthesis;
   const Utterance = window.SpeechSynthesisUtterance;
   if (!synth || typeof Utterance !== "function") {
