@@ -190,7 +190,7 @@ test("current-season validator accepts the short season notation only with sched
   const season = getCurrentEgyptFootballSeason();
   const result = {
     results:
-      "[جدول الدوري " + season.short + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season.short + " اليوم آخر تحديث 10:30\n" +
+      "[جدول الدوري " + season.short + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season.short + " اليوم آخر تحديث 10:30\n\n" +
       "[مباريات الأهلي " + season.short + "](https://two.example/alahly) جدول الدوري موسم " + season.short + " منشور اليوم"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
