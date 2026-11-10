@@ -17,6 +17,62 @@ function json(data, status = 200, headers = {}) {
     headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers }
   });
 }
+
+// Convert Workers AI provider failures into an actionable, safe message.
+// In particular, the daily free Neurons quota is shared across models in the account.
+function classifyWorkersAiFailure(error) {
+  const raw = String(error?.message || error || "unknown");
+  const quotaExhausted =
+    /daily free allocation/i.test(raw) ||
+    /used up.{0,100}(?:10,?000\s+neurons|neurons)/i.test(raw) ||
+    /(?:3036|4006)/.test(raw);
+
+  if (quotaExhausted) {
+    const now = new Date();
+    const nextReset = new Date(Date.UTC(
+      now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0
+    ));
+    const resetLocal = new Intl.DateTimeFormat("ar-EG", {
+      timeZone: "Africa/Cairo", hour: "numeric", minute: "2-digit", hour12: true
+    }).format(nextReset);
+    return {
+      code: "AI_DAILY_FREE_QUOTA_EXHAUSTED",
+      status: 429,
+      retryAt: nextReset.toISOString(),
+      message: "حصة ونس المجانية للذكاء الاصطناعي خلصت النهارده (10,000 Neurons). مش هتحتاج تغيّر أي إعداد أو كلمة مرور؛ الحصة بتتجدد تلقائيًا الساعة " + resetLocal + " بتوقيت مصر. جرّب تبعت رسالتك بعدها."
+    };
+  }
+
+  if (/3040|out of capacity|capacity temporarily exceeded/i.test(raw)) {
+    return {
+      code: "AI_TEMPORARILY_AT_CAPACITY",
+      status: 503,
+      message: "خدمة الذكاء الاصطناعي عليها ضغط مؤقت من Cloudflare. جرّب تاني بعد شوية؛ مفيش حاجة محتاجة تتغير في حسابك."
+    };
+  }
+
+  if (/5035|requires a workers paid plan|workers paid plan/i.test(raw)) {
+    return {
+      code: "AI_MODEL_REQUIRES_PAID_PLAN",
+      status: 503,
+      message: "النموذج المحدد غير متاح على الخطة المجانية. لم يتم تفعيل أي اشتراك مدفوع أو إجراء أي تغيير في الفوترة."
+    };
+  }
+
+  if (/5007|no such model|3042|invalid model/i.test(raw)) {
+    return {
+      code: "AI_MODEL_UNAVAILABLE",
+      status: 503,
+      message: "معرّف نموذج الذكاء الاصطناعي المحدد غير متاح حاليًا. يلزم ضبط اسم نموذج مدعوم قبل تشغيل ونس."
+    };
+  }
+
+  return {
+    code: "AI_INFERENCE_FAILED",
+    status: 502,
+    message: "تعذّر على Cloudflare تشغيل نموذج الذكاء الاصطناعي حاليًا. راجع تشخيص الخدمة في لوحة الإدارة."
+  };
+}
 function cookieValue(header, key) {
   const part = (header || "").split(";").map(x => x.trim()).find(x => x.startsWith(key + "="));
   return part ? decodeURIComponent(part.slice(key.length + 1)) : "";
@@ -706,8 +762,13 @@ async function adminRoute(request, env, path) {
         ? assistantMessage.content.trim()
         : typeof result?.response === "string" ? result.response.trim() : "";
       return reply ? json({ ok: true, model, reply }) : json({ error: "تم الاتصال بالنموذج لكنه لم يرجع نصًا." }, 502);
-    } catch {
-      return json({ error: "تعذّر تشغيل نموذج Cloudflare Workers AI. راجع الحصة اليومية وحالة النموذج." }, 502);
+    } catch (error) {
+      const failure = classifyWorkersAiFailure(error);
+      console.error("[WENS_AI_PROBE_FAILURE]", JSON.stringify({
+        code: failure.code,
+        detail: String(error?.message || error || "unknown").slice(0, 220)
+      }));
+      return json({ error: failure.message, code: failure.code, retryAt: failure.retryAt || null }, failure.status);
     }
   }
   return json({ error: "مسار إدارة غير موجود." }, 404);
@@ -2804,10 +2865,18 @@ async function handleAgent(request, env, user, options = {}) {
       .replace(/Bearer\\s+[^\\s]+/gi, "Bearer [redacted]")
       .replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g, "[redacted]")
       .slice(0, 220);
-    console.error("[WENS_AGENT_FAILURE]", diagnostic);
-    const payload = { error: "تعذّر تشغيل وكيل ونس الآن. قد لا يكون نموذج الوكلاء متاحًا في حساب Workers AI أو قد تكون الحصة انتهت." };
+    const failure = classifyWorkersAiFailure(error);
+    console.error("[WENS_AGENT_FAILURE]", JSON.stringify({
+      code: failure.code,
+      detail: diagnostic
+    }));
+    const payload = {
+      error: failure.message,
+      code: failure.code,
+      retryAt: failure.retryAt || null
+    };
     if (request.headers.get("x-wens-diagnostics") === "image-agent-e2e") payload.diagnostic = diagnostic;
-    return json(payload, 502);
+    return json(payload, failure.status);
   }
 }
 async function agentTasksRoute(request, env, user) {
