@@ -357,12 +357,12 @@ function appendMessageText(container, text) {
 function hideExternalLinksFromDisplay(value) {
   let text = String(value ?? "");
   // Keep readable Markdown labels, but never expose external destinations.
-  text = text.replace(/\\[([^\\]]{1,240})\\]\\(\\s*https?:\\/\\/[^)\\s]+(?:\\s+"[^"]*")?\\s*\\)/gi, "$1");
-  text = text.replace(/<https?:\\/\\/[^>\\s]+>/gi, "");
-  text = text.replace(/https?:\\/\\/[^\\s<>{}\\[\\]"']+/gi, "");
-  text = text.replace(/[ \\t]{2,}/g, " ");
-  text = text.replace(/[ \\t]+([،؛,.!?؟])/g, "$1");
-  text = text.replace(/\\n[ \\t]+/g, "\\n").replace(/\\n{3,}/g, "\\n\\n");
+  text = text.replace(/\[([^\]]{1,240})\]\(\s*https?:\/\/[^)\s]+(?:\s+"[^"]*")?\s*\)/gi, "$1");
+  text = text.replace(/<https?:\/\/[^>\s]+>/gi, "");
+  text = text.replace(/https?:\/\/[^\s<>{}\[\]"']+/gi, "");
+  text = text.replace(/[ \t]{2,}/g, " ");
+  text = text.replace(/[ \t]+([،؛,.!?؟])/g, "$1");
+  text = text.replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n");
   return text.trim();
 }
 
