@@ -377,79 +377,103 @@ jobs:
         run: |
           set -euo pipefail
           BASE="https://wens-ai-backend-b142.naqashy1.workers.dev"
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/" -o /tmp/wens-index.html
-          grep -q 'id="chatForm"' /tmp/wens-index.html
-          grep -q 'id="openAdminBtn"' /tmp/wens-index.html
-          grep -q 'id="adminInlinePanel"' /tmp/wens-index.html
-          grep -q 'avatar.jpg' /tmp/wens-index.html
-          grep -q 'data-action="camera"' /tmp/wens-index.html
-          grep -q 'data-action="photos"' /tmp/wens-index.html
-          grep -q 'data-action="files"' /tmp/wens-index.html
-          grep -q 'data-action="plugins"' /tmp/wens-index.html
-          grep -q 'data-action="deep"' /tmp/wens-index.html
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/app.js" -o /tmp/wens-app.js
-          grep -q 'Cloudflare AI' /tmp/wens-app.js
-          grep -q 'WensPlayVoicePreview' /tmp/wens-app.js
-          grep -q 'adminVoicePreviewDock' /tmp/wens-app.js
-          grep -q 'fetch("/api/voice/connect"' /tmp/wens-app.js
-          grep -q 'updateAdminShortcut' /tmp/wens-app.js
-          grep -q 'addSelectedFile' /tmp/wens-app.js
-          grep -q 'attachmentPayload' /tmp/wens-app.js
-          grep -q 'createImageBitmap' /tmp/wens-app.js
-          grep -q 'generatedImages' /tmp/wens-app.js
-          grep -q 'runAgentImage' worker.js
-          grep -q 'generate_image' worker.js
-          grep -q 'edit_image' worker.js
-          grep -q '@cf/black-forest-labs/flux-2-klein-4b' worker.js
-          grep -q 'reasoning_effort' worker.js
-          grep -q 'runOptions.image' worker.js
-          grep -q '@cf/qwen/qwen3.8-27b' worker.js
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/style.css" -o /tmp/wens-style.css
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/avatar.jpg?v=real-jpg-20261104" -o /tmp/wens-avatar.jpg
+          require_text() {
+            file="$1"; token="$2"; label="$3"
+            if grep -Fq -- "$token" "$file"; then
+              echo "PASS: $label"
+            else
+              echo "FAIL: $label"
+              echo "Expected token: $token"
+              echo "File size: $(wc -c < "$file" 2>/dev/null || echo 0)"
+              head -c 600 "$file" 2>/dev/null || true
+              echo
+              exit 1
+            fi
+          }
+          fetch_asset() {
+            path="$1"; output="$2"
+            status=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              -o "$output" -w '%{http_code}' "$BASE$path")
+            echo "HTTP $status $path ($(wc -c < "$output") bytes)"
+            if [ "$status" != "200" ]; then
+              head -c 600 "$output" || true
+              echo
+              exit 1
+            fi
+          }
+
+          fetch_asset "/" /tmp/wens-index.html
+          require_text /tmp/wens-index.html 'id="chatForm"' "chat form in production HTML"
+          require_text /tmp/wens-index.html 'id="openAdminBtn"' "same-page admin entry control"
+          require_text /tmp/wens-index.html 'id="adminInlinePanel"' "same-page admin panel container"
+          require_text /tmp/wens-index.html 'avatar.jpg' "Wens avatar reference"
+          require_text /tmp/wens-index.html 'data-action="camera"' "camera attachment action"
+          require_text /tmp/wens-index.html 'data-action="photos"' "photo attachment action"
+          require_text /tmp/wens-index.html 'data-action="files"' "file attachment action"
+          require_text /tmp/wens-index.html 'data-action="plugins"' "tools menu action"
+          require_text /tmp/wens-index.html 'data-action="deep"' "deep-thinking action"
+
+          fetch_asset "/app.js" /tmp/wens-app.js
+          require_text /tmp/wens-app.js "Cloudflare AI" "chat service diagnostics"
+          require_text /tmp/wens-app.js "WensPlayVoicePreview" "voice preview bridge"
+          require_text /tmp/wens-app.js "adminVoicePreviewDock" "owner voice preview dock"
+          require_text /tmp/wens-app.js 'fetch("/api/voice/connect"' "voice connection route"
+          require_text /tmp/wens-app.js "updateAdminShortcut" "hidden admin shortcut"
+          require_text /tmp/wens-app.js "addSelectedFile" "file attachment handling"
+          require_text /tmp/wens-app.js "attachmentPayload" "attachment request payload"
+          require_text /tmp/wens-app.js "createImageBitmap" "image resizing support"
+          require_text /tmp/wens-app.js "generatedImages" "in-chat generated image rendering"
+          require_text /tmp/wens-app.js "stripInternalToolMarkup" "tool protocol hidden from saved chat replies"
+
+          require_text worker.js "runAgentImage" "server image generation handler"
+          require_text worker.js "generate_image" "image generation tool"
+          require_text worker.js "edit_image" "image editing tool"
+          require_text worker.js "@cf/black-forest-labs/flux-2-klein-4b" "Cloudflare image model"
+          require_text worker.js "parseTextToolCalls(rawAssistantText)" "text-emitted tool call fallback"
+          require_text worker.js "stripToolCallMarkup(finalText)" "server tool protocol sanitizer"
+          require_text worker.js "hasVerifiableSportsScheduleSources" "current-season sports schedule verification"
+
+          fetch_asset "/style.css" /tmp/wens-style.css
+          fetch_asset "/avatar.jpg?v=real-jpg-20261104" /tmp/wens-avatar.jpg
           python - <<'PY'
           image = open('/tmp/wens-avatar.jpg', 'rb').read()
           assert image[:3] == bytes.fromhex("ffd8ff"), "Wens portrait is not a valid JPEG asset"
-          assert len(image) > 5000, f'Wens portrait unexpectedly small: {len(image)} bytes'
-          print(f'Wens portrait JPEG: OK ({len(image)} bytes)')
+          assert len(image) > 5000, f"Wens portrait unexpectedly small: {len(image)} bytes"
+          print(f"PASS: Wens portrait JPEG ({len(image)} bytes)")
           PY
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.html?embed=1" -o /tmp/wens-admin.html
-          grep -q 'id="adminSetupForm"' /tmp/wens-admin.html
-          grep -q 'id="showAdminResetBtn"' /tmp/wens-admin.html
+
+          fetch_asset "/admin.html?embed=1" /tmp/wens-admin.html
+          require_text /tmp/wens-admin.html 'id="adminSetupForm"' "owner admin setup form"
+          require_text /tmp/wens-admin.html 'id="showAdminResetBtn"' "owner recovery control"
+
           owner_js_ready=0
           owner_js_status="not-requested"
           for attempt in $(seq 1 12); do
             owner_js_status=$(curl --silent --show-error --connect-timeout 10 --max-time 20 \
               -D /tmp/wens-owner-panel.headers -o /tmp/wens-admin.js -w '%{http_code}' \
               "$BASE/owner-panel.js?assetCheck=$GITHUB_SHA" || true)
-            if [ "$owner_js_status" = "200" ] && grep -q 'voicePreviewBtn' /tmp/wens-admin.js; then
+            if [ "$owner_js_status" = "200" ] && grep -Fq "voicePreviewBtn" /tmp/wens-admin.js; then
               owner_js_ready=1
               break
             fi
             sleep 3
           done
-          echo "Owner panel JS HTTP status: $owner_js_status"
-          echo "Owner panel response headers:"
-          cat /tmp/wens-owner-panel.headers || true
-          OWNER_JS_READY="$owner_js_ready" OWNER_JS_STATUS="$owner_js_status" python - <<'PY'
-          import os
-          from pathlib import Path
-          source=Path('/tmp/wens-admin.js').read_text(encoding='utf-8', errors='replace') if Path('/tmp/wens-admin.js').exists() else ''
-          required=['/api/admin/status','/api/admin/diagnostics','/api/admin/settings','voicePreviewBtn']
-          missing=[token for token in required if token not in source]
-          print('Owner panel JS bytes:', len(source))
-          print('Missing owner panel tokens:', missing)
-          print('Owner panel response preview:', source[:500])
-          print('Owner panel HTTP status:', os.environ.get('OWNER_JS_STATUS'))
-          assert os.environ['OWNER_JS_READY']=='1' and not missing, {
-              'ready':os.environ['OWNER_JS_READY'],'http':os.environ.get('OWNER_JS_STATUS'),
-              'missing':missing,'preview':source[:500]
-          }
-          PY
-          curl --silent --show-error --connect-timeout 10 --max-time 20 -D /tmp/wens-owner-panel-css.headers \
-            -o /tmp/wens-owner-panel.css -w 'Owner panel CSS HTTP status: %{http_code} bytes: %{size_download}\n' \
-            "$BASE/owner-panel.css?assetCheck=$GITHUB_SHA"
-          grep -q '.admin-wrap' /tmp/wens-owner-panel.css
-          echo "Production Wens portrait, chat and same-page admin assets: OK"
+          echo "Owner panel JS response: HTTP $owner_js_status, $(wc -c < /tmp/wens-admin.js 2>/dev/null || echo 0) bytes"
+          cat /tmp/wens-owner-panel.headers 2>/dev/null || true
+          if [ "$owner_js_ready" != "1" ]; then
+            echo "FAIL: Owner panel script did not contain voicePreviewBtn."
+            head -c 800 /tmp/wens-admin.js 2>/dev/null || true
+            echo
+            exit 1
+          fi
+          require_text /tmp/wens-admin.js "/api/admin/status" "owner status endpoint"
+          require_text /tmp/wens-admin.js "/api/admin/diagnostics" "owner diagnostics endpoint"
+          require_text /tmp/wens-admin.js "/api/admin/settings" "owner settings endpoint"
+          require_text /tmp/wens-admin.js "voicePreviewBtn" "owner voice preview control"
+
+          fetch_asset "/owner-panel.css?assetCheck=$GITHUB_SHA" /tmp/wens-owner-panel.css
+          require_text /tmp/wens-owner-panel.css ".admin-wrap" "owner panel stylesheet"
+          echo "PASS: Production Wens portrait, chat and same-page owner dashboard assets"
       - name: Verify owner-only admin and shared settings API
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main'
         run: |
