@@ -2098,20 +2098,26 @@ function hasVerifiableSportsScheduleSources(searchResult) {
   // Require the exact season and fixture wording inside each source's own result block.
   // A current-season mention elsewhere must not validate an old-season fixture snippet.
   const evidenceDomains = new Set();
+  let evidenceSectionCount = 0;
   const evidenceSections = results.split(/\n{2,}/);
   for (const section of evidenceSections) {
     if (!seasonPattern.test(section)) continue;
     if (!/(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off)/i.test(section)) continue;
     const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
+    const sectionDomains = new Set();
     for (const rawUrl of urls) {
       try {
         const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\./, "");
-        if (host) evidenceDomains.add(host);
+        if (host) sectionDomains.add(host);
       } catch {}
     }
+    if (sectionDomains.size) {
+      evidenceSectionCount++;
+      for (const host of sectionDomains) evidenceDomains.add(host);
+    }
   }
-  // At least two separate current-season fixture pages plus a freshness signal are mandatory.
-  return evidenceDomains.size >= 2 && hasVerifiableLiveSources(searchResult, 2);
+  // At least two distinct result blocks must each contain a current-season fixture and source URL.
+  return evidenceSectionCount >= 2 && evidenceDomains.size >= 2 && hasVerifiableLiveSources(searchResult, 2);
 }
 
 // Gold prices require independent source evidence, not merely unrelated numbers and links.
