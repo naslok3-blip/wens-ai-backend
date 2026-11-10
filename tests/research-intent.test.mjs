@@ -181,7 +181,7 @@ test("rejects old fixtures when a separate article merely mentions the current s
   const result = {
     results:
       "[جدول الأهلي 2024-25](https://one.example/fixtures) مواعيد مباريات الأهلي موسم 2024-25 اليوم آخر تحديث 10:30\nالرابط: https://one.example/fixtures\n\n" +
-      "خبر عن موسم " + season.short + " من غير جدول أو مواعيد\nالرابط: https://two.example/news"
+      "خبر عام عن موسم " + season.short + " فقط، بلا تفاصيل\nالرابط: https://two.example/news"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
 });
