@@ -21,7 +21,7 @@ const helpers = [
   extractFunction("isEgyptGoldPriceRequest", "isLiveDataRequest"),
   extractFunction("isLiveDataRequest", "isSportsScheduleRequest"),
   extractFunction("isSportsScheduleRequest", "hasVerifiableLiveSources"),
-  extractFunction("isLiveDataRequest", "hasVerifiableLiveSources"),
+  extractFunction("hasVerifiableLiveSources", "hasVerifiableSportsScheduleSources"),
   extractFunction("isExplicitExternalSearchRequest", "isExternalResearchIntent"),
   extractFunction("isExternalResearchIntent", "extractExternalSources"),
   extractFunction("buildExternalSearchQuery", "extractExternalSources"),
@@ -30,7 +30,7 @@ const helpers = [
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
-const sandbox = { URL, atob, module: { exports: {} } };
+const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
   `${helpers}\nmodule.exports = { isExternalResearchIntent, isSportsScheduleRequest, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
   sandbox
