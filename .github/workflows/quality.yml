@@ -415,11 +415,25 @@ jobs:
           curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/admin.html?embed=1" -o /tmp/wens-admin.html
           grep -q 'id="adminSetupForm"' /tmp/wens-admin.html
           grep -q 'id="showAdminResetBtn"' /tmp/wens-admin.html
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js" -o /tmp/wens-admin.js
-          grep -q '/api/admin/status' /tmp/wens-admin.js
-          grep -q '/api/admin/diagnostics' /tmp/wens-admin.js
-          grep -q '/api/admin/settings' /tmp/wens-admin.js
-          grep -q 'voicePreviewBtn' /tmp/wens-admin.js
+          owner_js_ready=0
+          for attempt in $(seq 1 8); do
+            if curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$BASE/owner-panel.js?assetCheck=$GITHUB_SHA" -o /tmp/wens-admin.js; then
+              if grep -q 'voicePreviewBtn' /tmp/wens-admin.js; then owner_js_ready=1; break; fi
+            fi
+            sleep 3
+          done
+          OWNER_JS_READY="$owner_js_ready" python - <<'PY'
+          import os
+          from pathlib import Path
+          source=Path('/tmp/wens-admin.js').read_text(encoding='utf-8') if Path('/tmp/wens-admin.js').exists() else ''
+          required=['/api/admin/status','/api/admin/diagnostics','/api/admin/settings','voicePreviewBtn']
+          missing=[token for token in required if token not in source]
+          print('Owner panel JS bytes:', len(source))
+          print('Missing owner panel tokens:', missing)
+          assert os.environ['OWNER_JS_READY']=='1' and not missing, {
+              'ready':os.environ['OWNER_JS_READY'],'missing':missing,'preview':source[:250]
+          }
+          PY
           echo "Production Wens portrait, chat and same-page admin assets: OK"
       - name: Verify owner-only admin and shared settings API
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && github.ref == 'refs/heads/main'
