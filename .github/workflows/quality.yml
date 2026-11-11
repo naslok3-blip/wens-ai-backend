@@ -240,6 +240,46 @@ jobs:
             echo "Skipped on automatic push/pull-request checks to preserve the free Workers AI quota and avoid creating disposable test accounts/projects in the production database."
             echo "Run this workflow manually from the main branch when a live production acceptance test is intended."
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify Arabic upcoming football fixture search in production
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[sports-fixture-e2e]')
+        env:
+          BASE: https://wens-ai-backend-b142.naqashy1.workers.dev
+          CI_EMAIL: wens-sports-${{ github.run_id }}-${{ github.run_attempt }}@example.invalid
+          CI_PASSWORD: Wens-Sports-${{ github.run_id }}-${{ github.run_attempt }}-Test!
+        run: |
+          set -euo pipefail
+          REGISTER_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 30 \
+            -o /tmp/wens-sports-register.json -w '%{http_code}' -c /tmp/wens-sports-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data "$(python -c 'import json,os; print(json.dumps({"name":"Wens Sports E2E","email":os.environ["CI_EMAIL"],"password":os.environ["CI_PASSWORD"]}))')" \
+            "$BASE/api/auth/register")
+          test "$REGISTER_STATUS" = "200"
+          cleanup_sports_session() {
+            curl --silent --show-error --connect-timeout 10 --max-time 20 -b /tmp/wens-sports-cookie.txt \
+              -H 'Content-Type: application/json' -X POST --data '{}' "$BASE/api/auth/logout" >/dev/null || true
+          }
+          trap cleanup_sports_session EXIT
+          SPORTS_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 120 \
+            -o /tmp/wens-sports-result.json -w '%{http_code}' -b /tmp/wens-sports-cookie.txt \
+            -H 'Content-Type: application/json' -X POST \
+            --data '{"message":"مواعيد مباراة الأهلي القادمة في الدوري المصري"}' "$BASE/api/chat")
+          if [ "$SPORTS_STATUS" != "200" ]; then cat /tmp/wens-sports-result.json; exit 1; fi
+          python - <<'PY'
+          import json, re
+          data=json.load(open('/tmp/wens-sports-result.json',encoding='utf-8'))
+          assert data.get('ok') is True, data
+          activity=data.get('activity') or []
+          search=[item for item in activity if item.get('label') == 'البحث في المواقع الخارجية']
+          assert len(search)==1, {'activity':activity,'reply':data.get('reply')}
+          detail=str(search[0].get('detail',''))
+          assert '2026-2027' in detail, detail
+          reply=str(data.get('reply',''))
+          assert not re.search(r'2024\s*[-–/]\s*25|2025\s*[-–/]\s*26',reply), reply
+          assert 'خليني أبحث' not in reply and 'خليني ابحث' not in reply, reply
+          if search[0].get('status') == 'failed':
+              assert 'ما قدرتش أثبت' in reply, reply
+          print("Production Arabic upcoming-match request triggered live search; no stale season or empty search promise was returned.")
+          PY
       - name: Live agent and PDF Word Excel acceptance test
         if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
         env:
