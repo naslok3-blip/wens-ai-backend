@@ -483,7 +483,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     sourceTrace.className = "execution-trace source-trace";
     sourceTrace.open = false;
     const summary = document.createElement("summary");
-    summary.textContent = "مصادر تم التحقق منها (" + sources.length + ")";
+    summary.textContent = "مصادر البحث (" + sources.length + ")";
     const list = document.createElement("ul");
     const seenSources = new Set();
     for (const item of sources.slice(0, 8)) {
@@ -574,6 +574,122 @@ function setBusy(busy) {
   $("attachMenuBtn").disabled = busy;
   document.querySelector(".send-btn").textContent = busy ? "ونس بتفكر…" : "إرسال";
 }
+const ARABIC_SPELLING_ALIASES = new Map([
+  ["مبارة", "مباراة"],
+  ["مباره", "مباراة"],
+  ["مبراه", "مباراة"],
+  ["مباراه", "مباراة"],
+  ["منتخيب", "منتخب"],
+  ["منتحب", "منتخب"],
+  ["الاهلي", "الأهلي"],
+  ["الاهلى", "الأهلي"],
+  ["الزمالكك", "الزمالك"],
+  ["مصرر", "مصر"],
+  ["مواعيدد", "مواعيد"],
+  ["ابحت", "ابحث"],
+  ["إبحث", "ابحث"],
+  ["النهاردهه", "النهارده"],
+  ["دلوقتى", "دلوقتي"]
+]);
+const ARABIC_SPELLING_WORDS = [
+  "مباراة","مباريات","منتخب","مصر","الأهلي","الزمالك","موعد","مواعيد",
+  "القادمة","الدوري","المصري","كرة","القدم","القاهرة","الإسكندرية",
+  "النهارده","النهاردة","اليوم","الآن","الأسعار","الذهب","السعر",
+  "المعلومات","البحث","ابحث","إرسال","التطبيق","الموقع","الملف","الملفات",
+  "الرسالة","الصحيح","المصرية","الممتاز"
+];
+
+function normalizeArabicCorrectionToken(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
+    .replace(/ى/g, "ي")
+    .replace(/ـ/g, "")
+    .toLowerCase();
+}
+
+function arabicEditDistanceAtMostOne(left, right) {
+  const a = Array.from(left), b = Array.from(right);
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else { i++; j++; }
+  }
+  if (i < a.length || j < b.length) edits++;
+  return edits <= 1;
+}
+
+function getArabicSpellingSuggestion(value) {
+  const source = String(value || "");
+  const match = source.match(/(\\S+)\\s*$/u);
+  if (!match) return null;
+  const rawToken = match[1];
+  const parts = rawToken.match(/^([،,؛.!؟?]*)([\\p{L}\\p{M}]+)([،,؛.!؟?]*)$/u);
+  if (!parts) return null;
+  const token = parts[2];
+  const normalized = normalizeArabicCorrectionToken(token);
+  let corrected = ARABIC_SPELLING_ALIASES.get(token) || "";
+  if (!corrected) {
+    const candidates = ARABIC_SPELLING_WORDS.filter(word => {
+      const candidate = normalizeArabicCorrectionToken(word);
+      return candidate !== normalized &&
+        Math.abs(Array.from(candidate).length - Array.from(normalized).length) <= 1 &&
+        arabicEditDistanceAtMostOne(normalized, candidate);
+    });
+    const unique = [...new Set(candidates)];
+    if (unique.length === 1) corrected = unique[0];
+  }
+  if (!corrected || corrected === token) return null;
+  const correctedToken = parts[1] + corrected + parts[3];
+  const start = source.length - rawToken.length;
+  return {
+    original: token,
+    corrected,
+    value: source.slice(0, start) + correctedToken
+  };
+}
+
+let activeArabicCorrection = null;
+function updateArabicCorrectionSuggestion() {
+  const box = $("arabicCorrection");
+  const text = $("arabicCorrectionText");
+  if (!box || !text) return;
+  activeArabicCorrection = getArabicSpellingSuggestion($("messageInput").value);
+  if (!activeArabicCorrection) {
+    box.hidden = true;
+    text.textContent = "";
+    return;
+  }
+  text.textContent = "تصحيح مقترح: " + activeArabicCorrection.original + " ← " + activeArabicCorrection.corrected;
+  box.hidden = false;
+}
+
+function applyArabicCorrection() {
+  if (!activeArabicCorrection) return false;
+  const input = $("messageInput");
+  input.value = activeArabicCorrection.value;
+  input.focus();
+  const end = input.value.length;
+  input.setSelectionRange(end, end);
+  activeArabicCorrection = null;
+  updateArabicCorrectionSuggestion();
+  return true;
+}
+
+$("messageInput").addEventListener("input", updateArabicCorrectionSuggestion);
+$("applyArabicCorrection").addEventListener("mousedown", event => event.preventDefault());
+$("applyArabicCorrection").addEventListener("click", applyArabicCorrection);
+$("messageInput").addEventListener("keydown", event => {
+  if (event.key === "Tab" && activeArabicCorrection) {
+    event.preventDefault();
+    applyArabicCorrection();
+  }
+});
+
 function pendingActivityLabel(message, attachments = []) {
   const value = String(message || "").trim();
   const normalized = value.normalize("NFKC").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").toLowerCase();
