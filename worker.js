@@ -2163,6 +2163,37 @@ function getCurrentEgyptFootballSeason() {
   };
 }
 
+function hasUpcomingFootballDate(value, now = new Date()) {
+  const text = String(value || "");
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(now);
+  const current = {
+    year: Number(parts.find(item => item.type === "year")?.value),
+    month: Number(parts.find(item => item.type === "month")?.value),
+    day: Number(parts.find(item => item.type === "day")?.value)
+  };
+  const isFutureOrToday = (year, month, day) =>
+    Date.UTC(year, month - 1, day) >= Date.UTC(current.year, current.month - 1, current.day);
+  const numeric = /\\b(\\d{1,2})\\s*[\\/.-]\\s*(\\d{1,2})(?:\\s*[\\/.-]\\s*(20\\d{2}))?\\b/g;
+  let match;
+  while ((match = numeric.exec(text))) {
+    const day = Number(match[1]), month = Number(match[2]);
+    const year = Number(match[3] || current.year);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && isFutureOrToday(year, month, day)) return true;
+  }
+  const monthNames = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
+  const named = new RegExp("\\b(\\d{1,2})\\s+(" + monthNames + ")\\s*,?\\s*(20\\d{2})?\\b", "gi");
+  const monthNumbers = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+  while ((match = named.exec(text))) {
+    const month = monthNumbers[match[2].slice(0,3).toLowerCase()];
+    const year = Number(match[3] || current.year);
+    const day = Number(match[1]);
+    if (month && day >= 1 && day <= 31 && isFutureOrToday(year, month, day)) return true;
+  }
+  return false;
+}
+
 function hasVerifiableSportsScheduleSources(searchResult) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "");
@@ -2172,30 +2203,33 @@ function hasVerifiableSportsScheduleSources(searchResult) {
       String(season.endYear).slice(-2) + "|" + season.endYear + "))",
     "i"
   );
-  // Require the exact season and fixture wording inside each source's own result block.
-  // A current-season mention elsewhere must not validate an old-season fixture snippet.
+  const sections = results.split(/\\n{2,}/);
   const evidenceDomains = new Set();
   let evidenceSectionCount = 0;
-  const evidenceSections = results.split(/\n{2,}/);
-  for (const section of evidenceSections) {
-    if (!seasonPattern.test(section)) continue;
-    if (!/(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off)/i.test(section)) continue;
-    const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
+  for (const section of sections) {
+    const hasSeason = seasonPattern.test(section);
+    const hasScheduleWording = /(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off|upcoming)/i.test(section);
+    const hasEgyptFixture = /(?:\\begypt\\b|مصر).{0,180}(?:\\bmalawi\\b|\\b(?:angola|south sudan)\\b)|(?:\\bmalawi\\b|\\b(?:angola|south sudan)\\b).{0,180}(?:\\begypt\\b|مصر)/i.test(section);
+    const hasFutureDate = hasUpcomingFootballDate(section);
+    const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\\n]{0,120}(?:20\\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
+    if (!(hasSeason && hasScheduleWording) && !(hasEgyptFixture && hasFutureDate && hasRecentPublication)) continue;
+    const urls = section.match(/https?:\\/\\/[^\\s<>"')\\]]+/g) || [];
     const sectionDomains = new Set();
     for (const rawUrl of urls) {
       try {
-        const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\./, "");
+        const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\\./, "");
         if (host) sectionDomains.add(host);
       } catch {}
     }
-    if (sectionDomains.size) {
-      evidenceSectionCount++;
-      for (const host of sectionDomains) evidenceDomains.add(host);
-    }
+    if (!sectionDomains.size) continue;
+    evidenceSectionCount++;
+    for (const host of sectionDomains) evidenceDomains.add(host);
   }
-  // At least two distinct result blocks must each contain a current-season fixture and source URL.
-  return evidenceSectionCount >= 2 && evidenceDomains.size >= 2 && hasVerifiableLiveSources(searchResult, 2);
+  return evidenceSectionCount >= 2 &&
+    evidenceDomains.size >= 2 &&
+    hasVerifiableLiveSources(searchResult, 2);
 }
+
 
 // Gold prices require independent source evidence, not merely unrelated numbers and links.
 function hasVerifiableGoldPriceSources(searchResult) {
