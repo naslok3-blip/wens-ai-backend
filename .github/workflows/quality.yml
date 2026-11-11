@@ -26,7 +26,7 @@ jobs:
           node --check public/owner-panel.js
       - name: Run offline regression test suite
         run: |
-          node --test tests/research-intent.test.mjs tests/document-utils.test.mjs tests/egypt-time.test.mjs tests/memory-policy.test.mjs tests/agent-tool-utils.test.mjs
+          node --test tests/research-intent.test.mjs tests/arabic-language.test.mjs tests/document-utils.test.mjs tests/egypt-time.test.mjs tests/memory-policy.test.mjs tests/agent-tool-utils.test.mjs
       - name: Build production Worker with Wrangler
         run: npx --yes wrangler@4.158.0 deploy --dry-run
       - name: Verify published assets are in sync
@@ -262,7 +262,7 @@ jobs:
           SPORTS_STATUS=$(curl --silent --show-error --connect-timeout 10 --max-time 120 \
             -o /tmp/wens-sports-result.json -w '%{http_code}' -b /tmp/wens-sports-cookie.txt \
             -H 'Content-Type: application/json' -X POST \
-            --data '{"message":"مواعيد مباراة الأهلي القادمة في الدوري المصري"}' "$BASE/api/chat")
+            --data '{"message":"ابحث عن موعد منتخيب مصر الجاي"}' "$BASE/api/chat")
           if [ "$SPORTS_STATUS" != "200" ]; then cat /tmp/wens-sports-result.json; exit 1; fi
           python - <<'PY'
           import json, re
@@ -272,13 +272,14 @@ jobs:
           search=[item for item in activity if item.get('label') == 'البحث في المواقع الخارجية']
           assert len(search)==1, {'activity':activity,'reply':data.get('reply')}
           detail=str(search[0].get('detail',''))
-          assert '2026-2027' in detail, detail
+          assert '2026-2027' in detail and 'Egypt national football team' in detail, detail
           reply=str(data.get('reply',''))
           assert not re.search(r'2024\s*[-–/]\s*25|2025\s*[-–/]\s*26',reply), reply
+          assert not any('wikipedia' in str(src.get('domain','')).lower() for src in (data.get('sources') or [])), data.get('sources')
           assert 'خليني أبحث' not in reply and 'خليني ابحث' not in reply, reply
           if search[0].get('status') == 'failed':
               assert 'ما قدرتش أثبت' in reply, reply
-          print("Production Arabic upcoming-match request triggered live search; no stale season or empty search promise was returned.")
+          print("Production Egyptian dialect typo-tolerant national-team fixture request triggered live search; no stale season or Wikipedia sources were returned.")
           PY
       - name: Live agent and PDF Word Excel acceptance test
         if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
