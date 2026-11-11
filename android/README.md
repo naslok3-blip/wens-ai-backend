@@ -29,7 +29,7 @@
 
 ## آخر حزمة تحققت
 
-- GitHub Actions run: [42974631102](https://github.com/naslok3-blip/wens-ai-backend/actions/runs/42974631102) — نجاح البناء وفحص سلامة APK.
-- الحجم: 825,838 بايت.
-- SHA-256: `16fe0e4ecc31f98277f58ef065163390e9a09e39eb3190c10faccc0d14778549`.
+- GitHub Actions run: [42975629410](https://github.com/naslok3-blip/wens-ai-backend/actions/runs/42975629410) — نجاح البناء وفحص سلامة APK.
+- الحجم: 825,839 بايت.
+- SHA-256: `188f600e5ecdf45d126b836f54a70d4c73c772c4f033af95636e7d1209e206b4`.
 - هذا إثبات لسلامة بناء الحزمة، وليس إثباتًا لاختبارها على جهاز فعلي.
