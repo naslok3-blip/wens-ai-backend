@@ -2605,10 +2605,28 @@ async function handleAgent(request, env, user, options = {}) {
     const searchText = String(liveSearch?.results || "");
     const hasSearchText = !liveSearch?.error && searchText.length >= 80;
     rememberSources(liveSearch);
-    const searchVerified = !liveDataRequest
-      ? hasSearchText && sources.length > 0
-      : goldPriceRequest
-        ? hasVerifiableGoldPriceSources(liveSearch)
+    const searchVerified = sportsScheduleRequest
+      ? hasVerifiableSportsScheduleSources(liveSearch)
+      : !liveDataRequest
+        ? hasSearchText && sources.length > 0
+        : goldPriceRequest
+          ? hasVerifiableGoldPriceSources(liveSearch)
+          : hasVerifiableLiveSources(liveSearch, 1);
+    steps.push("البحث في المواقع الخارجية قبل صياغة الإجابة");
+    activity.push({
+      label: "البحث في المواقع الخارجية",
+      status: searchVerified ? "completed" : "failed",
+      detail: [
+        ...(liveSearch?.engines?.length ? ["محركات البحث: " + liveSearch.engines.join(" + ")] : []),
+        ...(liveSearch?.error ? ["سبب التعذر: " + String(liveSearch.error).slice(0, 120)] : []),
+        ...(liveSearch?.diagnostics?.length ? ["ملاحظات المحركات: " + liveSearch.diagnostics.join(" | ").slice(0, 180)] : []),
+        "المصادر المستخرجة: " + sources.length,
+        searchQuery
+      ].join(" · ")
+    });
+    if ((liveDataRequest || sportsScheduleRequest) && !searchVerified) {
+      const reply = goldPriceRequest
+        ? "بحثت في المواقع الخارجية، لكن ما لقيتش مصدرين مستقلين واضحين فيهم سعر الذهب بالجنيه ووقت تحديثه. مش هخمن أرقام؛ جرّب تاني بعد شوية."
         : sportsScheduleRequest
           ? "دورت على جدول المباريات للموسم الحالي " + getCurrentEgyptFootballSeason().full + "، لكن ما قدرتش أثبت موعد المباراة من مصدرين حديثين مستقلين. مش هعرض موسم قديم أو موعد غير مؤكد على إنه حالي."
           : "بحثت في المواقع الخارجية، لكن النتائج ما أثبتتش معلومة حديثة برقم أو توقيت ومصدر واضح. مش هخمن معلومة متغيرة.";
