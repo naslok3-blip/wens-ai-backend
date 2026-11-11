@@ -88,9 +88,13 @@
     </div>
     <div id="deepThinkBadge" class="deep-think-badge" hidden>🧠 التفكير العميق مفعّل <button id="disableDeepThink" type="button">إيقاف</button></div>
     <div id="attachmentsPreview" class="attachments-preview" hidden></div>
+    <div id="arabicCorrection" class="arabic-correction" role="status" aria-live="polite" hidden>
+      <span id="arabicCorrectionText"></span>
+      <button id="applyArabicCorrection" type="button">استخدم التصحيح</button>
+    </div>
     <form id="chatForm" class="chat-form">
       <button id="attachMenuBtn" class="attach-menu-btn" type="button" aria-label="إضافة مرفق أو أداة" aria-expanded="false">＋</button><button id="voiceBtn" class="voice-input-btn" type="button" aria-label="التحدث وإملاء رسالة صوتية"><span aria-hidden="true">🎙️</span><span id="voiceButtonText" class="visually-hidden">اتكلم معايا</span></button>
-      <input id="messageInput" placeholder="اكتب رسالتك أو أرفق ملفًا..." autocomplete="off" aria-label="رسالتك">
+      <input id="messageInput" placeholder="اكتب رسالتك أو أرفق ملفًا..." autocomplete="off" autocorrect="on" spellcheck="true" autocapitalize="sentences" aria-label="رسالتك" aria-describedby="arabicCorrectionText">
       <button class="send-btn" type="submit">إرسال</button>
     </form>
     <input id="cameraInput" class="visually-hidden-input" type="file" accept="image/jpeg,image/png,image/webp" capture="environment">
