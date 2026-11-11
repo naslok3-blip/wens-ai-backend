@@ -19,7 +19,8 @@ function extractFunction(name, nextName) {
 const helpers = [
   extractFunction("normalizeLiveDataText", "isEgyptGoldPriceRequest"),
   extractFunction("isEgyptGoldPriceRequest", "isLiveDataRequest"),
-  extractFunction("isLiveDataRequest", "isSportsScheduleRequest"),
+  extractFunction("isLiveDataRequest", "isEgyptNationalTeamRequest"),
+  extractFunction("isEgyptNationalTeamRequest", "isSportsScheduleRequest"),
   extractFunction("isSportsScheduleRequest", "hasVerifiableLiveSources"),
   extractFunction("hasVerifiableLiveSources", "hasVerifiableSportsScheduleSources"),
   extractFunction("isExplicitExternalSearchRequest", "isExternalResearchIntent"),
@@ -27,16 +28,17 @@ const helpers = [
   extractFunction("buildExternalSearchQuery", "extractExternalSources"),
   extractFunction("extractExternalSources", "handleAgent"),
   extractFunction("getCurrentEgyptFootballSeason", "hasVerifiableSportsScheduleSources"),
+  extractFunction("hasUpcomingFootballDate", "hasVerifiableSportsScheduleSources"),
   extractFunction("hasVerifiableSportsScheduleSources", "hasVerifiableGoldPriceSources"),
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  `${helpers}\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
+  `${helpers}\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
   sandbox
 );
-const { isExternalResearchIntent, isLiveDataRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
+const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -134,6 +136,57 @@ test("recognizes Egyptian football fixture and league schedule requests", () => 
   assert.equal(isSportsScheduleRequest("مواعيد مباريات الأهلي في الدوري المصري الممتاز"), true);
   assert.equal(isSportsScheduleRequest("جدول مباريات الدوري المصري"), true);
   assert.equal(isSportsScheduleRequest("ما هي كرة القدم؟"), false);
+});
+
+test("recognizes natural Egyptian national-team fixture wording and misspellings", () => {
+  for (const message of [
+    "ابحث عن موعد منتخب مصر",
+    "ميعاد منتخب مصر الجاي",
+    "متى ماتش منتخب مصر القادم",
+    "موعد مبارة منتخب مصر القادمة",
+    "موعد مبارة الاهلي الجاية"
+  ]) {
+    assert.equal(isSportsScheduleRequest(message), true, message);
+    assert.equal(isExternalResearchIntent(message), true, message);
+  }
+  assert.equal(isEgyptNationalTeamRequest("ابحث عن موعد منتخب مصر"), true);
+  assert.equal(isEgyptNationalTeamRequest("ميعاد منتخب مصر الجاي"), true);
+});
+
+test("Egyptian Arabic normalization recognises taa marbuta and diacritic variants", () => {
+  assert.equal(isSportsScheduleRequest("موعد مباراة منتخب مصر القادمة"), true);
+  assert.equal(isSportsScheduleRequest("موعد مباراه منتخب مصر القادمه"), true);
+  assert.equal(isExternalResearchIntent("مواعيد ماتشات الاهلى الجاية"), true);
+});
+
+test("builds a bilingual corrected query for Egypt national-team fixtures", () => {
+  const query = buildExternalSearchQuery("ابحث عن موعد منتخيب مصر الجاي");
+  assert.match(query, /منتخب مصر/);
+  assert.match(query, /Egypt national football team upcoming fixtures/);
+});
+
+test("upcoming fixture date parser rejects past dates and accepts future CAF dates", () => {
+  const now = new Date("2026-11-11T10:00:00+02:00");
+  assert.equal(hasUpcomingFootballDate("Egypt v Malawi (13/11, 19h00)", now), true);
+  assert.equal(hasUpcomingFootballDate("Egypt v Malawi (17 Nov 2026)", now), true);
+  assert.equal(hasUpcomingFootballDate("Egypt v Malawi (13/10/2026)", now), false);
+});
+
+test("Egypt national-team fixtures require two recent independent sources with future dates", () => {
+  const result = {
+    results:
+      "جدول منتخب مصر — CAF\\nPublished: 2026-11-10\\nEgypt v Malawi (13/11, 19h00) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
+      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2026-11-10\\nEgypt v Malawi (13 Nov 2026, 21:00 Cairo) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), true);
+  const oneSource = { results: result.results.split("\\n\\n")[0] };
+  assert.equal(hasVerifiableSportsScheduleSources(oneSource), false);
+  const stale = {
+    results:
+      "جدول منتخب مصر — CAF\\nPublished: 2024-11-10\\nEgypt v Malawi (13/11/2024) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
+      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2024-11-10\\nEgypt v Malawi (13 Nov 2024) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(stale), false);
 });
 
 test("routes singular upcoming match-date phrases through external live search", () => {
