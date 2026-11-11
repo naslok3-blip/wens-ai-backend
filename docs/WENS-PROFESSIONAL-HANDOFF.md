@@ -208,8 +208,8 @@
 ### ملف Android التجريبي
 - Workflow run: [42974631102](https://github.com/naslok3-blip/wens-ai-backend/actions/runs/42974631102).
 - Artifact: `wens-android-apk`، صلاحيته على GitHub حتى 11 ديسمبر 2026.
-- الملف `app-debug.apk`، الحجم 825,837 بايت.
-- SHA-256: `3a06b8ecd6c12aba54a4e86b579e8436d443d47caaf2e51065c91e89b027bf43`.
+- الملف `app-debug.apk`، الحجم 825,838 بايت.
+- SHA-256: `16fe0e4ecc31f98277f58ef065163390e9a09e39eb3190c10faccc0d14778549`.
 - تم تنزيل الحزمة وفكها وفحص ZIP محليًا؛ لم تظهر أخطاء في الأرشيف. الحزمة Debug ولا تحمل مفتاح توقيع Release للنشر بمتجر التطبيقات.
 
 ### عناصر لم أدّعِ اكتمالها
