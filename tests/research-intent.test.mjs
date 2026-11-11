@@ -229,7 +229,7 @@ test("rejects a one-source current-season fixture even if the page is fresh", ()
   const year = new Date().getUTCFullYear();
   const result = {
     results:
-      "[جدول الدوري " + year + "](https://one.example/fixtures) مباريات الأهلي اليوم آخر تحديث 10:30"
+      "[جدول الدوري " + year + "](https://one.example/fixtures) مباريات الأهلي 13 Nov " + year + " Updated " + year + "-11-10"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
 });
