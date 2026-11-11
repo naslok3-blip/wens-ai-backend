@@ -88,6 +88,9 @@ const checks = [
   [app, "صوت عربي متاح على الهاتف", "speech UI identifies the Arabic fallback honestly"],
 
   [worker, "function isLiveDataRequest(message)", "changing information is routed through mandatory live verification"],
+  [worker, ".replace(/ة/g, \"ه\")", "Arabic taa marbuta normalized for singular match detection"],
+  [worker, "|| isSportsScheduleRequest(value)", "football fixture phrases always trigger live web research"],
+  [worker, "function isSportsScheduleRequest(message)", "singular and plural Arabic fixture phrases are recognized"],
   [worker, 'executeAgentTool("search_web", { query: searchQuery }, env, user)', "live verification searches before model response"],
   [worker, "hasVerifiableGoldPriceSources(liveSearch)", "gold prices require independent timestamped EGP sources"],
   [worker, "hasVerifiableLiveSources(liveSearch, 1)", "other changing facts require a current external source"],
@@ -168,6 +171,8 @@ const liveIntentCases = [
   ["سعر الذهب اليوم في مصر", true],
   ["سعر الذهب", true],
   ["كام الدولار دلوقتي", true],
+  ["مواعيد مباراة الاهلي القادمة", true],
+  ["ميعاد مباراة الأهلي القادمة", true],
   ["الطقس في القاهرة الآن", true],
   ["سعر اليورو", true],
   ["اشرح لي ما هو الذهب", false],
