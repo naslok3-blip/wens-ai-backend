@@ -973,6 +973,7 @@ $("chatForm").addEventListener("submit", async event => {
   const payload = attachmentPayload();
   const deepThink = deepThinkEnabled;
   $("messageInput").value = "";
+  updateArabicCorrectionSuggestion();
   clearPendingAttachments();
   closeAttachmentMenu();
   setBusy(true);
