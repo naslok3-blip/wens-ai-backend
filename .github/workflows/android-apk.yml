@@ -23,6 +23,17 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
         working-directory: android
+      - name: Verify APK artifact integrity
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          SIZE="$(stat -c '%s' "$APK")"
+          test "$SIZE" -gt 100000
+          unzip -tq "$APK"
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          echo "APK integrity verified: $SIZE bytes"
       - uses: actions/upload-artifact@v4
         with:
           name: wens-android-apk
