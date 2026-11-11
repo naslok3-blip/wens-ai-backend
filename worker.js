@@ -2085,9 +2085,11 @@ function normalizeLiveDataText(value) {
     .normalize("NFKC")
     .replace(/[أإآ]/g, "ا")
     .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
     .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .toLowerCase();
 }
+
 
 function isEgyptGoldPriceRequest(message) {
   const text = normalizeLiveDataText(message);
@@ -2098,15 +2100,16 @@ function isEgyptGoldPriceRequest(message) {
 function isLiveDataRequest(message) {
   const text = normalizeLiveDataText(message);
   const dynamicTopic = /(?:سعر|اسعار|ثمن|تكلفه|ذهب|دهب|gold|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|عملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|امطار|مباراه|مباريات|نتيجه|ترتيب|weather|forecast|exchange rate|currency|stock price|bitcoin|crypto|live score)/i.test(text);
-  const explicitCurrent = /(?:اليوم|النهارده|دلوقتي|حاليا|الان|مباشر|اخر|احدث|today|current|now|latest|live)/i.test(text);
+  const explicitCurrent = /(?:اليوم|النهارده|دلوقتي|حاليا|الان|مباشر|اخر|احدث|القادم|القادمه|الجاي|الجايه|التالي|التاليه|المقبل|المقبله|today|current|now|latest|upcoming|live)/i.test(text);
   const intrinsicallyLive = /(?:سعر|اسعار|ثمن|تكلفه|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|مباراه|مباريات|weather|forecast|exchange rate|stock price|bitcoin|crypto|live score)/i.test(text);
   return dynamicTopic && (explicitCurrent || intrinsicallyLive);
 }
 
 function isSportsScheduleRequest(message) {
   const text = normalizeLiveDataText(message);
-  return /(?:مباريات|مباراة|مواعيد.{0,40}(?:مباراة|الدوري|الاهلي)|الدوري.{0,40}(?:مواعيد|جدول|مباريات)|جدول.{0,30}مباريات|fixtures|match schedule|league schedule)/i.test(text);
+  return /(?:مواعيد|ميعاد|معاد|موعد).{0,55}(?:مباراه|مباريات|الدوري|الاهلي|الزمالك)|(?:مباراه|مباريات).{0,55}(?:القادم|القادمه|الجاي|الجايه|التالي|التاليه|المقبل|المقبله|الاهلي|الزمالك)|(?:الدوري|جدول).{0,40}(?:مواعيد|جدول|مباريات)|fixtures|match schedule|league schedule/i.test(text);
 }
+
 
 function hasVerifiableLiveSources(searchResult, minimumSources = 1) {
   if (!searchResult || searchResult.error) return false;
@@ -2218,7 +2221,7 @@ function isExplicitExternalSearchRequest(message) {
 function isExternalResearchIntent(message) {
   const value = String(message || "").trim();
   if (!value) return false;
-  if (isExplicitExternalSearchRequest(value) || isLiveDataRequest(value)) return true;
+  if (isExplicitExternalSearchRequest(value) || isLiveDataRequest(value) || isSportsScheduleRequest(value)) return true;
   const text = normalizeLiveDataText(value);
   if (/^(?:ازيك|عامل ايه|عامله ايه|اخبارك|صباح الخير|مساء الخير|تصبحي على خير|شكرا|متشكر|تمام|حاضر)(?:\s|[؟?!]|$)/i.test(text)) return false;
   const actionLead = /^(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|تعديل|طور|طوري|ابني|ابنيلي|اصنع|اصنعي|احفظ|استعيد|ارشف|سجل\s+دخول|سجل\s+خروج|افتحلي|شغل|ارفع|انشر|جهز|جهزي|create|build|edit|update|modify|deploy|upload)(?:لي|لنا)?(?:\s|[؟?!]|$)/i.test(text) ||
@@ -2607,25 +2610,7 @@ async function handleAgent(request, env, user, options = {}) {
       : goldPriceRequest
         ? hasVerifiableGoldPriceSources(liveSearch)
         : sportsScheduleRequest
-          ? hasVerifiableSportsScheduleSources(liveSearch)
-          : hasVerifiableLiveSources(liveSearch, 1);
-    steps.push("البحث في المواقع الخارجية قبل صياغة الإجابة");
-    activity.push({
-      label: "البحث في المواقع الخارجية",
-      status: searchVerified ? "completed" : "failed",
-      detail: [
-        ...(liveSearch?.engines?.length ? ["محركات البحث: " + liveSearch.engines.join(" + ")] : []),
-        ...(liveSearch?.error ? ["سبب التعذر: " + String(liveSearch.error).slice(0, 120)] : []),
-        ...(liveSearch?.diagnostics?.length ? ["ملاحظات المحركات: " + liveSearch.diagnostics.join(" | ").slice(0, 180)] : []),
-        "المصادر المستخرجة: " + sources.length,
-        searchQuery
-      ].join(" · ")
-    });
-    if (liveDataRequest && !searchVerified) {
-      const reply = goldPriceRequest
-        ? "بحثت في المواقع الخارجية، لكن ما لقيتش مصدرين مستقلين واضحين فيهم سعر الذهب بالجنيه ووقت تحديثه. مش هخمن أرقام؛ جرّب تاني بعد شوية."
-        : sportsScheduleRequest
-          ? "دورت على مواعيد مباريات الدوري المصري، لكن النتائج ما أثبتتش جدول الموسم الحالي " + (new Date().getUTCFullYear()) + "-" + (new Date().getUTCFullYear() + 1) + " من مصدرين مستقلين. مش هعرض مواعيد موسم قديم زي 2024-25 على إنها مواعيد حالية."
+          ? "دورت على جدول المباريات للموسم الحالي " + getCurrentEgyptFootballSeason().full + "، لكن ما قدرتش أثبت موعد المباراة من مصدرين حديثين مستقلين. مش هعرض موسم قديم أو موعد غير مؤكد على إنه حالي."
           : "بحثت في المواقع الخارجية، لكن النتائج ما أثبتتش معلومة حديثة برقم أو توقيت ومصدر واضح. مش هخمن معلومة متغيرة.";
       if (options.persist && env.DB && user) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
