@@ -200,16 +200,16 @@
 - Wens Quality Checks #42974654253: **success** على commit `e155835293da22a43e136fbf2d8e66e51519de2d`. شمل فحص الصياغة، واختبارات document-utils وagent-tool-utils ووقت مصر والذاكرة ونيات البحث، وبناء Wrangler وعمليات الفحص الأخرى.
 - Wens Quality Checks #42973647923: **success** بعد جعل اختبار الإنتاج الحي يدويًا، مع نجاح جميع الفحوص التلقائية.
 - Wens Quality Checks #42834367449: **success** بعد إعادة المحاولة إثر تجدد الحصة المجانية؛ أكمل اختبار الوكيل والحاسبة والبحث والمصادر وقراءة عينات PDF/DOCX/XLSX وإنشاء مشروع الويب ومعاينته وتنزيله.
-- Build Wens Android APK #42974631102: **success**، بما في ذلك خطوة Verify APK artifact integrity.
+- Build Wens Android APK #42975629410: **success**، بما في ذلك خطوة Verify APK artifact integrity.
 - فحص Worker في Cloudflare: آخر نشر ظاهر بتاريخ 11 نوفمبر 2026 06:46:08 UTC بنسبة توجيه 100% إلى نسخة واحدة.
 - فحص إعداد Worker أظهر bindings المسماة AI وASSETS وBROWSER وDB. لم تُقرأ قيم أي Secrets ولم يتم تغييرها.
 - فحص D1 الإنتاجية أظهر قاعدة `wens-ai-db` والجداول التطبيقية للحسابات والجلسات والرسائل والإعدادات والمهام والذاكرة والإشعارات والمشروعات. كان الاستعلام مقتصرًا على أسماء الجداول والفهارس، دون قراءة صفوف المستخدمين.
 
 ### ملف Android التجريبي
-- Workflow run: [42974631102](https://github.com/naslok3-blip/wens-ai-backend/actions/runs/42974631102).
-- Artifact: `wens-android-apk`، صلاحيته على GitHub حتى 11 ديسمبر 2026.
-- الملف `app-debug.apk`، الحجم 825,838 بايت.
-- SHA-256: `16fe0e4ecc31f98277f58ef065163390e9a09e39eb3190c10faccc0d14778549`.
+- Workflow run: [42975629410](https://github.com/naslok3-blip/wens-ai-backend/actions/runs/42975629410).
+- Artifact: `wens-android-apk`، صلاحيته على GitHub حتى 11 ديسمبر 2026 06:54 UTC.
+- الملف `app-debug.apk`، الحجم 825,839 بايت.
+- SHA-256: `188f600e5ecdf45d126b836f54a70d4c73c772c4f033af95636e7d1209e206b4`.
 - تم تنزيل الحزمة وفكها وفحص ZIP محليًا؛ لم تظهر أخطاء في الأرشيف. الحزمة Debug ولا تحمل مفتاح توقيع Release للنشر بمتجر التطبيقات.
 
 ### عناصر لم أدّعِ اكتمالها
