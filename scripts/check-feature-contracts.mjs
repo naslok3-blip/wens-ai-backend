@@ -20,6 +20,14 @@ const checks = [
   [app, "synth.getVoices()", "selects installed device voices"],
   [app, "femaleVoice(egyptianVoices)", "prefers installed Egyptian voices before Arabic fallback"],
   [app, "cleanRepeatedReplyText", "legacy repeated replies cleaned in chat UI"],
+  [app, "function getArabicSpellingSuggestion(value)", "Arabic typo suggestions are generated before send"],
+  [app, "function applyArabicCorrection()", "corrections are applied only after explicit user action"],
+  [app, "ARABIC_SPELLING_ALIASES", "common Egyptian Arabic spelling variants are recognized"],
+  [app, "aria-live=\"polite\"", "spelling suggestions are announced accessibly"],
+  [index, 'id="arabicCorrection"', "visible Arabic spelling correction suggestion area"],
+  [index, 'spellcheck="true"', "native device spelling checker is enabled"],
+  [index, 'autocorrect="on"', "mobile keyboard autocorrection is enabled"],
+
   [app, "function getArabicSpellingSuggestion(value)", "Egyptian Arabic typo suggestion before sending"],
   [app, "function applyArabicCorrection()", "user can apply an Arabic spelling correction explicitly"],
   [app, "updateArabicCorrectionSuggestion();", "correction prompt clears with the sent message"],
@@ -95,6 +103,13 @@ const checks = [
   [app, "صوت عربي متاح على الهاتف", "speech UI identifies the Arabic fallback honestly"],
 
   [worker, "function isLiveDataRequest(message)", "changing information is routed through mandatory live verification"],
+  [worker, "function isEgyptNationalTeamRequest(message)", "Egyptian national-team fixture wording is recognized"],
+  [worker, "function hasUpcomingFootballDate(value", "sports results must include future match dates"],
+  [worker, "Bing News RSS", "a second free news search feed is available"],
+  [worker, "DuckDuckGo Web Search", "real web results are fetched instead of instant answers only"],
+  [worker, "CAF — الاتحاد الأفريقي لكرة القدم", "CAF fixture source is checked for Egypt"],
+  [worker, "EFA — الاتحاد المصري لكرة القدم", "Egypt FA fixture source is checked for Egypt"],
+
   [worker, "function isEgyptNationalTeamRequest(message)", "Egypt national-team fixture phrases are explicitly recognized"],
   [worker, "function hasUpcomingFootballDate(value", "future fixture date parser prevents stale schedules"],
   [worker, "Bing News RSS", "independent free news search fallback"],
