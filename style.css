@@ -237,6 +237,24 @@ main.app{width:min(1120px,100%);max-width:100%;height:0;min-height:0;flex:1 1 au
 .activity-spinner{width:15px;height:15px;flex:0 0 15px;border:2px solid currentColor;border-left-color:transparent;border-radius:50%;animation:wens-activity-spin .8s linear infinite}
 .activity-label{font-size:13px;line-height:1.7}
 @keyframes wens-activity-spin{to{transform:rotate(360deg)}}
+.research-trace,.source-trace{margin-top:12px;border:1px solid #e3e7ef;border-radius:13px;padding:9px 11px;background:#f8fafc;color:#344054}
+.research-trace summary,.source-trace summary{cursor:pointer;color:#5840a8;font-size:12px;font-weight:700;list-style-position:inside}
+.research-trace ul,.source-trace ul{margin:9px 0 2px;padding:0 18px 0 0;color:#475467;font-size:12px;line-height:1.9;overflow-wrap:anywhere}
+.research-trace li,.source-trace li{margin:3px 0}
+.research-trace .trace-completed{color:#166534}
+.research-trace .trace-failed{color:#b42318}
+.research-trace .trace-pending{color:#475467}
+.source-trace a{color:#49368f;text-decoration:underline;text-underline-offset:2px}
+
+/* Egyptian Arabic spelling correction */
+.arabic-correction{display:flex;align-items:center;justify-content:flex-start;gap:9px;flex-wrap:wrap;margin:0 4px 8px;padding:8px 11px;border:1px solid #d8cef5;border-radius:12px;background:#f8f5ff;color:#49368f;font-size:12px;line-height:1.6}
+.arabic-correction[hidden]{display:none!important}
+.arabic-correction button{border:0;border-radius:9px;background:#6848c7;color:#fff;padding:6px 11px;font:inherit;font-weight:700;cursor:pointer}
+.arabic-correction button:focus-visible{outline:2px solid #342078;outline-offset:2px}
+.activity-bubble{display:flex;align-items:center;gap:10px;color:var(--muted);min-height:44px}
+.activity-spinner{width:15px;height:15px;flex:0 0 15px;border:2px solid currentColor;border-left-color:transparent;border-radius:50%;animation:wens-activity-spin .8s linear infinite}
+.activity-label{font-size:13px;line-height:1.7}
+@keyframes wens-activity-spin{to{transform:rotate(360deg)}}
 .research-trace,.source-trace{margin-top:12px;border:1px solid #ffffff1a;border-radius:13px;padding:9px 11px;background:#ffffff05}
 .research-trace summary,.source-trace summary{cursor:pointer;color:var(--purple);font-size:12px;font-weight:700;list-style-position:inside}
 .research-trace ul,.source-trace ul{margin:9px 0 2px;padding:0 18px 0 0;color:var(--muted);font-size:12px;line-height:1.9;overflow-wrap:anywhere}
