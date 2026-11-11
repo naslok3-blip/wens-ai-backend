@@ -1964,7 +1964,7 @@ async function executeAgentTool(name, args, env, user) {
           addSource(source.label, source.url);
           sections.push([
             "جدول منتخب مصر — " + source.label,
-            publicationDate ? "تاريخ نشر/تحديث المصدر: " + publicationDate : "",
+            publicationDate ? "تاريخ النشر: " + publicationDate + " (Published/Updated)" : "",
             "تمت مراجعة صفحة المصدر بتاريخ: " + new Date().toISOString(),
             snippets.join("\\n"),
             "الرابط: " + source.url
@@ -2299,6 +2299,14 @@ function hasUpcomingFootballDate(value, now = new Date()) {
   const monthNumbers = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
   while ((match = named.exec(text))) {
     const month = monthNumbers[match[2].slice(0,3).toLowerCase()];
+    const year = Number(match[3] || current.year);
+    const day = Number(match[1]);
+    if (month && day >= 1 && day <= 31 && isFutureOrToday(year, month, day)) return true;
+  }
+  const arabicMonths = /(\\d{1,2})\\s+(يناير|فبراير|مارس|ابريل|أبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)(?:\\s+(20\\d{2}))?/g;
+  const arabicMonthNumbers = { "يناير":1,"فبراير":2,"مارس":3,"ابريل":4,"أبريل":4,"مايو":5,"يونيو":6,"يوليو":7,"أغسطس":8,"اغسطس":8,"سبتمبر":9,"أكتوبر":10,"اكتوبر":10,"نوفمبر":11,"ديسمبر":12 };
+  while ((match = arabicMonths.exec(text))) {
+    const month = arabicMonthNumbers[match[2]];
     const year = Number(match[3] || current.year);
     const day = Number(match[1]);
     if (month && day >= 1 && day <= 31 && isFutureOrToday(year, month, day)) return true;
@@ -2802,7 +2810,7 @@ async function handleAgent(request, env, user, options = {}) {
       const reply = goldPriceRequest
         ? "بحثت في المواقع الخارجية، لكن ما لقيتش مصدرين مستقلين واضحين فيهم سعر الذهب بالجنيه ووقت تحديثه. مش هخمن أرقام؛ جرّب تاني بعد شوية."
         : sportsScheduleRequest
-          ? "دورت على جدول المباريات للموسم الحالي " + getCurrentEgyptFootballSeason().full + "، لكن ما قدرتش أثبت موعد المباراة من مصدرين حديثين مستقلين. مش هعرض موسم قديم أو موعد غير مؤكد على إنه حالي."
+          ? "بحثت عن مواعيد المباريات القادمة، لكن ما قدرتش أثبت الموعد من مصدرين حديثين مستقلين. مش هذكر تاريخ أو وقت غير مؤكد."
           : "بحثت في المواقع الخارجية، لكن النتائج ما أثبتتش معلومة حديثة برقم أو توقيت ومصدر واضح. مش هخمن معلومة متغيرة.";
       if (options.persist && env.DB && user) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
