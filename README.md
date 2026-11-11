@@ -110,7 +110,7 @@ npx wrangler d1 migrations apply wens-ai-db --remote
 - فحص الإنتاج: صحة Worker وربط Workers AI وD1 وBrowser، أصول الواجهة ولوحة المالك وواجهات الإعدادات، وفحص ترحيلات قاعدة البيانات — **نجاح** في مسار الجودة.
 - قبول إنتاجي سابق: [Wens Quality Checks #42834367449](https://github.com/naslok3-blip/wens-ai-backend/actions/runs/42834367449) — **نجاح** لاختبارات الوكيل والبحث وقراءة عينات PDF/DOCX/XLSX وإنشاء مشروع ويب ومعاينته وتنزيله والتحقق من عزل الوصول.
 - بناء Android Debug: [Build Wens Android APK #42974631102](https://github.com/naslok3-blip/wens-ai-backend/actions/runs/42974631102) — **نجاح**، مع فحص سلامة أرشيف APK قبل رفعه.
-- APK التجريبي: `app-debug.apk`، الحجم 825,837 بايت، SHA-256: `3a06b8ecd6c12aba54a4e86b579e8436d443d47caaf2e51065c91e89b027bf43`. صلاحية Artifact على GitHub حتى 11 ديسمبر 2026.
+- APK التجريبي: `app-debug.apk`، الحجم 825,838 بايت، SHA-256: `16fe0e4ecc31f98277f58ef065163390e9a09e39eb3190c10faccc0d14778549`. صلاحية Artifact على GitHub حتى 11 ديسمبر 2026.
 - إعداد Android: تعطيل النسخ الاحتياطي التلقائي لبيانات التطبيق (`allowBackup=false)) وتفعيل دعم RTL. لا توجد مفاتيح API داخل APK.
 - قاعدة الإنتاج `wens-ai-db` فُحصت بقراءة أسماء الجداول والفهارس فقط؛ توجد الجداول الأساسية للحسابات والجلسات والرسائل والمهام والإعدادات والذاكرة والإشعارات والمشروعات. لم تُقرأ بيانات المستخدمين.
 
