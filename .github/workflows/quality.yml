@@ -24,6 +24,9 @@ jobs:
           node --check public/admin.js
           node --check owner-panel.js
           node --check public/owner-panel.js
+      - name: Run offline regression test suite
+        run: |
+          node --test tests/research-intent.test.mjs tests/document-utils.test.mjs tests/egypt-time.test.mjs tests/memory-policy.test.mjs tests/agent-tool-utils.test.mjs
       - name: Build production Worker with Wrangler
         run: npx --yes wrangler@4.158.0 deploy --dry-run
       - name: Verify published assets are in sync
