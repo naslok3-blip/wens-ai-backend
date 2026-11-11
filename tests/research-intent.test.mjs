@@ -33,10 +33,10 @@ const helpers = [
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  `${helpers}\nmodule.exports = { isExternalResearchIntent, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
+  `${helpers}\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
   sandbox
 );
-const { isExternalResearchIntent, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
+const { isExternalResearchIntent, isLiveDataRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -134,6 +134,21 @@ test("recognizes Egyptian football fixture and league schedule requests", () => 
   assert.equal(isSportsScheduleRequest("مواعيد مباريات الأهلي في الدوري المصري الممتاز"), true);
   assert.equal(isSportsScheduleRequest("جدول مباريات الدوري المصري"), true);
   assert.equal(isSportsScheduleRequest("ما هي كرة القدم؟"), false);
+});
+
+test("routes singular upcoming match-date phrases through external live search", () => {
+  for (const message of [
+    "مواعيد مباراة الاهلي القادمة",
+    "ميعاد مباراة الاهلي القادمة",
+    "ميعاد مباراة الأهلي القادمة",
+    "موعد مباراة الأهلي الجاية",
+    "مباراة الأهلي القادمة",
+    "ميعاد مباريات الأهلي القادم"
+  ]) {
+    assert.equal(isSportsScheduleRequest(message), true, message);
+    assert.equal(isLiveDataRequest(message), true, message);
+    assert.equal(isExternalResearchIntent(message), true, message);
+  }
 });
 
 test("rejects old-season league schedules even when they contain dates and links", () => {
