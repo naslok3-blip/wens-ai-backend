@@ -4,6 +4,7 @@ on:
     branches: [ main ]
     paths:
       - 'android/**'
+      - '!android/README.md'
       - '.github/workflows/android-apk.yml'
   workflow_dispatch:
 permissions:
