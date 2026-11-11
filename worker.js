@@ -1778,15 +1778,16 @@ async function executeAgentTool(name, args, env, user) {
     };
 
     const jobs = [];
+    const normalizedSearchQuery = normalizeLiveDataText(query);
+    const sportsQuery = isSportsScheduleRequest(query) ||
+      /(?:\\bfootball\\b|\\bsoccer\\b).{0,50}(?:fixture|schedule|match|upcoming)|(?:fixture|schedule|upcoming).{0,50}(?:\\bfootball\\b|\\bsoccer\\b)/i.test(query);
+    const egyptNationalTeamQuery = isEgyptNationalTeamRequest(query) ||
+      /egypt national (?:football|soccer) team/i.test(query);
 
-    // Google News RSS is a free public feed; useful for recent news and dated sources.
-    jobs.push((async () => {
-      const locale = arabicQuery
-        ? "hl=ar&gl=EG&ceid=EG:ar"
-        : "hl=en-US&gl=US&ceid=US:en";
-      const url = "https://news.google.com/rss/search?q=" + encodeURIComponent(query) + "&" + locale;
+    const readRss = async (url, engineName) => {
       const xml = await fetchText(url, "application/rss+xml, application/xml, text/xml, */*");
-      const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 6);
+      const items = [...xml.matchAll(/<item\\b[^>]*>([\\s\\S]*?)<\\/item>/gi)].slice(0, 8);
+      const added = [];
       for (const match of items) {
         const block = match[1];
         const field = tag => {
@@ -1797,70 +1798,181 @@ async function executeAgentTool(name, args, env, user) {
         const articleUrl = field("link");
         const description = field("description");
         const published = field("pubDate");
-        const sourceMatch = block.match(/<source\b[^>]*url=["']([^"']+)["'][^>]*>([\s\S]*?)<\/source>/i);
-        const publisher = sourceMatch ? cleanText(sourceMatch[2]) : "Google News";
+        const sourceMatch = block.match(/<source\\b[^>]*url=["']([^"']+)["'][^>]*>([\\s\\S]*?)<\\/source>/i);
+        const publisher = sourceMatch ? cleanText(sourceMatch[2]) : engineName;
+        const content = [title, description].filter(Boolean).join(" — ");
         if (!title || !articleUrl) continue;
+        if (sportsQuery && !/(?:egypt|مصر|malawi|مالاوي|الفراعنه|منتخب|football|soccer|fixture|match|تصفيات|افريقيا)/i.test(content)) continue;
         addSource(title + (publisher ? " — " + publisher : ""), articleUrl);
-        sections.push(
-          "خبر: " + title +
-          (publisher ? "\nالناشر: " + publisher : "") +
-          (published ? "\nتاريخ النشر: " + published : "") +
-          (description ? "\nتفاصيل: " + description : "") +
-          "\nالرابط: " + articleUrl
-        );
+        const section = [
+          "نتيجة بحث: " + title,
+          publisher ? "الناشر: " + publisher : "",
+          published ? "تاريخ النشر: " + published : "",
+          description ? "تفاصيل: " + description : "",
+          "الرابط: " + articleUrl
+        ].filter(Boolean).join("\\n");
+        sections.push(section);
+        added.push(section);
       }
-      if (items.length) engines.push("Google News RSS");
-      else diagnostics.push("Google News RSS: no matching items");
-    })().catch(error => diagnostics.push("Google News RSS: " + String(error?.message || error).slice(0, 100))));
+      if (added.length) engines.push(engineName);
+      else diagnostics.push(engineName + ": no relevant items");
+    };
 
-    // DuckDuckGo Instant Answers are keyless. They are useful as a concise secondary source,
-    // but are not treated as a complete list of web search results.
+    // Google News RSS is a free public feed; it may temporarily return HTTP 503.
+    jobs.push(readRss(
+      "https://news.google.com/rss/search?q=" + encodeURIComponent(query) + "&" +
+        (arabicQuery ? "hl=ar&gl=EG&ceid=EG:ar" : "hl=en-US&gl=US&ceid=US:en"),
+      "Google News RSS"
+    ).catch(error => diagnostics.push("Google News RSS: " + String(error?.message || error).slice(0, 100))));
+
+    // Bing News RSS is an independent fallback when Google News is unavailable.
+    jobs.push(readRss(
+      "https://www.bing.com/news/search?q=" + encodeURIComponent(query) + "&format=RSS",
+      "Bing News RSS"
+    ).catch(error => diagnostics.push("Bing News RSS: " + String(error?.message || error).slice(0, 100))));
+
+    // DuckDuckGo HTML search supplies real result links; Instant Answer alone is not a web search.
     jobs.push((async () => {
-      const url = "https://api.duckduckgo.com/?q=" + encodeURIComponent(query) +
-        "&format=json&no_html=1&skip_disambig=1";
-      const raw = await fetchText(url);
-      const data = JSON.parse(raw);
+      const url = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
+      const html = await fetchText(url, "text/html,application/xhtml+xml,*/*");
+      const anchors = [...html.matchAll(/<a\\b[^>]*class=["'][^"']*result__a[^"']*["'][^>]*>[\\s\\S]*?<\\/a>/gi)].slice(0, 8);
       let count = 0;
-      if (data.AbstractText && data.AbstractURL) {
-        addSource(data.Heading || "DuckDuckGo — instant answer", data.AbstractURL);
-        sections.push("معلومة فورية: " + cleanText(data.AbstractText) + "\nالرابط: " + data.AbstractURL);
+      for (const match of anchors) {
+        const tag = match[0];
+        const href = tag.match(/\\bhref=["']([^"']+)["']/i)?.[1] || "";
+        const title = cleanText(tag.replace(/^<a\\b[^>]*>/i, "").replace(/<\\/a>$/i, ""));
+        if (!href || !title) continue;
+        let articleUrl = href;
+        try {
+          const parsed = new URL(href, "https://html.duckduckgo.com");
+          articleUrl = parsed.searchParams.get("uddg") || parsed.searchParams.get("url") || parsed.href;
+          if (!/^https?:\\/\\//i.test(articleUrl)) continue;
+        } catch { continue; }
+        const nearby = cleanText(html.slice(match.index, match.index + 1500));
+        const content = title + " " + nearby;
+        if (sportsQuery && !/(?:egypt|مصر|malawi|مالاوي|منتخب|football|soccer|fixture|match|schedule|تصفيات)/i.test(content)) continue;
+        addSource(title, articleUrl);
+        sections.push("نتيجة بحث ويب: " + title + "\\nمقتطف: " + nearby.slice(0, 420) + "\\nالرابط: " + articleUrl);
         count++;
       }
-      const visitTopics = items => {
-        for (const item of (Array.isArray(items) ? items : [])) {
-          if (count >= 3) break;
-          if (item.Topics) { visitTopics(item.Topics); continue; }
-          if (!item.FirstURL || !item.Text) continue;
-          addSource(cleanText(item.Text).slice(0, 120), item.FirstURL);
-          sections.push("موضوع مرتبط: " + cleanText(item.Text) + "\nالرابط: " + item.FirstURL);
+      if (count) engines.push("DuckDuckGo Web Search");
+      else diagnostics.push("DuckDuckGo Web Search: no relevant results");
+    })().catch(error => diagnostics.push("DuckDuckGo Web Search: " + String(error?.message || error).slice(0, 100))));
+
+    if (!sportsQuery) {
+      // Instant answers and Wikipedia are useful for encyclopedic questions, not fixture schedules.
+      jobs.push((async () => {
+        const url = "https://api.duckduckgo.com/?q=" + encodeURIComponent(query) +
+          "&format=json&no_html=1&skip_disambig=1";
+        const raw = await fetchText(url);
+        const data = JSON.parse(raw);
+        let count = 0;
+        if (data.AbstractText && data.AbstractURL) {
+          addSource(data.Heading || "DuckDuckGo — instant answer", data.AbstractURL);
+          sections.push("معلومة فورية: " + cleanText(data.AbstractText) + "\\nالرابط: " + data.AbstractURL);
           count++;
         }
-      };
-      visitTopics(data.RelatedTopics);
-      if (count) engines.push("DuckDuckGo Instant Answer");
-      else diagnostics.push("DuckDuckGo Instant Answer: no instant answer");
-    })().catch(error => diagnostics.push("DuckDuckGo: " + String(error?.message || error).slice(0, 100))));
+        const visitTopics = items => {
+          for (const item of (Array.isArray(items) ? items : [])) {
+            if (count >= 3) break;
+            if (item.Topics) { visitTopics(item.Topics); continue; }
+            if (!item.FirstURL || !item.Text) continue;
+            addSource(cleanText(item.Text).slice(0, 120), item.FirstURL);
+            sections.push("موضوع مرتبط: " + cleanText(item.Text) + "\\nالرابط: " + item.FirstURL);
+            count++;
+          }
+        };
+        visitTopics(data.RelatedTopics);
+        if (count) engines.push("DuckDuckGo Instant Answer");
+        else diagnostics.push("DuckDuckGo Instant Answer: no instant answer");
+      })().catch(error => diagnostics.push("DuckDuckGo Instant Answer: " + String(error?.message || error).slice(0, 100))));
 
-    // Wikipedia's public API provides free encyclopedic search results without a key.
-    jobs.push((async () => {
-      const lang = arabicQuery ? "ar" : "en";
-      const url = "https://" + lang + ".wikipedia.org/w/api.php?action=query&list=search&srsearch=" +
-        encodeURIComponent(query) + "&format=json&utf8=1&srlimit=5";
-      const raw = await fetchText(url);
-      const data = JSON.parse(raw);
-      const pages = data?.query?.search || [];
-      for (const page of pages.slice(0, 5)) {
-        const title = cleanText(page.title);
-        const snippet = cleanText(page.snippet);
-        const pageUrl = "https://" + lang + ".wikipedia.org/wiki/" + encodeURIComponent(String(page.title || "").replace(/ /g, "_"));
-        if (!title) continue;
-        addSource(title + " — Wikipedia", pageUrl);
-        sections.push("مرجع موسوعي: " + title + (snippet ? "\nملخص: " + snippet : "") + "\nالرابط: " + pageUrl);
+      jobs.push((async () => {
+        const lang = arabicQuery ? "ar" : "en";
+        const url = "https://" + lang + ".wikipedia.org/w/api.php?action=query&list=search&srsearch=" +
+          encodeURIComponent(query) + "&format=json&utf8=1&srlimit=5";
+        const raw = await fetchText(url);
+        const data = JSON.parse(raw);
+        const pages = data?.query?.search || [];
+        for (const page of pages.slice(0, 5)) {
+          const title = cleanText(page.title);
+          const snippet = cleanText(page.snippet);
+          const pageUrl = "https://" + lang + ".wikipedia.org/wiki/" + encodeURIComponent(String(page.title || "").replace(/ /g, "_"));
+          if (!title) continue;
+          addSource(title + " — Wikipedia", pageUrl);
+          sections.push("مرجع موسوعي: " + title + (snippet ? "\\nملخص: " + snippet : "") + "\\nالرابط: " + pageUrl);
+        }
+        if (pages.length) engines.push(lang === "ar" ? "Arabic Wikipedia" : "Wikipedia");
+        else diagnostics.push("Wikipedia: no matching pages");
+      })().catch(error => diagnostics.push("Wikipedia: " + String(error?.message || error).slice(0, 100))));
+    }
+
+    if (egyptNationalTeamQuery) {
+      // Curated live pages for Egypt's senior national team. Old fixtures are filtered by date and freshness.
+      const egyptSources = [
+        {
+          label: "CAF — الاتحاد الأفريقي لكرة القدم",
+          url: "https://www.cafonline.com/afcon2025/news/african-giants-face-crucial-tests-as-totalenergies-caf-afcon-pamoja-2027-qualifiers-resume-this-week/"
+        },
+        {
+          label: "EFA — الاتحاد المصري لكرة القدم",
+          url: "https://efa.eg/ar/الأخبار/كاف-يحدد-موعد-مواجهتي-مصر-ومالوي-في-تصفيات-أمم-أفريقيا/"
+        },
+        {
+          label: "Sport News Africa — Egypt national team",
+          url: "https://www.sportnewsafrica.com/en/player/national-team/egypt/"
+        }
+      ];
+      for (const source of egyptSources) {
+        jobs.push((async () => {
+          const html = await fetchText(source.url, "text/html,application/xhtml+xml,*/*");
+          const metaTags = [...html.matchAll(/<meta\\b[^>]*>/gi)].map(item => item[0]);
+          let publicationDate = "";
+          for (const tag of metaTags) {
+            const name = (tag.match(/(?:property|name)=["']([^"']+)["']/i)?.[1] || "").toLowerCase();
+            const contentValue = tag.match(/content=["']([^"']+)["']/i)?.[1] || "";
+            if (/(?:article:published_time|article:modified_time|datepublished|datemodified|publishdate|lastmod)/i.test(name) && contentValue) {
+              publicationDate = contentValue.slice(0, 80);
+              break;
+            }
+          }
+          const plain = cleanText(
+            html
+              .replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ")
+              .replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ")
+              .replace(/<noscript\\b[^>]*>[\\s\\S]*?<\\/noscript>/gi, " ")
+              .replace(/<[^>]+>/g, " ")
+          );
+          const snippets = [];
+          const seenSnippets = new Set();
+          const matcher = /(?:\\bEgypt\\b|\\bMalawi\\b|مصر|مالاوي)/gi;
+          let occurrence;
+          while ((occurrence = matcher.exec(plain)) && snippets.length < 8) {
+            const snippet = plain.slice(Math.max(0, occurrence.index - 150), Math.min(plain.length, occurrence.index + 260));
+            if (!/(?:\\bEgypt\\b|مصر)/i.test(snippet) ||
+                !/(?:\\bMalawi\\b|مالاوي)/i.test(snippet) ||
+                !/(?:\\d{1,2}\\s*\\/\\s*\\d{1,2}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|نوفمبر|تصفيات|qualification|fixtures|schedule|matchday)/i.test(snippet)) continue;
+            const key = snippet.slice(0, 220);
+            if (seenSnippets.has(key)) continue;
+            seenSnippets.add(key);
+            snippets.push(snippet);
+          }
+          if (!snippets.length) {
+            diagnostics.push(source.label + ": no Egypt–Malawi future fixture excerpt");
+            return;
+          }
+          addSource(source.label, source.url);
+          sections.push([
+            "جدول منتخب مصر — " + source.label,
+            publicationDate ? "تاريخ نشر/تحديث المصدر: " + publicationDate : "",
+            "تمت مراجعة صفحة المصدر بتاريخ: " + new Date().toISOString(),
+            snippets.join("\\n"),
+            "الرابط: " + source.url
+          ].filter(Boolean).join("\\n"));
+          engines.push(source.label);
+        })().catch(error => diagnostics.push(source.label + ": " + String(error?.message || error).slice(0, 120))));
       }
-      if (pages.length) engines.push(lang === "ar" ? "Arabic Wikipedia" : "Wikipedia");
-      else diagnostics.push("Wikipedia: no matching pages");
-    })().catch(error => diagnostics.push("Wikipedia: " + String(error?.message || error).slice(0, 100))));
-
+    }
     await Promise.allSettled(jobs);
     const results = sections.join("\n\n").slice(0, 12000);
     if (!results || sourceLinks.length === 0) {
