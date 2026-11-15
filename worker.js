@@ -1859,7 +1859,7 @@ async function executeAgentTool(name, args, env, user) {
           published ? "تاريخ النشر: " + published : "",
           description ? "تفاصيل: " + description : "",
           "الرابط: " + articleUrl
-        ].filter(Boolean).join("\\n");
+        ].filter(Boolean).join("\n");
         sections.push(section);
         added.push(section);
       }
@@ -1901,7 +1901,7 @@ async function executeAgentTool(name, args, env, user) {
         const content = title + " " + nearby;
         if (sportsQuery && !/(?:egypt|مصر|malawi|مالاوي|منتخب|football|soccer|fixture|match|schedule|تصفيات)/i.test(content)) continue;
         addSource(title, articleUrl);
-        sections.push("نتيجة بحث ويب: " + title + "\\nمقتطف: " + nearby.slice(0, 420) + "\\nالرابط: " + articleUrl);
+        sections.push("نتيجة بحث ويب: " + title + "\nمقتطف: " + nearby.slice(0, 420) + "\nالرابط: " + articleUrl);
         count++;
       }
       if (count) engines.push("DuckDuckGo Web Search");
@@ -1918,7 +1918,7 @@ async function executeAgentTool(name, args, env, user) {
         let count = 0;
         if (data.AbstractText && data.AbstractURL) {
           addSource(data.Heading || "DuckDuckGo — instant answer", data.AbstractURL);
-          sections.push("معلومة فورية: " + cleanText(data.AbstractText) + "\\nالرابط: " + data.AbstractURL);
+          sections.push("معلومة فورية: " + cleanText(data.AbstractText) + "\nالرابط: " + data.AbstractURL);
           count++;
         }
         const visitTopics = items => {
@@ -1927,7 +1927,7 @@ async function executeAgentTool(name, args, env, user) {
             if (item.Topics) { visitTopics(item.Topics); continue; }
             if (!item.FirstURL || !item.Text) continue;
             addSource(cleanText(item.Text).slice(0, 120), item.FirstURL);
-            sections.push("موضوع مرتبط: " + cleanText(item.Text) + "\\nالرابط: " + item.FirstURL);
+            sections.push("موضوع مرتبط: " + cleanText(item.Text) + "\nالرابط: " + item.FirstURL);
             count++;
           }
         };
@@ -1949,7 +1949,7 @@ async function executeAgentTool(name, args, env, user) {
           const pageUrl = "https://" + lang + ".wikipedia.org/wiki/" + encodeURIComponent(String(page.title || "").replace(/ /g, "_"));
           if (!title) continue;
           addSource(title + " — Wikipedia", pageUrl);
-          sections.push("مرجع موسوعي: " + title + (snippet ? "\\nملخص: " + snippet : "") + "\\nالرابط: " + pageUrl);
+          sections.push("مرجع موسوعي: " + title + (snippet ? "\nملخص: " + snippet : "") + "\nالرابط: " + pageUrl);
         }
         if (pages.length) engines.push(lang === "ar" ? "Arabic Wikipedia" : "Wikipedia");
         else diagnostics.push("Wikipedia: no matching pages");
@@ -2015,9 +2015,9 @@ async function executeAgentTool(name, args, env, user) {
             "جدول منتخب مصر — " + source.label,
             publicationDate ? "تاريخ النشر: " + publicationDate + " (Published/Updated)" : "",
             "تمت مراجعة صفحة المصدر بتاريخ: " + new Date().toISOString(),
-            snippets.join("\\n"),
+            snippets.join("\n"),
             "الرابط: " + source.url
-          ].filter(Boolean).join("\\n"));
+          ].filter(Boolean).join("\n"));
           engines.push(source.label);
         })().catch(error => diagnostics.push(source.label + ": " + String(error?.message || error).slice(0, 120))));
       }
@@ -2028,7 +2028,12 @@ async function executeAgentTool(name, args, env, user) {
       return {
         error: "جربت مصادر بحث مجانية، لكن مفيش نتائج موثوقة متاحة للطلب ده دلوقتي. مش هألف نتائج.",
         query,
-        attempted: ["Google News RSS", "DuckDuckGo Instant Answer", "Wikipedia"],
+        attempted: [
+          "Google News RSS",
+          "Bing News RSS",
+          "DuckDuckGo Web Search",
+          ...(!sportsQuery ? ["DuckDuckGo Instant Answer", arabicQuery ? "Arabic Wikipedia" : "Wikipedia"] : [])
+        ],
         diagnostics: diagnostics.slice(0, 4),
         sources: []
       };
