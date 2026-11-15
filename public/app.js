@@ -233,6 +233,18 @@ if (adminBrandEntry) {
   });
 }
 
+// Support the five-tap owner shortcut on Wens's actual chat portrait.
+// Delegate the handler so it also works for avatars added after a reply.
+document.addEventListener("click", event => {
+  const avatar = event.target instanceof Element
+    ? event.target.closest(".mini-avatar[alt='ونس']")
+    : null;
+  if (!avatar) return;
+  event.preventDefault();
+  event.stopPropagation();
+  handleAdminAvatarTap();
+});
+
 function updateAuthMode() {
   const registering = authMode === "register";
   $("nameField").hidden = !registering;
