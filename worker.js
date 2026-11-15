@@ -2226,6 +2226,16 @@ async function extractDocumentAttachments(env, documents, userRequest) {
   };
 }
 
+function isDashboardCreationFollowup(message, history = []) {
+  const text = normalizeLiveDataText(message);
+  const dashboardOnly = /^(?:لوحه\s+تحكم|لوحه\s+تحكم\s+(?:للالداره|اداريه|لاداره|للمديرين)|لوحه\s+اداره|dashboard|admin\s+dashboard)$/i.test(text);
+  if (!dashboardOnly || !Array.isArray(history)) return false;
+  const recentUsers = history.filter(item => item?.role === "user").slice(-8);
+  const recentText = recentUsers.map(item => normalizeLiveDataText(item.content || "")).join(" ");
+  const priorCreation = /(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|ابني|create|build|make).{0,50}(?:تطبيق|برنامج|موقع|app|website)/i.test(recentText);
+  return priorCreation;
+}
+
 function isProjectCreationIntent(message) {
   const normalized = String(message || "")
     .normalize("NFKC")
@@ -2773,10 +2783,15 @@ async function handleAgent(request, env, user, options = {}) {
     }
     return json({ ok: true, model: result.model, steps, activity: [{ label: requestedImageTool === "edit_image" ? "تعديل الصورة المرفقة" : "إنشاء صورة", status: "completed" }], sources, reply, generatedImages });
   }
-  const projectCreationIntent = isProjectCreationIntent(message);
+  const dashboardFollowup = isDashboardCreationFollowup(message, conversationHistory);
+  const projectCreationIntent = isProjectCreationIntent(message) || dashboardFollowup;
   if (projectCreationIntent) {
     const kind = /(?:لعبة|game)/i.test(message) ? "game" : "app";
-    const result = await createWebProject(env, user, { kind, title: kind === "game" ? "لعبة ونس" : "تطبيق ونس", prompt: message }, { diagnostics: request.headers.get("x-wens-diagnostics") === "project-agent-e2e" });
+    const projectPrompt = dashboardFollowup
+      ? "أنشئ لوحة تحكم إدارية احترافية متكاملة كتطبيق ويب عربي RTL ومتجاوب مع الهاتف. اعتبر طلب المستخدم السابق بإنشاء تطبيق احترافي هو سياق هذه الرسالة. لا تسأل أسئلة توضيحية إضافية؛ أنشئ نموذجًا أوليًا عمليًا يتضمن بطاقات مؤشرات، رسومًا بيانية، جدول بيانات، بحثًا وفلاتر، قائمة جانبية، إعدادات، وبيانات تجريبية واضحة لا تمثل بيانات حقيقية."
+      : message;
+    const projectTitle = dashboardFollowup ? "لوحة تحكم إدارية" : kind === "game" ? "لعبة ونس" : "تطبيق ونس";
+    const result = await createWebProject(env, user, { kind, title: projectTitle, prompt: projectPrompt }, { diagnostics: request.headers.get("x-wens-diagnostics") === "project-agent-e2e" });
     if (!result?.project) {
       steps.push("إنشاء المشروع — تعذّر: " + String(result?.error || "فشل توليد الملف"));
       return json({ ok: false, error: result?.error || "تعذّر إنشاء المشروع.", steps, ...(result?.diagnostic ? { diagnostic: result.diagnostic } : {}) }, 502);
