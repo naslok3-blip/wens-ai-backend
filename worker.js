@@ -193,7 +193,7 @@ async function issueSession(db, user, eventType = "login") {
 function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثناء تنفيذ طلب الحساب. جرّب مرة أخرى.") {
   const raw = String(error?.message || error || "unknown");
   const safeDetail = raw
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
     .replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]")
     .slice(0, 240);
   console.error("[WENS_AUTH_FAILURE]", JSON.stringify({
@@ -1389,7 +1389,7 @@ async function createWebProject(env, user, args, options = {}) {
   } catch (error) {
     const raw = String(error?.message || error || "unknown");
     const detail = raw
-      .replace(/Bearer\\s+[^\\s]+/gi, "Bearer [redacted]")
+      .replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]")
       .replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g, "[redacted]")
       .slice(0, 220);
     const category = /quota|billing|payment|neurons|allocation/i.test(raw)
@@ -1829,13 +1829,13 @@ async function executeAgentTool(name, args, env, user) {
     const jobs = [];
     const normalizedSearchQuery = normalizeLiveDataText(query);
     const sportsQuery = isSportsScheduleRequest(query) ||
-      /(?:\\bfootball\\b|\\bsoccer\\b).{0,50}(?:fixture|schedule|match|upcoming)|(?:fixture|schedule|upcoming).{0,50}(?:\\bfootball\\b|\\bsoccer\\b)/i.test(query);
+      /(?:\bfootball\b|\bsoccer\b).{0,50}(?:fixture|schedule|match|upcoming)|(?:fixture|schedule|upcoming).{0,50}(?:\bfootball\b|\bsoccer\b)/i.test(query);
     const egyptNationalTeamQuery = isEgyptNationalTeamRequest(query) ||
       /egypt national (?:football|soccer) team/i.test(query);
 
     const readRss = async (url, engineName) => {
       const xml = await fetchText(url, "application/rss+xml, application/xml, text/xml, */*");
-      const items = [...xml.matchAll(/<item\\b[^>]*>([\\s\\S]*?)<\\/item>/gi)].slice(0, 8);
+      const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 8);
       const added = [];
       for (const match of items) {
         const block = match[1];
@@ -1847,7 +1847,7 @@ async function executeAgentTool(name, args, env, user) {
         const articleUrl = field("link");
         const description = field("description");
         const published = field("pubDate");
-        const sourceMatch = block.match(/<source\\b[^>]*url=["']([^"']+)["'][^>]*>([\\s\\S]*?)<\\/source>/i);
+        const sourceMatch = block.match(/<source\b[^>]*url=["']([^"']+)["'][^>]*>([\s\S]*?)<\/source>/i);
         const publisher = sourceMatch ? cleanText(sourceMatch[2]) : engineName;
         const content = [title, description].filter(Boolean).join(" — ");
         if (!title || !articleUrl) continue;
@@ -1884,18 +1884,18 @@ async function executeAgentTool(name, args, env, user) {
     jobs.push((async () => {
       const url = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
       const html = await fetchText(url, "text/html,application/xhtml+xml,*/*");
-      const anchors = [...html.matchAll(/<a\\b[^>]*class=["'][^"']*result__a[^"']*["'][^>]*>[\\s\\S]*?<\\/a>/gi)].slice(0, 8);
+      const anchors = [...html.matchAll(/<a\b[^>]*class=["'][^"']*result__a[^"']*["'][^>]*>[\s\S]*?<\/a>/gi)].slice(0, 8);
       let count = 0;
       for (const match of anchors) {
         const tag = match[0];
-        const href = tag.match(/\\bhref=["']([^"']+)["']/i)?.[1] || "";
-        const title = cleanText(tag.replace(/^<a\\b[^>]*>/i, "").replace(/<\\/a>$/i, ""));
+        const href = tag.match(/\bhref=["']([^"']+)["']/i)?.[1] || "";
+        const title = cleanText(tag.replace(/^<a\b[^>]*>/i, "").replace(/<\/a>$/i, ""));
         if (!href || !title) continue;
         let articleUrl = href;
         try {
           const parsed = new URL(href, "https://html.duckduckgo.com");
           articleUrl = parsed.searchParams.get("uddg") || parsed.searchParams.get("url") || parsed.href;
-          if (!/^https?:\\/\\//i.test(articleUrl)) continue;
+          if (!/^https?:\/\//i.test(articleUrl)) continue;
         } catch { continue; }
         const nearby = cleanText(html.slice(match.index, match.index + 1500));
         const content = title + " " + nearby;
@@ -1975,7 +1975,7 @@ async function executeAgentTool(name, args, env, user) {
       for (const source of egyptSources) {
         jobs.push((async () => {
           const html = await fetchText(source.url, "text/html,application/xhtml+xml,*/*");
-          const metaTags = [...html.matchAll(/<meta\\b[^>]*>/gi)].map(item => item[0]);
+          const metaTags = [...html.matchAll(/<meta\b[^>]*>/gi)].map(item => item[0]);
           let publicationDate = "";
           for (const tag of metaTags) {
             const name = (tag.match(/(?:property|name)=["']([^"']+)["']/i)?.[1] || "").toLowerCase();
@@ -1987,20 +1987,20 @@ async function executeAgentTool(name, args, env, user) {
           }
           const plain = cleanText(
             html
-              .replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ")
-              .replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ")
-              .replace(/<noscript\\b[^>]*>[\\s\\S]*?<\\/noscript>/gi, " ")
+              .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+              .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+              .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
               .replace(/<[^>]+>/g, " ")
           );
           const snippets = [];
           const seenSnippets = new Set();
-          const matcher = /(?:\\bEgypt\\b|\\bMalawi\\b|مصر|مالاوي)/gi;
+          const matcher = /(?:\bEgypt\b|\bMalawi\b|مصر|مالاوي)/gi;
           let occurrence;
           while ((occurrence = matcher.exec(plain)) && snippets.length < 8) {
             const snippet = plain.slice(Math.max(0, occurrence.index - 150), Math.min(plain.length, occurrence.index + 260));
-            if (!/(?:\\bEgypt\\b|مصر)/i.test(snippet) ||
-                !/(?:\\bMalawi\\b|مالاوي)/i.test(snippet) ||
-                !/(?:\\d{1,2}\\s*\\/\\s*\\d{1,2}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|نوفمبر|تصفيات|qualification|fixtures|schedule|matchday)/i.test(snippet)) continue;
+            if (!/(?:\bEgypt\b|مصر)/i.test(snippet) ||
+                !/(?:\bMalawi\b|مالاوي)/i.test(snippet) ||
+                !/(?:\d{1,2}\s*\/\s*\d{1,2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|نوفمبر|تصفيات|qualification|fixtures|schedule|matchday)/i.test(snippet)) continue;
             const key = snippet.slice(0, 220);
             if (seenSnippets.has(key)) continue;
             seenSnippets.add(key);
@@ -3386,7 +3386,7 @@ export default {
       return json({ error: "المسار غير موجود." }, 404);
     } catch (error) {
       const detail = String(error?.message || error || "unknown")
-        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
         .replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]")
         .slice(0, 240);
       console.error("[WENS_REQUEST_FAILURE]", JSON.stringify({
