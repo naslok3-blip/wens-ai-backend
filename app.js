@@ -625,35 +625,32 @@ function arabicEditDistanceAtMostOne(left, right) {
 
 function getArabicSpellingSuggestion(value) {
   const source = String(value || "");
-  const match = source.match(/(\S+)\s*$/u);
-  if (!match) return null;
-  const rawToken = match[1];
-  const parts = rawToken.match(/^([،,؛.!؟?]*)([\p{L}\p{M}]+)([،,؛.!؟?]*)$/u);
-  if (!parts) return null;
-  const token = parts[2];
-  const normalized = normalizeArabicCorrectionToken(token);
-  let corrected = ARABIC_SPELLING_ALIASES.get(token) || "";
-  if (!corrected) {
-    const candidates = ARABIC_SPELLING_WORDS.filter(word => {
-      const candidate = normalizeArabicCorrectionToken(word);
-      return candidate !== normalized &&
-        Math.abs(Array.from(candidate).length - Array.from(normalized).length) <= 1 &&
-        arabicEditDistanceAtMostOne(normalized, candidate);
-    });
-    const unique = [...new Set(candidates)];
-    if (unique.length === 1) corrected = unique[0];
+  const tokens = [...source.matchAll(/[\p{L}\p{M}]+/gu)];
+  for (let index = tokens.length - 1; index >= 0; index--) {
+    const token = tokens[index][0];
+    const normalized = normalizeArabicCorrectionToken(token);
+    let corrected = ARABIC_SPELLING_ALIASES.get(token) || "";
+    if (!corrected) {
+      const candidates = ARABIC_SPELLING_WORDS.filter(word => {
+        const candidate = normalizeArabicCorrectionToken(word);
+        return candidate !== normalized &&
+          Math.abs(Array.from(candidate).length - Array.from(normalized).length) <= 1 &&
+          arabicEditDistanceAtMostOne(normalized, candidate);
+      });
+      const unique = [...new Set(candidates)];
+      if (unique.length === 1) corrected = unique[0];
+    }
+    if (!corrected || corrected === token) continue;
+    const start = tokens[index].index;
+    return {
+      original: token,
+      corrected,
+      value: source.slice(0, start) + corrected + source.slice(start + token.length)
+    };
   }
-  if (!corrected || corrected === token) return null;
-  const correctedToken = parts[1] + corrected + parts[3];
-  const start = source.length - rawToken.length;
-  return {
-    original: token,
-    corrected,
-    value: source.slice(0, start) + correctedToken
-  };
+  return null;
 }
 
-let activeArabicCorrection = null;
 function updateArabicCorrectionSuggestion() {
   const box = $("arabicCorrection");
   const text = $("arabicCorrectionText");
