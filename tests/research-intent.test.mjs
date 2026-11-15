@@ -173,10 +173,16 @@ test("upcoming fixture date parser rejects past dates and accepts future CAF dat
 });
 
 test("Egypt national-team fixtures require two recent independent sources with future dates", () => {
+  const upcoming = new Date(Date.now() + 7 * 86400000);
+  const day = String(upcoming.getUTCDate()).padStart(2, "0");
+  const month = String(upcoming.getUTCMonth() + 1).padStart(2, "0");
+  const year = upcoming.getUTCFullYear();
+  const numericDate = day + "/" + month;
+  const namedDate = day + " " + new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" }).format(upcoming) + " " + year;
   const result = {
     results:
-      "جدول منتخب مصر — CAF\\nPublished: 2026-11-10\\nEgypt v Malawi (13/11, 19h00) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
-      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2026-11-10\\nEgypt v Malawi (13 Nov 2026, 21:00 Cairo) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
+      "جدول منتخب مصر — CAF\\nPublished: " + new Date().toISOString().slice(0, 10) + "\\nEgypt v Malawi (" + numericDate + ", 19h00) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
+      "جدول منتخب مصر — EFA\\nتاريخ النشر: " + new Date().toISOString().slice(0, 10) + "\\nEgypt v Malawi (" + namedDate + ", 21:00 Cairo) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
   const oneSource = { results: result.results.split("\\n\\n")[0] };
