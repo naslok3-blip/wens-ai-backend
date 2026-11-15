@@ -2374,12 +2374,22 @@ function hasVerifiableSportsScheduleSources(searchResult) {
   const sections = results.split(/\n{2,}/);
   const evidenceDomains = new Set();
   let evidenceSectionCount = 0;
+  const publicationLabel = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث|منشور|منشورة|نشر)/i;
   for (const section of sections) {
     const hasSeason = seasonPattern.test(section);
     const hasScheduleWording = /(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off|upcoming)/i.test(section);
     const hasEgyptFixture = /(?:\begypt\b|مصر).{0,180}(?:\bmalawi\b|\b(?:angola|south sudan)\b)|(?:\bmalawi\b|\b(?:angola|south sudan)\b).{0,180}(?:\begypt\b|مصر)/i.test(section);
     const hasFutureDate = hasUpcomingFootballDate(section);
-    const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\n]{0,120}(?:20\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
+    const hasTodayPublication =
+      /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث|منشور|منشورة|نشر)[^\n]{0,80}(?:today|yesterday|اليوم|امس|أمس)/i.test(section) ||
+      /(?:today|yesterday|اليوم|امس|أمس)[^\n]{0,80}(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث|منشور|منشورة|نشر)/i.test(section);
+    const publishedDateMatch = section.match(/(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\n]{0,80}?(20\d{2}[-/]\d{1,2}[-/]\d{1,2})/i);
+    const publishedDate = publishedDateMatch ? new Date(publishedDateMatch[1].replace(/\//g, "-") + "T12:00:00Z") : null;
+    const publishedAgeDays = publishedDate && Number.isFinite(publishedDate.getTime())
+      ? (Date.now() - publishedDate.getTime()) / 86400000
+      : Infinity;
+    const hasRecentPublication = publicationLabel.test(section) &&
+      (hasTodayPublication || (publishedAgeDays >= -1 && publishedAgeDays <= 45));
     if (!hasScheduleWording || (!hasFutureDate && !hasSeason) || !hasRecentPublication || (!hasSeason && !hasEgyptFixture)) continue;
     const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     const sectionDomains = new Set();
