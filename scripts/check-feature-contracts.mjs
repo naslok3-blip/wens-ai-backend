@@ -23,7 +23,7 @@ const checks = [
   [app, "function getArabicSpellingSuggestion(value)", "Arabic typo suggestions are generated before send"],
   [app, "function applyArabicCorrection()", "corrections are applied only after explicit user action"],
   [app, "ARABIC_SPELLING_ALIASES", "common Egyptian Arabic spelling variants are recognized"],
-  [app, "aria-live=\"polite\"", "spelling suggestions are announced accessibly"],
+  [index, "aria-live=\"polite\"", "spelling suggestions are announced accessibly"],
   [index, 'id="arabicCorrection"', "visible Arabic spelling correction suggestion area"],
   [index, 'spellcheck="true"', "native device spelling checker is enabled"],
   [index, 'autocorrect="on"', "mobile keyboard autocorrection is enabled"],
