@@ -787,7 +787,7 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
+      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
       features: {
         workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
@@ -1460,7 +1460,7 @@ async function listWebProjects(env, user, args = {}) {
 
 async function editWebProject(env, user, args = {}) {
   if (!env.DB || !user) return { error: "سجّل الدخول أولًا لتعديل مشروعاتك." };
-  if (!env.AI) return { error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." };
+  if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." };
   const id = String(args.id || "").trim();
   const prompt = String(args.prompt || "").trim().slice(0, 2200);
   if (!/^[0-9a-f-]{36}$/i.test(id)) return { error: "معرّف المشروع غير صالح. اعرض مشروعاتك أولًا." };
@@ -1474,7 +1474,9 @@ async function editWebProject(env, user, args = {}) {
   if (originalHtml.length > 45000) {
     return { error: "المشروع كبير جدًا للتعديل الآلي في النسخة المجانية الحالية. اطلب تعديل جزء أصغر أو أنشئ نسخة أخف." };
   }
-  const model = env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash";
+  const model = env.OPENAI_API_KEY
+    ? (env.WENS_OPENAI_PROJECT_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.2-sol")
+    : (env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash");
   const system = [
     "You are a senior frontend engineer modifying an existing standalone HTML5 application.",
     "Return only the complete updated HTML document. Preserve all existing working features unless the user explicitly requests a change.",
@@ -1484,7 +1486,7 @@ async function editWebProject(env, user, args = {}) {
     "Do not remove data, features, screens, or user content unrelated to the requested change. Output the entire HTML document only."
   ].join("\n");
   try {
-    const result = await env.AI.run(model, {
+    const result = await runWensModel(env, model, {
       messages: [
         { role: "system", content: system },
         {
@@ -3302,8 +3304,8 @@ async function agentTasksRoute(request, env, user) {
 }
 
 async function handleChat(request, env, user) {
-  if (!env.AI) {
-    return json({ error: "خدمة الذكاء الاصطناعي المجانية غير مربوطة على الخادم." }, 503);
+  if (!env.AI && !env.OPENAI_API_KEY) {
+    return json({ error: "خدمة الذكاء الاصطناعي غير مربوطة على الخادم." }, 503);
   }
   const db = env.DB || null;
   let body;
