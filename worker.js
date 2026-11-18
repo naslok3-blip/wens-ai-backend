@@ -69,6 +69,9 @@ function json(data, status = 200, headers = {}) {
 // In particular, the daily free Neurons quota is shared across models in the account.
 function classifyWorkersAiFailure(error) {
   const raw = String(error?.message || error || "unknown");
+  if (/OPENAI_API_ERROR_401|invalid_api_key/i.test(raw)) return { code: "OPENAI_KEY_INVALID", status: 503, message: "مفتاح OpenAI الموجود على الخادم غير صالح. راجع إعداد OPENAI_API_KEY في Cloudflare." };
+  if (/OPENAI_API_ERROR_429|rate_limit|insufficient_quota/i.test(raw)) return { code: "OPENAI_RATE_LIMIT", status: 429, message: "وصلنا لحد الاستخدام أو معدل الطلبات في OpenAI. راجع رصيد وميزانية API ثم جرّب تاني." };
+  if (/OPENAI_API_ERROR_5\\d\\d/.test(raw)) return { code: "OPENAI_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مشغولة مؤقتًا. جرّب تاني بعد شوية." };
   const quotaExhausted =
     /daily free allocation/i.test(raw) ||
     /used up.{0,100}(?:10,?000\s+neurons|neurons)/i.test(raw) ||
@@ -785,9 +788,9 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
+      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
       features: {
-        workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
+        openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
         naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
       }
@@ -796,7 +799,7 @@ async function adminRoute(request, env, path) {
   if (path === "/api/admin/test-ai" && request.method === "POST") {
     if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "لم يتم ربط محرك الذكاء الاصطناعي على الخادم." }, 503);
     try {
-      const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
       const result = await runWensTextModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
