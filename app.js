@@ -39,7 +39,7 @@ function applyLocalSettings() {
   const voiceButton = $("voiceBtn");
   if (voiceButton) voiceButton.hidden = !appSettings.enableVoice;
   const avatarSrc = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
-  document.querySelectorAll(".mini-avatar").forEach(image => { image.src = avatarSrc; });
+  document.querySelectorAll(".mini-avatar, .brand-avatar, .auth-avatar").forEach(image => { image.src = avatarSrc; });
   const themes = {
     purple: ["#b49aff", "#ffacd6"],
     blue: ["#83baff", "#8ce8ef"],
@@ -233,6 +233,18 @@ if (adminBrandEntry) {
   });
 }
 
+// Support the five-tap owner shortcut on Wens's actual chat portrait.
+// Delegate the handler so it also works for avatars added after a reply.
+document.addEventListener("click", event => {
+  const avatar = event.target instanceof Element
+    ? event.target.closest(".mini-avatar[alt='ونس']")
+    : null;
+  if (!avatar) return;
+  event.preventDefault();
+  event.stopPropagation();
+  handleAdminAvatarTap();
+});
+
 function updateAuthMode() {
   const registering = authMode === "register";
   $("nameField").hidden = !registering;
@@ -323,36 +335,41 @@ function cleanRepeatedReplyText(value) {
   return output.join("\n").trim();
 }
 function appendMessageText(container, text) {
-  const source = String(text ?? "");
-  const pattern = /\[([^\]\n]{1,100})\]\((https:\/\/[^)\s]+)\)|(https:\/\/[^\s<>"']+)/g;
+  const source = String(text ?? "")
+    .replace(/\\([*_~])/g, "$1")
+    .replace(/\\n/g, "\n");
+  const pattern = /\[([^\]\n]{1,240})\]\((https:\/\/[^)\s]+)\)|(https:\/\/[^\s<>"']+)|\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|(?<!\*)\*(.+?)\*(?!\*)/g;
   let cursor = 0, match;
+  const appendText = value => {
+    if (value) container.appendChild(document.createTextNode(value));
+  };
   while ((match = pattern.exec(source))) {
-    if (match.index > cursor) {
-      container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
-    }
-    const label = match[1] || "";
-    const rawUrl = match[2] || match[3];
-    const suffix = match[3] ? (rawUrl.match(/[),.!?؟،؛]+$/)?.[0] || "") : "";
-    const href = suffix ? rawUrl.slice(0, -suffix.length) : rawUrl;
-    try {
-      const parsed = new URL(href);
-      if (parsed.protocol === "https:") {
-        const link = document.createElement("a");
-        link.href = parsed.href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = label || href;
-        container.appendChild(link);
-        if (suffix) container.appendChild(document.createTextNode(suffix));
-      } else {
-        container.appendChild(document.createTextNode(match[0]));
-      }
-    } catch {
-      container.appendChild(document.createTextNode(match[0]));
+    appendText(source.slice(cursor, match.index));
+    if (match[1] || match[3]) {
+      const label = match[1] || "";
+      const rawUrl = match[2] || match[3];
+      const suffix = match[3] ? (rawUrl.match(/[),.!?؟،؛]+$/)?.[0] || "") : "";
+      const href = suffix ? rawUrl.slice(0, -suffix.length) : rawUrl;
+      try {
+        const parsed = new URL(href);
+        if (parsed.protocol === "https:") {
+          const link = document.createElement("a");
+          link.href = parsed.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = label || href;
+          container.appendChild(link);
+          appendText(suffix);
+        } else appendText(match[0]);
+      } catch { appendText(match[0]); }
+    } else {
+      const element = document.createElement(match[4] || match[5] ? "strong" : match[6] ? "del" : "em");
+      element.textContent = match[4] || match[5] || match[6] || match[7] || "";
+      container.appendChild(element);
     }
     cursor = match.index + match[0].length;
   }
-  if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
+  appendText(source.slice(cursor));
 }
 function hideExternalLinksFromDisplay(value) {
   let text = String(value ?? "");
@@ -602,7 +619,7 @@ const ARABIC_SPELLING_WORDS = [
 function normalizeArabicCorrectionToken(value) {
   return String(value || "")
     .normalize("NFKC")
-    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .replace(/ى/g, "ي")
     .replace(/ـ/g, "")
     .toLowerCase();
@@ -625,35 +642,32 @@ function arabicEditDistanceAtMostOne(left, right) {
 
 function getArabicSpellingSuggestion(value) {
   const source = String(value || "");
-  const match = source.match(/(\\S+)\\s*$/u);
-  if (!match) return null;
-  const rawToken = match[1];
-  const parts = rawToken.match(/^([،,؛.!؟?]*)([\\p{L}\\p{M}]+)([،,؛.!؟?]*)$/u);
-  if (!parts) return null;
-  const token = parts[2];
-  const normalized = normalizeArabicCorrectionToken(token);
-  let corrected = ARABIC_SPELLING_ALIASES.get(token) || "";
-  if (!corrected) {
-    const candidates = ARABIC_SPELLING_WORDS.filter(word => {
-      const candidate = normalizeArabicCorrectionToken(word);
-      return candidate !== normalized &&
-        Math.abs(Array.from(candidate).length - Array.from(normalized).length) <= 1 &&
-        arabicEditDistanceAtMostOne(normalized, candidate);
-    });
-    const unique = [...new Set(candidates)];
-    if (unique.length === 1) corrected = unique[0];
+  const tokens = [...source.matchAll(/[\p{L}\p{M}]+/gu)];
+  for (let index = tokens.length - 1; index >= 0; index--) {
+    const token = tokens[index][0];
+    const normalized = normalizeArabicCorrectionToken(token);
+    let corrected = ARABIC_SPELLING_ALIASES.get(token) || "";
+    if (!corrected) {
+      const candidates = ARABIC_SPELLING_WORDS.filter(word => {
+        const candidate = normalizeArabicCorrectionToken(word);
+        return candidate !== normalized &&
+          Math.abs(Array.from(candidate).length - Array.from(normalized).length) <= 1 &&
+          arabicEditDistanceAtMostOne(normalized, candidate);
+      });
+      const unique = [...new Set(candidates)];
+      if (unique.length === 1) corrected = unique[0];
+    }
+    if (!corrected || corrected === token) continue;
+    const start = tokens[index].index;
+    return {
+      original: token,
+      corrected,
+      value: source.slice(0, start) + corrected + source.slice(start + token.length)
+    };
   }
-  if (!corrected || corrected === token) return null;
-  const correctedToken = parts[1] + corrected + parts[3];
-  const start = source.length - rawToken.length;
-  return {
-    original: token,
-    corrected,
-    value: source.slice(0, start) + correctedToken
-  };
+  return null;
 }
 
-let activeArabicCorrection = null;
 function updateArabicCorrectionSuggestion() {
   const box = $("arabicCorrection");
   const text = $("arabicCorrectionText");
