@@ -2271,12 +2271,11 @@ function normalizeLiveDataText(value) {
     .replace(/[أإآٱ]/g, "ا")
     .replace(/ى/g, "ي")
     .replace(/ة/g, "ه")
-    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
-    .replace(/\\s+/g, " ")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
-
 
 function isEgyptGoldPriceRequest(message) {
   const text = normalizeLiveDataText(message);
@@ -2294,7 +2293,7 @@ function isLiveDataRequest(message) {
 
 function isEgyptNationalTeamRequest(message) {
   const text = normalizeLiveDataText(message);
-  const egypt = /(?:منتخب(?:\\s+مصر)?|مصر(?:\\s+(?:المنتخب|الوطني|القومي))?|الفراعنه|egypt(?:ian)?(?:\\s+(?:national|football|soccer|team))?)/i.test(text);
+  const egypt = /(?:منتخب(?:\s+مصر)?|مصر(?:\s+(?:المنتخب|الوطني|القومي))?|الفراعنه|egypt(?:ian)?(?:\s+(?:national|football|soccer|team))?)/i.test(text);
   const fixture = /(?:موعد|مواعيد|ميعاد|معاد|متى|امتى|ماتش|ماتشات|مباراه|مباريات|جدول|القادم|القادمه|الجاي|الجايه|التالي|التاليه|موعده|fixtures|schedule|upcoming|next match)/i.test(text);
   return egypt && fixture;
 }
@@ -2360,7 +2359,7 @@ function hasUpcomingFootballDate(value, now = new Date()) {
   };
   const isFutureOrToday = (year, month, day) =>
     Date.UTC(year, month - 1, day) >= Date.UTC(current.year, current.month - 1, current.day);
-  const numeric = /\\b(\\d{1,2})\\s*[\\/.-]\\s*(\\d{1,2})(?:\\s*[\\/.-]\\s*(20\\d{2}))?\\b/g;
+  const numeric = /\b(\d{1,2})\s*[\/.-]\s*(\d{1,2})(?:\s*[\/.-]\s*(20\d{2}))?\b/g;
   let match;
   while ((match = numeric.exec(text))) {
     const day = Number(match[1]), month = Number(match[2]);
@@ -2376,7 +2375,7 @@ function hasUpcomingFootballDate(value, now = new Date()) {
     const day = Number(match[1]);
     if (month && day >= 1 && day <= 31 && isFutureOrToday(year, month, day)) return true;
   }
-  const arabicMonths = /(\\d{1,2})\\s+(يناير|فبراير|مارس|ابريل|أبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)(?:\\s+(20\\d{2}))?/g;
+  const arabicMonths = /(\d{1,2})\s+(يناير|فبراير|مارس|ابريل|أبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)(?:\s+(20\d{2}))?/g;
   const arabicMonthNumbers = { "يناير":1,"فبراير":2,"مارس":3,"ابريل":4,"أبريل":4,"مايو":5,"يونيو":6,"يوليو":7,"أغسطس":8,"اغسطس":8,"سبتمبر":9,"أكتوبر":10,"اكتوبر":10,"نوفمبر":11,"ديسمبر":12 };
   while ((match = arabicMonths.exec(text))) {
     const month = arabicMonthNumbers[match[2]];
@@ -2396,21 +2395,21 @@ function hasVerifiableSportsScheduleSources(searchResult) {
       String(season.endYear).slice(-2) + "|" + season.endYear + "))",
     "i"
   );
-  const sections = results.split(/\\n{2,}/);
+  const sections = results.split(/(?:\n|\\n){2,}/);
   const evidenceDomains = new Set();
   let evidenceSectionCount = 0;
   for (const section of sections) {
     const hasSeason = seasonPattern.test(section);
     const hasScheduleWording = /(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off|upcoming)/i.test(section);
-    const hasEgyptFixture = /(?:\\begypt\\b|مصر).{0,180}(?:\\bmalawi\\b|\\b(?:angola|south sudan)\\b)|(?:\\bmalawi\\b|\\b(?:angola|south sudan)\\b).{0,180}(?:\\begypt\\b|مصر)/i.test(section);
+    const hasEgyptFixture = /(?:\begypt\b|مصر).{0,180}(?:\bmalawi\b|\b(?:angola|south sudan)\b)|(?:\bmalawi\b|\b(?:angola|south sudan)\b).{0,180}(?:\begypt\b|مصر)/i.test(section);
     const hasFutureDate = hasUpcomingFootballDate(section);
-    const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\\n]{0,120}(?:20\\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
+    const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\n]{0,120}(?:20\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
     if (!hasScheduleWording || !hasFutureDate || !hasRecentPublication || (!hasSeason && !hasEgyptFixture)) continue;
-    const urls = section.match(/https?:\\/\\/[^\\s<>"')\\]]+/g) || [];
+    const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     const sectionDomains = new Set();
     for (const rawUrl of urls) {
       try {
-        const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\\./, "");
+        const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\./, "");
         if (host) sectionDomains.add(host);
       } catch {}
     }
@@ -2423,8 +2422,6 @@ function hasVerifiableSportsScheduleSources(searchResult) {
     hasVerifiableLiveSources(searchResult, 2);
 }
 
-
-// Gold prices require independent source evidence, not merely unrelated numbers and links.
 function hasVerifiableGoldPriceSources(searchResult) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "");
@@ -2473,14 +2470,13 @@ function isExternalResearchIntent(message) {
   return (isQuestion || researchLead) && !actionLead;
 }
 
-
 function buildExternalSearchQuery(message) {
   const original = String(message || "").trim();
   if (!original) return "";
   let query = original
-    .replace(/^\\s*(?:من\\s+فضلك\\s*)?(?:ابحث|ابحثي|دور|دوري|search|look\\s+up)\\s+(?:(?:في|على)\\s+(?:المواقع\\s+الخارجية|الانترنت|الويب)\\s*)?(?:عن\\s+)?/i, "")
-    .replace(/(?:^|[\\s،؛.])(?:ابحث|ابحثي|دور|دوري)\\s+(?:(?:في|على)\\s+(?:المواقع\\s+الخارجية|الانترنت|الويب)\\s*)?[\\s\\S]*$/i, "")
-    .replace(/(?:واعرض|اعرض|اظهر|أظهر|حط)\\s+(?:لي\\s+)?(?:المصادر|الروابط)(?:\\s+داخل\\s+الشات|\\s+في\\s+الشات|\\s+مع\\s+الإجابة)?[\\s\\S]*$/i, "")
+    .replace(/^\s*(?:من\s+فضلك\s*)?(?:ابحث|ابحثي|دور|دوري|search|look\s+up)\s+(?:(?:في|على)\s+(?:المواقع\s+الخارجية|الانترنت|الويب)\s*)?(?:عن\s+)?/i, "")
+    .replace(/(?:^|[\s،؛.])(?:ابحث|ابحثي|دور|دوري)\s+(?:(?:في|على)\s+(?:المواقع\s+الخارجية|الانترنت|الويب)\s*)?[\s\S]*$/i, "")
+    .replace(/(?:واعرض|اعرض|اظهر|أظهر|حط)\s+(?:لي\s+)?(?:المصادر|الروابط)(?:\s+داخل\s+الشات|\s+في\s+الشات|\s+مع\s+الإجابة)?[\s\S]*$/i, "")
     .replace(/منتخيب/g, "منتخب")
     .replace(/مب(?:ا)?ر(?:ا)?ه/g, "مباراة")
     .replace(/مبارة/g, "مباراة")
@@ -2493,15 +2489,14 @@ function buildExternalSearchQuery(message) {
     .replace(/دلوقتي|حاليا/g, "الآن")
     .replace(/نهارده|النهارده|النهاردة/g, "اليوم")
     .replace(/[«»“”"]/g, " ")
-    .replace(/\\s+/g, " ")
-    .replace(/^[؟?!،,؛:.\\s]+|[؟?!،,؛:.\\s]+$/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[؟?!،,؛:.\s]+|[؟?!،,؛:.\s]+$/g, "")
     .trim();
   if (isEgyptNationalTeamRequest(original)) {
     return (query || original) + " Egypt national football team upcoming fixtures official schedule CAF EFA";
   }
   return query || original;
 }
-
 
 function extractExternalSources(searchResult, maximum = 8) {
   const flatten = (value, depth = 0) => {
