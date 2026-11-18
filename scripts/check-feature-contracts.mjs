@@ -130,7 +130,7 @@ const checks = [
   [worker, "https://api.openai.com/v1/responses", "OpenAI Responses API endpoint is called server-side"],
   [worker, "function toResponsesInput(messages)", "chat history, images, and tool outputs are adapted to Responses API input"],
   [worker, "function fromResponsesResult(data)", "OpenAI text and function calls are normalized for the Wens agent loop"],
-  [worker, "gpt-6.2-sol", "GPT-6.2 Sol is the default OpenAI chat model"],
+  [worker, "gpt-6.1-sol", "GPT-6.2 Sol is the default OpenAI chat model"],
   [worker, "autoSpeak: true", "Worker enables automatic voice replies by default"],
   [app, "autoSpeak: true", "chat enables automatic voice replies by default"],
   [admin, "autoSpeak: true", "owner settings enable automatic voice replies by default"],
