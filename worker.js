@@ -300,7 +300,7 @@ async function issueSession(db, user, eventType = "login") {
 function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثناء تنفيذ طلب الحساب. جرّب مرة أخرى.") {
   const raw = String(error?.message || error || "unknown");
   const safeDetail = raw
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
     .replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]")
     .slice(0, 240);
   console.error("[WENS_AUTH_FAILURE]", JSON.stringify({
@@ -1954,18 +1954,18 @@ async function executeAgentTool(name, args, env, user) {
     jobs.push((async () => {
       const url = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
       const html = await fetchText(url, "text/html,application/xhtml+xml,*/*");
-      const anchors = [...html.matchAll(/<a\\b[^>]*class=["'][^"']*result__a[^"']*["'][^>]*>[\\s\\S]*?<\\/a>/gi)].slice(0, 8);
+      const anchors = [...html.matchAll(/<a\b[^>]*class=["'][^"']*result__a[^"']*["'][^>]*>[\s\S]*?<\/a>/gi)].slice(0, 8);
       let count = 0;
       for (const match of anchors) {
         const tag = match[0];
-        const href = tag.match(/\\bhref=["']([^"']+)["']/i)?.[1] || "";
-        const title = cleanText(tag.replace(/^<a\\b[^>]*>/i, "").replace(/<\\/a>$/i, ""));
+        const href = tag.match(/\bhref=["']([^"']+)["']/i)?.[1] || "";
+        const title = cleanText(tag.replace(/^<a\b[^>]*>/i, "").replace(/<\/a>$/i, ""));
         if (!href || !title) continue;
         let articleUrl = href;
         try {
           const parsed = new URL(href, "https://html.duckduckgo.com");
           articleUrl = parsed.searchParams.get("uddg") || parsed.searchParams.get("url") || parsed.href;
-          if (!/^https?:\\/\\//i.test(articleUrl)) continue;
+          if (!/^https?:\/\//i.test(articleUrl)) continue;
         } catch { continue; }
         const nearby = cleanText(html.slice(match.index, match.index + 1500));
         const content = title + " " + nearby;
@@ -2045,7 +2045,7 @@ async function executeAgentTool(name, args, env, user) {
       for (const source of egyptSources) {
         jobs.push((async () => {
           const html = await fetchText(source.url, "text/html,application/xhtml+xml,*/*");
-          const metaTags = [...html.matchAll(/<meta\\b[^>]*>/gi)].map(item => item[0]);
+          const metaTags = [...html.matchAll(/<meta\b[^>]*>/gi)].map(item => item[0]);
           let publicationDate = "";
           for (const tag of metaTags) {
             const name = (tag.match(/(?:property|name)=["']([^"']+)["']/i)?.[1] || "").toLowerCase();
@@ -3433,7 +3433,7 @@ export default {
       return json({ error: "المسار غير موجود." }, 404);
     } catch (error) {
       const detail = String(error?.message || error || "unknown")
-        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
         .replace(/[A-Za-z0-9_-]{32,}/g, "[redacted]")
         .slice(0, 240);
       console.error("[WENS_REQUEST_FAILURE]", JSON.stringify({
