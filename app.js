@@ -602,7 +602,7 @@ const ARABIC_SPELLING_WORDS = [
 function normalizeArabicCorrectionToken(value) {
   return String(value || "")
     .normalize("NFKC")
-    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .replace(/ى/g, "ي")
     .replace(/ـ/g, "")
     .toLowerCase();
@@ -625,10 +625,10 @@ function arabicEditDistanceAtMostOne(left, right) {
 
 function getArabicSpellingSuggestion(value) {
   const source = String(value || "");
-  const match = source.match(/(\\S+)\\s*$/u);
+  const match = source.match(/(\S+)\s*$/u);
   if (!match) return null;
   const rawToken = match[1];
-  const parts = rawToken.match(/^([،,؛.!؟?]*)([\\p{L}\\p{M}]+)([،,؛.!؟?]*)$/u);
+  const parts = rawToken.match(/^([،,؛.!؟?]*)([\p{L}\p{M}]+)([،,؛.!؟?]*)$/u);
   if (!parts) return null;
   const token = parts[2];
   const normalized = normalizeArabicCorrectionToken(token);
