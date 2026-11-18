@@ -2340,7 +2340,7 @@ function isLiveDataRequest(message) {
 
 function isEgyptNationalTeamRequest(message) {
   const text = normalizeLiveDataText(message);
-  const egypt = /(?:منتخب(?:\s+مصر)?|مصر(?:\\s+(?:المنتخب|الوطني|القومي))?|الفراعنه|egypt(?:ian)?(?:\\s+(?:national|football|soccer|team))?)/i.test(text);
+  const egypt = /(?:منتخب(?:\s+مصر)?|مصر(?:\s+(?:المنتخب|الوطني|القومي))?|الفراعنه|egypt(?:ian)?(?:\s+(?:national|football|soccer|team))?)/i.test(text);
   const fixture = /(?:موعد|مواعيد|ميعاد|معاد|متى|امتى|ماتش|ماتشات|مباراه|مباريات|جدول|القادم|القادمه|الجاي|الجايه|التالي|التاليه|موعده|fixtures|schedule|upcoming|next match)/i.test(text);
   return egypt && fixture;
 }
@@ -2450,7 +2450,7 @@ function hasVerifiableSportsScheduleSources(searchResult) {
     const hasScheduleWording = /(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off|upcoming)/i.test(section);
     const hasEgyptFixture = /(?:\begypt\b|مصر).{0,180}(?:\bmalawi\b|\b(?:angola|south sudan)\b)|(?:\bmalawi\b|\b(?:angola|south sudan)\b).{0,180}(?:\begypt\b|مصر)/i.test(section);
     const hasFutureDate = hasUpcomingFootballDate(section);
-    const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\\n]{0,120}(?:20\\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
+    const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\n]{0,120}(?:20\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
     if (!hasScheduleWording || !hasFutureDate || !hasRecentPublication || (!hasSeason && !hasEgyptFixture)) continue;
     const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     const sectionDomains = new Set();
@@ -2524,9 +2524,9 @@ function buildExternalSearchQuery(message) {
   const original = String(message || "").trim();
   if (!original) return "";
   let query = original
-    .replace(/^\s*(?:من\s+فضلك\s*)?(?:ابحث|ابحثي|دور|دوري|search|look\\s+up)\\s+(?:(?:في|على)\\s+(?:المواقع\\s+الخارجية|الانترنت|الويب)\\s*)?(?:عن\\s+)?/i, "")
-    .replace(/(?:^|[\s،؛.])(?:ابحث|ابحثي|دور|دوري)\\s+(?:(?:في|على)\\s+(?:المواقع\\s+الخارجية|الانترنت|الويب)\\s*)?[\\s\\S]*$/i, "")
-    .replace(/(?:واعرض|اعرض|اظهر|أظهر|حط)\\s+(?:لي\\s+)?(?:المصادر|الروابط)(?:\\s+داخل\\s+الشات|\\s+في\\s+الشات|\\s+مع\\s+الإجابة)?[\\s\\S]*$/i, "")
+    .replace(/^\s*(?:من\s+فضلك\s*)?(?:ابحث|ابحثي|دور|دوري|search|look\s+up)\s+(?:(?:في|على)\s+(?:المواقع\s+الخارجية|الانترنت|الويب)\s*)?(?:عن\s+)?/i, "")
+    .replace(/(?:^|[\s،؛.])(?:ابحث|ابحثي|دور|دوري)\s+(?:(?:في|على)\s+(?:المواقع\s+الخارجية|الانترنت|الويب)\s*)?[\s\S]*$/i, "")
+    .replace(/(?:واعرض|اعرض|اظهر|أظهر|حط)\s+(?:لي\s+)?(?:المصادر|الروابط)(?:\s+داخل\s+الشات|\s+في\s+الشات|\s+مع\s+الإجابة)?[\s\S]*$/i, "")
     .replace(/منتخيب/g, "منتخب")
     .replace(/مب(?:ا)?ر(?:ا)?ه/g, "مباراة")
     .replace(/مبارة/g, "مباراة")
