@@ -35,7 +35,7 @@ const helpers = [
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  `${helpers}\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };`,
+  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };",
   sandbox
 );
 const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
