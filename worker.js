@@ -686,6 +686,7 @@ async function adminRoute(request, env, path) {
       ok: true,
       checkedAt: new Date().toISOString(),
       features: {
+        openAI: Boolean(env.OPENAI_API_KEY),
         workersAI: Boolean(env.AI),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
@@ -694,7 +695,7 @@ async function adminRoute(request, env, path) {
         freeDocumentParsing: true,
         documentAIConfigured: Boolean(env.AI),
         browserConfigured: Boolean(env.BROWSER),
-        agentToolingConfigured: Boolean(env.AI && tools.length)
+        agentToolingConfigured: Boolean((env.OPENAI_API_KEY || env.AI) && tools.length)
       },
       counts,
       onlineUsers: databaseConnected && tableNames.has("sessions") && tableNames.has("users") && tableNames.has("messages")
@@ -3355,11 +3356,13 @@ export default {
     }
     if (request.method === "GET" && path === "/api/health") {
       const workersAiBindingPresent = Boolean(env.AI);
+      const openAiConfigured = Boolean(env.OPENAI_API_KEY);
       return json({
         ok: true,
         service: "wens-ai",
-        configured: workersAiBindingPresent,
+        configured: openAiConfigured || workersAiBindingPresent,
         features: {
+          openAI: openAiConfigured,
           workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
           browser: Boolean(env.BROWSER),
@@ -3372,7 +3375,7 @@ export default {
         diagnostics: {
           workersAiBindingPresent,
           browserBindingPresent: Boolean(env.BROWSER),
-          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
+          model: openAiConfigured ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
         }
       });
     }
