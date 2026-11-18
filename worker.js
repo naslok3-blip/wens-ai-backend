@@ -2442,7 +2442,7 @@ function hasVerifiableSportsScheduleSources(searchResult) {
       String(season.endYear).slice(-2) + "|" + season.endYear + "))",
     "i"
   );
-  const sections = results.split(/\\n{2,}/);
+  const sections = results.split(/(?:\r?\n){2,}|(?:\\n){2,}/);
   const evidenceDomains = new Set();
   let evidenceSectionCount = 0;
   for (const section of sections) {
