@@ -3236,7 +3236,7 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+    const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
     const runOptions = {
       messages,
       temperature: 0.7,
@@ -3257,14 +3257,8 @@ async function handleChat(request, env, user) {
     }
     return json({ reply, model });
   } catch (error) {
-    const message = String(error?.message || error || "").toLowerCase();
-    if (/daily free allocation|neurons|quota|account limited/.test(message)) {
-      return json({ error: "وصلنا للحد المجاني اليومي للذكاء الاصطناعي على Cloudflare. الحصة تتجدد يوميًا؛ جرّب بعد منتصف الليل UTC." }, 429);
-    }
-    if (/out of capacity|capacity temporarily|rejectifbusy/.test(message)) {
-      return json({ error: "نموذج Cloudflare مشغول حاليًا. جرّب تاني بعد قليل." }, 503);
-    }
-    return json({ error: "تعذّر تشغيل نموذج Cloudflare AI حاليًا. حاول مرة أخرى بعد قليل." }, 502);
+    const failure = classifyWorkersAiFailure(error);
+    return json({ error: failure.message, code: failure.code }, failure.status);
   }
 }
 
