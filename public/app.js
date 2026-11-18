@@ -602,7 +602,7 @@ const ARABIC_SPELLING_WORDS = [
 function normalizeArabicCorrectionToken(value) {
   return String(value || "")
     .normalize("NFKC")
-    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .replace(/ى/g, "ي")
     .replace(/ـ/g, "")
     .toLowerCase();
@@ -625,10 +625,10 @@ function arabicEditDistanceAtMostOne(left, right) {
 
 function getArabicSpellingSuggestion(value) {
   const source = String(value || "");
-  const match = source.match(/(\\S+)\\s*$/u);
+  const match = source.match(/(\S+)\s*$/u);
   if (!match) return null;
   const rawToken = match[1];
-  const parts = rawToken.match(/^([،,؛.!؟?]*)([\\p{L}\\p{M}]+)([،,؛.!؟?]*)$/u);
+  const parts = rawToken.match(/^([،,؛.!؟?]*)([\p{L}\p{M}]+)([،,؛.!؟?]*)$/u);
   if (!parts) return null;
   const token = parts[2];
   const normalized = normalizeArabicCorrectionToken(token);
@@ -658,6 +658,8 @@ function updateArabicCorrectionSuggestion() {
   const box = $("arabicCorrection");
   const text = $("arabicCorrectionText");
   if (!box || !text) return;
+  // Keep the dynamic correction prompt accessible with aria-live="polite".
+  box.setAttribute("aria-live", "polite");
   activeArabicCorrection = getArabicSpellingSuggestion($("messageInput").value);
   if (!activeArabicCorrection) {
     box.hidden = true;
@@ -1478,11 +1480,11 @@ async function loadSystemStatus() {
     const data = await response.json();
     const f = data.features || {};
     const labels = [
-      "Cloudflare AI " + (f.workersAI ? "جاهز" : "غير مربوط"),
+      "محرك الدردشة " + (f.openAI ? "OpenAI جاهز" : f.workersAI ? "Workers AI جاهز" : "غير مربوط"),
       "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة")
     ];
-    $("systemStatus").textContent = labels.concat(f.browser ? "متصفح المواقع جاهز" : "متصفح المواقع غير مربوط").join(" · ");
-    $("systemStatus").classList.toggle("all-ready", !!(f.workersAI && f.database));
+    $("systemStatus").textContent = labels.concat(f.workersAI ? "توليد الصور عبر Cloudflare جاهز" : "توليد الصور غير مربوط", f.browser ? "متصفح المواقع جاهز" : "متصفح المواقع غير مربوط").join(" · ");
+    $("systemStatus").classList.toggle("all-ready", !!((f.openAI || f.workersAI) && f.database));
     return data;
   } catch {
     $("systemStatus").textContent = "تعذّر فحص حالة الخادم.";
