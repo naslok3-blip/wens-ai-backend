@@ -108,3 +108,52 @@ test("extracts text from Responses output when output_text convenience field is 
 
   assert.equal(normalized.choices[0].message.content, "أهلًا \nبيك!");
 });
+
+
+test("extracts OpenAI web-search text and source links from tool actions and citations", async () => {
+  const { extractResponsesWebSearch } = await import("../openai-responses-utils.mjs");
+  const parsed = extractResponsesWebSearch({
+    output_text: "ملخص نتائج البحث",
+    output: [
+      {
+        type: "web_search_call",
+        action: {
+          type: "search",
+          sources: [
+            { type: "url", title: "مصدر أول", url: "https://example.com/article" },
+            { type: "url", title: "مصدر مكرر", url: "https://example.com/article" },
+            { type: "url", title: "رابط غير آمن", url: "http://insecure.example/page" }
+          ]
+        }
+      },
+      {
+        type: "message",
+        content: [{
+          type: "output_text",
+          text: "ملخص نتائج البحث",
+          annotations: [{
+            type: "url_citation",
+            title: "مصدر ثان",
+            url: "https://example.org/reference",
+            start_index: 0,
+            end_index: 12
+          }]
+        }]
+      }
+    ]
+  });
+
+  assert.equal(parsed.text, "ملخص نتائج البحث");
+  assert.deepEqual(parsed.sources, [
+    { title: "مصدر أول", url: "https://example.com/article", domain: "example.com" },
+    { title: "مصدر ثان", url: "https://example.org/reference", domain: "example.org" }
+  ]);
+});
+
+test("returns an empty source list when OpenAI search has no citations", async () => {
+  const { extractResponsesWebSearch } = await import("../openai-responses-utils.mjs");
+  assert.deepEqual(extractResponsesWebSearch({ output_text: "لا توجد مصادر" }), {
+    text: "لا توجد مصادر",
+    sources: []
+  });
+});

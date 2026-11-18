@@ -1,5 +1,6 @@
 import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
+import { extractResponsesWebSearch } from "./openai-responses-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
 
@@ -1840,8 +1841,80 @@ async function executeAgentTool(name, args, env, user) {
     const query = String(args.query || "").trim().slice(0, 300);
     if (query.length < 2) return { error: "اكتبي موضوع بحث أو سؤالًا واضحًا." };
 
+    // Prefer OpenAI-hosted web search before the legacy public RSS fallbacks.
+    // If it is unavailable or returns no cited sources, continue with the free providers below.
+    let openAiSearchDiagnostic = "";
+    if (env.OPENAI_API_KEY) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 18000);
+      try {
+        const response = await fetch("https://api.openai.com/v1/responses", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + env.OPENAI_API_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: env.WENS_OPENAI_SEARCH_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.2-sol",
+            input: [
+              {
+                role: "system",
+                content: "أنت مساعد بحث على الويب. ابحث فعليًا عن مصادر حديثة وموثوقة، ثم اكتب خلاصة قصيرة باللغة العربية المصرية الواضحة. فرّق بين الخبر والرأي، واذكر التواريخ عند الحاجة، ولا تخمّن أي معلومة لا تدعمها المصادر."
+              },
+              {
+                role: "user",
+                content: "ابحث في الويب عن الموضوع التالي، واجمع أهم النتائج والمعلومات ذات الصلة: " + query
+              }
+            ],
+            tools: [{
+              type: "web_search",
+              search_context_size: "medium",
+              user_location: {
+                type: "approximate",
+                country: "EG",
+                timezone: "Africa/Cairo"
+              }
+            }],
+            tool_choice: "required",
+            include: ["web_search_call.action.sources"],
+            max_output_tokens: 1300
+          }),
+          signal: controller.signal
+        });
+        let responseBody = {};
+        try { responseBody = await response.json(); } catch {}
+        if (!response.ok) throw new Error("HTTP_" + response.status);
+
+        const extracted = extractResponsesWebSearch(responseBody);
+        if (!extracted.text || !extracted.sources.length) throw new Error("NO_CITED_RESULTS");
+        const sourceMarkdown = extracted.sources.slice(0, 8)
+          .map(item => "[" + item.title + "](" + item.url + ")")
+          .join("\n");
+        return {
+          query,
+          results: (extracted.text + "\n\nمصادر البحث:\n" + sourceMarkdown).slice(0, 14000),
+          sources: extracted.sources.slice(0, 8),
+          engines: ["OpenAI Web Search"],
+          diagnostics: [],
+          searchedAt: new Date().toISOString(),
+          freeSearch: false
+        };
+      } catch (error) {
+        const detail = String(error?.message || "");
+        const status = detail.match(/^HTTP_(\d{3})$/)?.[1];
+        openAiSearchDiagnostic = status
+          ? "OpenAI Web Search: HTTP " + status
+          : error?.name === "AbortError"
+            ? "OpenAI Web Search: timeout"
+            : "OpenAI Web Search: unavailable or no cited results";
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
     // Free, keyless public sources. Do not depend on Browser Run or paid search credits.
     const diagnostics = [];
+    if (openAiSearchDiagnostic) diagnostics.push(openAiSearchDiagnostic);
     const engines = [];
     const sourceLinks = [];
     const sections = [];
@@ -2099,7 +2172,7 @@ async function executeAgentTool(name, args, env, user) {
       return {
         error: "جربت مصادر بحث مجانية، لكن مفيش نتائج موثوقة متاحة للطلب ده دلوقتي. مش هألف نتائج.",
         query,
-        attempted: ["Google News RSS", "DuckDuckGo Instant Answer", "Wikipedia"],
+        attempted: ["OpenAI Web Search", "Google News RSS", "Bing News RSS", "DuckDuckGo Web Search", "DuckDuckGo Instant Answer", "Wikipedia"],
         diagnostics: diagnostics.slice(0, 4),
         sources: []
       };
