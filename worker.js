@@ -2,8 +2,77 @@ import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
+import { fromResponsesResponse, toResponsesInput, toResponsesTools } from "./openai-responses-utils.mjs";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
+
+
+ // Server-side OpenAI Responses API adapter. The API key is read only from
+ // the Worker secret binding and is never sent to the browser or logged.
+ async function runOpenAIResponses(env, options, model) {
+   if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY_MISSING");
+   const payload = {
+     model,
+     input: toResponsesInput(options.messages),
+     max_output_tokens: Math.min(4096, Math.max(64, Number(options.max_tokens) || 850)),
+     store: false
+   };
+   const tools = toResponsesTools(options.tools);
+   if (tools.length) {
+     payload.tools = tools;
+     payload.tool_choice = "auto";
+   }
+   if (options.deepThink) payload.reasoning = { effort: "high" };
+
+   const response = await fetch("https://api.openai.com/v1/responses", {
+     method: "POST",
+     headers: {
+       "Authorization": "Bearer " + env.OPENAI_API_KEY,
+       "Content-Type": "application/json"
+     },
+     body: JSON.stringify(payload)
+   });
+   const raw = await response.text();
+   let data;
+   try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+   if (!response.ok) {
+     const apiError = data?.error || {};
+     const code = String(apiError.code || apiError.type || "unknown").slice(0, 80);
+     const detail = String(apiError.message || "OpenAI Responses API request failed").slice(0, 240);
+     throw new Error("OPENAI_API_HTTP_" + response.status + "_" + code + ": " + detail);
+   }
+   if (!data || typeof data !== "object") throw new Error("OPENAI_API_INVALID_RESPONSE");
+   if (data.status === "failed") {
+     throw new Error("OPENAI_API_RESPONSE_FAILED: " + String(data.error?.message || "Response failed").slice(0, 200));
+   }
+   return fromResponsesResponse(data);
+ }
+
+ function classifyOpenAIFailure(error) {
+   const raw = String(error?.message || error || "unknown");
+   if (/OPENAI_API_KEY_MISSING/.test(raw)) {
+     return { code: "OPENAI_API_KEY_MISSING", status: 503, message: "مفتاح OpenAI مش مربوط على خادم ونس. أضِفه كـ Secret باسم OPENAI_API_KEY في Cloudflare." };
+   }
+   if (/insufficient_quota|billing_hard_limit|quota_exceeded/i.test(raw)) {
+     return { code: "OPENAI_API_QUOTA_OR_BILLING", status: 503, message: "حساب OpenAI API وصل لحد الاستخدام أو الرصيد المتاح. راجع إعدادات الفوترة وحدود المشروع في منصة OpenAI؛ اشتراك ChatGPT لا يشمل رصيد API." };
+   }
+   if (/HTTP_401|invalid_api_key|authentication_error|unauthorized/i.test(raw)) {
+     return { code: "OPENAI_API_AUTH_FAILED", status: 503, message: "مفتاح OpenAI المحفوظ على الخادم غير صالح أو لا يملك صلاحية API. راجع السر OPENAI_API_KEY في Cloudflare." };
+   }
+   if (/HTTP_403|permission_denied|model_not_allowed/i.test(raw)) {
+     return { code: "OPENAI_API_PERMISSION_DENIED", status: 503, message: "مشروع OpenAI لا يملك صلاحية استخدام النموذج المحدد. راجع صلاحيات المشروع والنموذج." };
+   }
+   if (/model_not_found|does not exist|not have access to model/i.test(raw)) {
+     return { code: "OPENAI_MODEL_UNAVAILABLE", status: 503, message: "نموذج OpenAI المحدد غير متاح لهذا المشروع. راجع اسم النموذج وصلاحياته في إعدادات ونس." };
+   }
+   if (/HTTP_429|rate_limit_exceeded|too many requests/i.test(raw)) {
+     return { code: "OPENAI_API_RATE_LIMIT", status: 429, message: "طلبات OpenAI كثيرة في الوقت الحالي. استنى شوية وجرب تاني." };
+   }
+   if (/HTTP_5\d\d|temporarily unavailable|server_error/i.test(raw)) {
+     return { code: "OPENAI_API_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مش متاحة مؤقتًا. جرّب تاني بعد قليل." };
+   }
+   return { code: "OPENAI_API_REQUEST_FAILED", status: 502, message: "تعذّر على ونس الاتصال بمحرك ChatGPT حاليًا. راجع تشخيص الخدمة في لوحة الإدارة." };
+ }
 
 const enc = new TextEncoder();
 const COOKIE = "wens_session";
@@ -567,6 +636,8 @@ async function adminRoute(request, env, path) {
       ok: true,
       checkedAt: new Date().toISOString(),
       features: {
+        openAIChatConfigured: Boolean(env.OPENAI_API_KEY),
+        openAIChatModel: env.WENS_OPENAI_MODEL || "gpt-6.1-sol",
         workersAI: Boolean(env.AI),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
@@ -638,7 +709,7 @@ async function adminRoute(request, env, path) {
     });
   }
   if (path === "/api/admin/test-agent" && request.method === "POST") {
-    if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+    if (!env.OPENAI_API_KEY) return json({ error: "مفتاح OpenAI غير مربوط على الخادم." }, 503);
     const probe = new Request(new URL("/api/agent", request.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -738,8 +809,10 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
+      model: env.WENS_OPENAI_MODEL || "gpt-6.1-sol",
+      provider: "OpenAI Responses API",
       features: {
+        openAIChatConfigured: Boolean(env.OPENAI_API_KEY),
         workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
         naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
@@ -2555,7 +2628,7 @@ async function handleAgent(request, env, user, options = {}) {
     });
   }
 
-  if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+  if (!env.OPENAI_API_KEY) return json({ error: "مفتاح OpenAI مش مربوط على خادم ونس.", code: "OPENAI_API_KEY_MISSING" }, 503);
   let imageBase64 = "";
   let imageMimeType = "";
   let textAttachmentContext = "";
@@ -2853,7 +2926,9 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+  const model = useReasoningModel
+    ? (env.WENS_OPENAI_REASONING_MODEL || "gpt-6-astra")
+    : (env.WENS_OPENAI_MODEL || "gpt-6.1-sol");
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
@@ -2861,19 +2936,13 @@ async function handleAgent(request, env, user, options = {}) {
       const runOptions = {
         messages,
         tools: agentTools(),
-        temperature: 0.2,
-        max_tokens: deepThink ? 1500 : 850
+        max_tokens: deepThink ? 1500 : 850,
+        deepThink
       };
-      if (model === "@cf/zai-org/glm-4.7-flash") {
-        runOptions.chat_template_kwargs = { enable_thinking: deepThink };
-      }
-      if (model === "@cf/qwen/qwen3.8-27b") {
-        runOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
-      }
       if (imageBase64 && turn === 0) {
         steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
       }
-      const result = await env.AI.run(model, runOptions);
+      const result = await runOpenAIResponses(env, runOptions, model);
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const rawAssistantText = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
@@ -3017,14 +3086,10 @@ async function handleAgent(request, env, user, options = {}) {
     if (!finalText) {
       const lastOptions = {
         messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]),
-        temperature: 0.2,
-        max_tokens: deepThink ? 1500 : 1100
+        max_tokens: deepThink ? 1500 : 1100,
+        deepThink
       };
-      if (model === "@cf/zai-org/glm-4.7-flash") {
-        lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
-      }
-      if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
-      const last = await env.AI.run(model, lastOptions);
+      const last = await runOpenAIResponses(env, lastOptions, model);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
@@ -3050,7 +3115,7 @@ async function handleAgent(request, env, user, options = {}) {
       .replace(/Bearer\\s+[^\\s]+/gi, "Bearer [redacted]")
       .replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g, "[redacted]")
       .slice(0, 220);
-    const failure = classifyWorkersAiFailure(error);
+    const failure = classifyOpenAIFailure(error);
     console.error("[WENS_AGENT_FAILURE]", JSON.stringify({
       code: failure.code,
       detail: diagnostic
@@ -3244,8 +3309,11 @@ export default {
       return json({
         ok: true,
         service: "wens-ai",
-        configured: workersAiBindingPresent,
+        configured: workersAiBindingPresent && Boolean(env.OPENAI_API_KEY),
         features: {
+          openAIChatConfigured: Boolean(env.OPENAI_API_KEY),
+          chatProvider: "OpenAI Responses API",
+          chatModel: env.WENS_OPENAI_MODEL || "gpt-6.1-sol",
           workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
           browser: Boolean(env.BROWSER),
@@ -3258,7 +3326,9 @@ export default {
         diagnostics: {
           workersAiBindingPresent,
           browserBindingPresent: Boolean(env.BROWSER),
-          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
+          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null,
+          chatModel: env.WENS_OPENAI_MODEL || "gpt-6.1-sol",
+          chatProvider: "OpenAI Responses API"
         }
       });
     }
