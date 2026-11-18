@@ -819,7 +819,7 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
+      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.1-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
       features: {
         workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
@@ -830,7 +830,7 @@ async function adminRoute(request, env, path) {
   if (path === "/api/admin/test-ai" && request.method === "POST") {
     if (!env.AI && !env.OPENAI_API_KEY) return json({ error: "لا يوجد ربط لنموذج ذكاء اصطناعي على الخادم." }, 503);
     try {
-      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.1-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
       const result = await runWensModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -1363,7 +1363,7 @@ async function createWebProject(env, user, args, options = {}) {
 
   // Prefer the low-latency multilingual model for code generation; do not inherit a reasoning-heavy chat model.
   const model = env.OPENAI_API_KEY
-    ? (env.WENS_OPENAI_PROJECT_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.2-sol")
+    ? (env.WENS_OPENAI_PROJECT_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.1-sol")
     : (env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash");
   const system = [
     "You are a senior frontend engineer. Output only one complete standalone HTML5 document.",
@@ -1507,7 +1507,7 @@ async function editWebProject(env, user, args = {}) {
     return { error: "المشروع كبير جدًا للتعديل الآلي في النسخة المجانية الحالية. اطلب تعديل جزء أصغر أو أنشئ نسخة أخف." };
   }
   const model = env.OPENAI_API_KEY
-    ? (env.WENS_OPENAI_PROJECT_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.2-sol")
+    ? (env.WENS_OPENAI_PROJECT_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.1-sol")
     : (env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash");
   const system = [
     "You are a senior frontend engineer modifying an existing standalone HTML5 application.",
@@ -2698,7 +2698,7 @@ async function runWensModel(env, fallbackModel, options = {}) {
     if (!env.AI) throw new Error("لا يوجد مفتاح OpenAI ولا ربط Workers AI.");
     return await env.AI.run(fallbackModel, options);
   }
-  const model = String(fallbackModel || env.WENS_OPENAI_MODEL || "gpt-6.2-sol");
+  const model = String(fallbackModel || env.WENS_OPENAI_MODEL || "gpt-6.1-sol");
   const converted = toResponsesInput(options.messages || []);
   const tools = (Array.isArray(options.tools) ? options.tools : []).map(item => {
     const fn = item?.function || {};
@@ -3099,7 +3099,7 @@ async function handleAgent(request, env, user, options = {}) {
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
   const model = env.OPENAI_API_KEY
-    ? (deepThink ? (env.WENS_OPENAI_REASONING_MODEL || "gpt-6.2-astra") : (env.WENS_OPENAI_MODEL || "gpt-6.2-sol"))
+    ? (deepThink ? (env.WENS_OPENAI_REASONING_MODEL || "gpt-6-astra") : (env.WENS_OPENAI_MODEL || "gpt-6.1-sol"))
     : (useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
@@ -3364,7 +3364,7 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+    const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.1-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
     const runOptions = {
       messages,
       temperature: 0.7,
