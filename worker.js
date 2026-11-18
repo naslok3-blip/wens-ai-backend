@@ -2435,14 +2435,14 @@ function hasUpcomingFootballDate(value, now = new Date()) {
 
 function hasVerifiableSportsScheduleSources(searchResult) {
   if (!searchResult || searchResult.error) return false;
-  const results = String(searchResult.results || "");
+  const results = String(searchResult.results || "").replace(/\\n/g, "\n");
   const season = getCurrentEgyptFootballSeason();
   const seasonPattern = new RegExp(
     "(?:" + season.startYear + "\\s*[-/–]\\s*(?:" +
       String(season.endYear).slice(-2) + "|" + season.endYear + "))",
     "i"
   );
-  const sections = results.split(/(?:\r?\n){2,}|(?:\\n){2,}/);
+  const sections = results.split(/\n{2,}/);
   const evidenceDomains = new Set();
   let evidenceSectionCount = 0;
   for (const section of sections) {
@@ -2452,7 +2452,7 @@ function hasVerifiableSportsScheduleSources(searchResult) {
     const hasFutureDate = hasUpcomingFootballDate(section);
     const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\\n]{0,120}(?:20\\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
     if (!hasScheduleWording || !hasFutureDate || !hasRecentPublication || (!hasSeason && !hasEgyptFixture)) continue;
-    const urls = section.match(new RegExp("https?://[^\\s<>\"')\\]]+", "g")) || [];
+    const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     const sectionDomains = new Set();
     for (const rawUrl of urls) {
       try {
