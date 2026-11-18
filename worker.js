@@ -1899,13 +1899,13 @@ async function executeAgentTool(name, args, env, user) {
     const jobs = [];
     const normalizedSearchQuery = normalizeLiveDataText(query);
     const sportsQuery = isSportsScheduleRequest(query) ||
-      /(?:\\bfootball\\b|\\bsoccer\\b).{0,50}(?:fixture|schedule|match|upcoming)|(?:fixture|schedule|upcoming).{0,50}(?:\\bfootball\\b|\\bsoccer\\b)/i.test(query);
+      /(?:\bfootball\b|\bsoccer\b).{0,50}(?:fixture|schedule|match|upcoming)|(?:fixture|schedule|upcoming).{0,50}(?:\bfootball\b|\bsoccer\b)/i.test(query);
     const egyptNationalTeamQuery = isEgyptNationalTeamRequest(query) ||
       /egypt national (?:football|soccer) team/i.test(query);
 
     const readRss = async (url, engineName) => {
       const xml = await fetchText(url, "application/rss+xml, application/xml, text/xml, */*");
-      const items = [...xml.matchAll(/<item\\b[^>]*>([\\s\\S]*?)<\\/item>/gi)].slice(0, 8);
+      const items = [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].slice(0, 8);
       const added = [];
       for (const match of items) {
         const block = match[1];
@@ -1917,7 +1917,7 @@ async function executeAgentTool(name, args, env, user) {
         const articleUrl = field("link");
         const description = field("description");
         const published = field("pubDate");
-        const sourceMatch = block.match(/<source\\b[^>]*url=["']([^"']+)["'][^>]*>([\\s\\S]*?)<\\/source>/i);
+        const sourceMatch = block.match(/<source\b[^>]*url=["']([^"']+)["'][^>]*>([\s\S]*?)<\/source>/i);
         const publisher = sourceMatch ? cleanText(sourceMatch[2]) : engineName;
         const content = [title, description].filter(Boolean).join(" — ");
         if (!title || !articleUrl) continue;
