@@ -7,7 +7,7 @@ const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية 
 
 
 async function runWensTextModel(env, fallbackModel, options = {}) {
-  // Image generation stays on Cloudflare Workers AI; conversational text uses OpenAI when configured.
+  // Keep image generation on Workers AI; use OpenAI Responses for text and agent tools.
   if (options.multipart) {
     if (!env.AI) throw new Error("WENS_IMAGE_AI_NOT_CONFIGURED");
     return await env.AI.run(fallbackModel, options);
@@ -18,24 +18,67 @@ async function runWensTextModel(env, fallbackModel, options = {}) {
   }
 
   const model = env.WENS_OPENAI_MODEL || "gpt-6.2-sol";
+  const input = [];
+  for (const message of (Array.isArray(options.messages) ? options.messages : [])) {
+    if (message.role === "tool") {
+      input.push({
+        type: "function_call_output",
+        call_id: String(message.tool_call_id || ""),
+        output: String(message.content ?? "")
+      });
+      continue;
+    }
+    if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
+      if (message.content) input.push({ role: "assistant", content: String(message.content) });
+      for (const call of message.tool_calls) {
+        input.push({
+          type: "function_call",
+          call_id: String(call.id || ""),
+          name: String(call.function?.name || call.name || ""),
+          arguments: typeof (call.function?.arguments ?? call.arguments) === "string"
+            ? (call.function?.arguments ?? call.arguments)
+            : JSON.stringify(call.function?.arguments ?? call.arguments ?? {})
+        });
+      }
+      continue;
+    }
+    const role = message.role === "system" ? "developer" : message.role;
+    let content = message.content;
+    if (Array.isArray(content)) {
+      content = content.map(part => {
+        if (part?.type === "text") return { type: "input_text", text: String(part.text || "") };
+        if (part?.type === "image_url") return {
+          type: "input_image",
+          image_url: String(part.image_url?.url || "")
+        };
+        return part;
+      });
+    }
+    input.push({ role, content });
+  }
+
   const payload = {
     model,
-    messages: options.messages || [],
-    max_completion_tokens: Number(options.max_tokens || 1000)
+    input,
+    max_output_tokens: Number(options.max_tokens || 1000)
   };
   if (Array.isArray(options.tools) && options.tools.length) {
-    payload.tools = options.tools;
+    payload.tools = options.tools.map(tool => {
+      const fn = tool.function || tool;
+      return {
+        type: "function",
+        name: String(fn.name || ""),
+        description: String(fn.description || ""),
+        parameters: fn.parameters || { type: "object", properties: {} },
+        strict: false
+      };
+    });
     payload.tool_choice = "auto";
     payload.parallel_tool_calls = false;
   }
-  if (options.reasoning_effort) payload.reasoning_effort = options.reasoning_effort;
-  // Current GPT-6 reasoning models manage sampling internally; omit temperature and
-  // Cloudflare-specific chat_template_kwargs from the OpenAI request.
-  if (!model.startsWith("gpt-6") && Number.isFinite(options.temperature)) {
-    payload.temperature = options.temperature;
-  }
+  if (options.reasoning_effort) payload.reasoning = { effort: options.reasoning_effort };
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "Authorization": "Bearer " + env.OPENAI_API_KEY,
@@ -49,9 +92,35 @@ async function runWensTextModel(env, fallbackModel, options = {}) {
     const detail = String(result?.error?.message || "OpenAI request failed").slice(0, 180);
     throw new Error("OPENAI_API_ERROR_" + response.status + ": " + detail);
   }
-  return result;
-}
 
+  const output = Array.isArray(result.output) ? result.output : [];
+  const content = output
+    .filter(item => item?.type === "message")
+    .flatMap(item => Array.isArray(item.content) ? item.content : [])
+    .filter(item => item?.type === "output_text" && typeof item.text === "string")
+    .map(item => item.text)
+    .join("");
+  const toolCalls = output
+    .filter(item => item?.type === "function_call")
+    .map(item => ({
+      id: String(item.call_id || item.id || ""),
+      type: "function",
+      function: {
+        name: String(item.name || ""),
+        arguments: String(item.arguments || "{}")
+      }
+    }));
+  return {
+    id: result.id,
+    choices: [{
+      message: {
+        role: "assistant",
+        content: content || (typeof result.output_text === "string" ? result.output_text : ""),
+        ...(toolCalls.length ? { tool_calls: toolCalls } : {})
+      }
+    }]
+  };
+}
 const enc = new TextEncoder();
 const COOKIE = "wens_session";
 const ADMIN_COOKIE = "wens_admin_session";
@@ -71,7 +140,7 @@ function classifyWorkersAiFailure(error) {
   const raw = String(error?.message || error || "unknown");
   if (/OPENAI_API_ERROR_401|invalid_api_key/i.test(raw)) return { code: "OPENAI_KEY_INVALID", status: 503, message: "مفتاح OpenAI الموجود على الخادم غير صالح. راجع إعداد OPENAI_API_KEY في Cloudflare." };
   if (/OPENAI_API_ERROR_429|rate_limit|insufficient_quota/i.test(raw)) return { code: "OPENAI_RATE_LIMIT", status: 429, message: "وصلنا لحد الاستخدام أو معدل الطلبات في OpenAI. راجع رصيد وميزانية API ثم جرّب تاني." };
-  if (/OPENAI_API_ERROR_5\\d\\d/.test(raw)) return { code: "OPENAI_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مشغولة مؤقتًا. جرّب تاني بعد شوية." };
+  if (/OPENAI_API_ERROR_5\d\d/.test(raw)) return { code: "OPENAI_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مشغولة مؤقتًا. جرّب تاني بعد شوية." };
   const quotaExhausted =
     /daily free allocation/i.test(raw) ||
     /used up.{0,100}(?:10,?000\s+neurons|neurons)/i.test(raw) ||
@@ -688,7 +757,7 @@ async function adminRoute(request, env, path) {
     });
   }
   if (path === "/api/admin/test-agent" && request.method === "POST") {
-    if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+    if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
     const probe = new Request(new URL("/api/agent", request.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2605,7 +2674,7 @@ async function handleAgent(request, env, user, options = {}) {
     });
   }
 
-  if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+  if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
   let imageBase64 = "";
   let imageMimeType = "";
   let textAttachmentContext = "";
