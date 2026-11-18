@@ -644,9 +644,9 @@ async function adminRoute(request, env, path) {
         naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
         documentReadingConfigured: true,
         freeDocumentParsing: true,
-        documentAIConfigured: Boolean(env.AI),
+        documentAIConfigured: Boolean(env.OPENAI_API_KEY),
         browserConfigured: Boolean(env.BROWSER),
-        agentToolingConfigured: Boolean(env.AI && tools.length)
+        agentToolingConfigured: Boolean(env.OPENAI_API_KEY && tools.length)
       },
       counts,
       onlineUsers: databaseConnected && tableNames.has("sessions") && tableNames.has("users") && tableNames.has("messages")
@@ -3315,7 +3315,7 @@ export default {
           naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
           documentReadingConfigured: true,
           freeDocumentParsing: true,
-          documentAIConfigured: Boolean(env.AI),
+          documentAIConfigured: Boolean(env.OPENAI_API_KEY),
           adminProtectionConfigured: Boolean(env.DB)
         },
         diagnostics: {
