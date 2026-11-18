@@ -138,7 +138,7 @@ export function extractResponsesWebSearch(response) {
       .flatMap(item => item.content
         .filter(part => part?.type === "output_text" && typeof part.text === "string")
         .map(part => part.text))
-      .join("\\n")
+      .join("\n")
       .trim();
 
   const sources = [];
@@ -151,9 +151,9 @@ export function extractResponsesWebSearch(response) {
       if (url.protocol !== "https:" || seen.has(url.href)) return;
       seen.add(url.href);
       sources.push({
-        title: String(source.title || url.hostname).replace(/\\s+/g, " ").trim().slice(0, 160),
+        title: String(source.title || url.hostname).replace(/\s+/g, " ").trim().slice(0, 160),
         url: url.href,
-        domain: url.hostname.replace(/^www\\./i, "")
+        domain: url.hostname.replace(/^www\./i, "")
       });
     } catch {}
   };
