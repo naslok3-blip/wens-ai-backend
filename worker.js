@@ -32,6 +32,24 @@ function json(data, status = 200, headers = {}) {
 
 // Convert Workers AI provider failures into an actionable, safe message.
 // In particular, the daily free Neurons quota is shared across models in the account.
+function classifyWensModelFailure(error) {
+  const raw = String(error?.message || error || "");
+  const status = Number(error?.status || raw.match(/OpenAI API (\\d{3})/i)?.[1] || 0);
+  if (status === 401 || status === 403) {
+    return { code: "OPENAI_API_KEY_INVALID", status: 502, message: "مفتاح OpenAI غير صالح أو لا يملك صلاحية استخدام النموذج. راجع السر المحفوظ في Cloudflare." };
+  }
+  if (status === 429 || /insufficient_quota|rate_limit_exceeded|OpenAI API 429/i.test(raw)) {
+    return { code: "OPENAI_API_QUOTA", status: 429, message: "رصيد أو حد استخدام OpenAI API غير كافٍ حاليًا. راجع الفوترة وحدود الاستخدام في حساب OpenAI." };
+  }
+  if (status === 404) {
+    return { code: "OPENAI_MODEL_UNAVAILABLE", status: 503, message: "نموذج GPT المحدد غير متاح لهذا المفتاح. راجع اسم النموذج وصلاحية الوصول إليه." };
+  }
+  if (status >= 500 || /خدمة OpenAI|الاتصال بخدمة OpenAI/i.test(raw)) {
+    return { code: "OPENAI_SERVICE_UNAVAILABLE", status: 503, message: "خدمة OpenAI مشغولة أو غير متاحة حاليًا. حاول مرة أخرى بعد قليل." };
+  }
+  return classifyWorkersAiFailure(error);
+}
+
 function classifyWorkersAiFailure(error) {
   const raw = String(error?.message || error || "unknown");
   const quotaExhausted =
@@ -812,7 +830,7 @@ async function adminRoute(request, env, path) {
         : typeof result?.response === "string" ? result.response.trim() : "";
       return reply ? json({ ok: true, model, reply }) : json({ error: "تم الاتصال بالنموذج لكنه لم يرجع نصًا." }, 502);
     } catch (error) {
-      const failure = classifyWorkersAiFailure(error);
+      const failure = classifyWensModelFailure(error);
       console.error("[WENS_AI_PROBE_FAILURE]", JSON.stringify({
         code: failure.code,
         detail: String(error?.message || error || "unknown").slice(0, 220)
@@ -1394,7 +1412,7 @@ async function createWebProject(env, user, args, options = {}) {
       .replace(/Bearer\s+[^\s]+/gi, "Bearer [redacted]")
       .replace(/(?:sk|cf)_[A-Za-z0-9_-]{12,}/g, "[redacted]")
       .slice(0, 220);
-    const category = /quota|billing|payment|neurons|allocation/i.test(raw)
+    const category = /quota|billing|payment|neurons|allocation|OpenAI API 429|rate.?limit|insufficient_quota/i.test(raw)
       ? "quota_or_billing"
       : /timeout|timed out|abort|deadline|exceeded time|504|524/i.test(raw)
         ? "inference_timeout"
@@ -1405,7 +1423,7 @@ async function createWebProject(env, user, args, options = {}) {
         ? "خدمة إنشاء المشاريع وصلت إلى حد الاستخدام المتاح حاليًا."
         : category === "inference_timeout"
           ? "توليد المشروع استغرق وقتًا أطول من المهلة. جرّب نسخة أولى أبسط."
-          : "تعذّر إنشاء المشروع حاليًا. راجع حالة نموذج إنشاء المشاريع.",
+          : (error?.status === 429 ? "رصيد أو حد استخدام OpenAI API غير كافٍ حاليًا." : "تعذّر إنشاء المشروع حاليًا. راجع حالة نموذج إنشاء المشاريع."),
       ...(options.diagnostics ? { diagnostic: { category, detail } } : {})
     };
   }
@@ -2705,14 +2723,18 @@ async function runWensModel(env, fallbackModel, options = {}) {
       signal: AbortSignal.timeout(60000)
     });
   } catch (error) {
-    throw new Error("تعذّر الاتصال بخدمة OpenAI: " + String(error?.message || error).slice(0, 140));
+    const failure = new Error("تعذّر الاتصال بخدمة OpenAI: " + String(error?.message || error).slice(0, 140));
+    failure.status = 503;
+    throw failure;
   }
   const raw = await response.text().catch(() => "");
   let data = {};
   try { data = raw ? JSON.parse(raw) : {}; } catch {}
   if (!response.ok) {
     const detail = String(data?.error?.message || "HTTP " + response.status).slice(0, 180);
-    throw new Error("OpenAI API " + response.status + ": " + detail);
+    const failure = new Error("OpenAI API " + response.status + ": " + detail);
+    failure.status = response.status;
+    throw failure;
   }
   return fromResponsesResult(data);
 }
@@ -3350,6 +3372,9 @@ async function handleChat(request, env, user) {
     return json({ reply, model });
   } catch (error) {
     const message = String(error?.message || error || "").toLowerCase();
+    if (/OpenAI API 429|insufficient_quota|rate_limit_exceeded/.test(message)) {
+      return json({ error: "رصيد أو حد استخدام OpenAI API غير كافٍ حاليًا. راجع الفوترة وحدود الاستخدام في حساب OpenAI." }, 429);
+    }
     if (/daily free allocation|neurons|quota|account limited/.test(message)) {
       return json({ error: "وصلنا للحد المجاني اليومي للذكاء الاصطناعي على Cloudflare. الحصة تتجدد يوميًا؛ جرّب بعد منتصف الليل UTC." }, 429);
     }
