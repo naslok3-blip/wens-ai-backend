@@ -86,6 +86,9 @@ async function refreshStatus() {
   try {
     const data = await request("/api/admin/status");
     const f = data.features || {};
+    setState("openAiState", f.openAIChatConfigured ? "مفتاح GPT موجود" : "مفتاح API غير مضبوط", !!f.openAIChatConfigured);
+    $("openAiModel").textContent = "نموذج المحادثة: " + (f.openAIChatConfigured ? (data.model || "GPT") : "غير متاح");
+    $("testOpenAiBtn").disabled = !f.openAIChatConfigured;
     setState("workersAiState", f.workersAI ? "متصل ويعمل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
     setState("voiceState", "صوت الجهاز المجاني — يحتاج صوت ar-EG مثبت", false);
@@ -409,6 +412,21 @@ $("testDocumentBtn").addEventListener("click", async () => {
     $("documentTestStatus").style.color = "#ff9fba";
   } finally {
     updateDocumentTestButton();
+  }
+});
+$("testOpenAiBtn").addEventListener("click", async () => {
+  $("testOpenAiBtn").disabled = true;
+  serviceMessage("جاري اختبار GPT وتنفيذ أداة الحساب...");
+  try {
+    const result = await request("/api/admin/test-agent", {}, "POST");
+    if (!result.calculatorToolUsed) throw new Error(result.error || "لم يثبت تنفيذ أداة الحساب.");
+    setState("openAiState", "اختبار GPT ناجح", true);
+    serviceMessage("نجح اختبار GPT ونفّذ أداة الحساب: 19 × 23 = 437.");
+  } catch (error) {
+    serviceMessage(error.message, true);
+    setState("openAiState", "فشل الاختبار", false);
+  } finally {
+    $("testOpenAiBtn").disabled = false;
   }
 });
 $("testWorkersAiBtn").addEventListener("click", async () => {
