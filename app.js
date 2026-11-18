@@ -658,6 +658,8 @@ function updateArabicCorrectionSuggestion() {
   const box = $("arabicCorrection");
   const text = $("arabicCorrectionText");
   if (!box || !text) return;
+  // Keep the dynamic correction prompt accessible with aria-live="polite".
+  box.setAttribute("aria-live", "polite");
   activeArabicCorrection = getArabicSpellingSuggestion($("messageInput").value);
   if (!activeArabicCorrection) {
     box.hidden = true;
