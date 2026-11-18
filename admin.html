@@ -52,16 +52,16 @@
     <section class="service-panel">
       <div class="section-head"><div><h2>حالة الخادم والخدمات</h2><p id="checkedAt">لم يتم الفحص بعد</p></div></div>
       <div class="service-grid">
-        <article class="service-card"><span class="service-icon">✧</span><b>الذكاء الاصطناعي</b><strong id="workersAiState" class="state-pending">جارٍ الفحص</strong><small id="modelName">النموذج: —</small></article>
+        <article class="service-card"><span class="service-icon">✦</span><b>محادثة GPT</b><strong id="openAiState" class="state-pending">جارٍ الفحص</strong><small id="openAiModel">نموذج المحادثة: —</small></article><article class="service-card"><span class="service-icon">✧</span><b>Cloudflare AI</b><strong id="workersAiState" class="state-pending">جارٍ الفحص</strong><small id="modelName">الخدمة الاحتياطية: —</small></article>
         <article class="service-card"><span class="service-icon">▤</span><b>قاعدة البيانات</b><strong id="databaseState" class="state-pending">جارٍ الفحص</strong><small id="databaseDetail">اتصال D1</small></article>
         <article class="service-card"><span class="service-icon">🔊</span><b>الصوت الطبيعي</b><strong id="voiceState" class="state-pending">جارٍ الفحص</strong><small>وجود مفتاح Realtime؛ يلزم اختبار السماع</small></article>
         <article class="service-card"><span class="service-icon">🌐</span><b>متصفح المواقع</b><strong id="browserState" class="state-pending">جارٍ الفحص</strong><small>وجود ربط Browser</small></article>
       </div>
       <div class="service-actions">
-        <button id="testWorkersAiBtn" class="btn primary">اختبار Cloudflare AI الآن</button>
+        <button id="testOpenAiBtn" class="btn primary">اختبار GPT وتنفيذ الأدوات</button><button id="testWorkersAiBtn" class="btn secondary">اختبار Cloudflare AI</button>
         <p id="serviceStatus" class="status-line" role="status" aria-live="polite"></p>
       </div>
-      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. اختبار النموذج يستهلك جزءًا صغيرًا من الحصة المجانية اليومية لـ Workers AI. بعد نفاد الحصة تتوقف الطلبات حتى موعد التجديد اليومي.</p>
+      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. استخدام GPT عبر OpenAI API قد يترتب عليه تكلفة حسب الاستهلاك والفوترة. مفتاح API يظل في Cloudflare Secrets ولا يُرسل إلى المتصفح.</p>
     </section>
 
     <div class="admin-grid">
