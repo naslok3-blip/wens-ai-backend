@@ -1,4 +1,4 @@
-const CACHE = "wens-ai-v11";
+const CACHE = "wens-ai-v12";
 const STATIC_ASSETS = [
   "/", "/index.html", "/admin.html", "/style.css", "/admin.css",
   "/app.js", "/admin.js", "/owner-panel.js", "/owner-panel.css",
