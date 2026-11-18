@@ -39,7 +39,7 @@ function applyLocalSettings() {
   const voiceButton = $("voiceBtn");
   if (voiceButton) voiceButton.hidden = !appSettings.enableVoice;
   const avatarSrc = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
-  document.querySelectorAll(".mini-avatar").forEach(image => { image.src = avatarSrc; });
+  document.querySelectorAll(".mini-avatar, .brand-avatar, .auth-avatar").forEach(image => { image.src = avatarSrc; });
   const themes = {
     purple: ["#b49aff", "#ffacd6"],
     blue: ["#83baff", "#8ce8ef"],
@@ -335,36 +335,41 @@ function cleanRepeatedReplyText(value) {
   return output.join("\n").trim();
 }
 function appendMessageText(container, text) {
-  const source = String(text ?? "");
-  const pattern = /\[([^\]\n]{1,100})\]\((https:\/\/[^)\s]+)\)|(https:\/\/[^\s<>"']+)/g;
+  const source = String(text ?? "")
+    .replace(/\\([*_~])/g, "$1")
+    .replace(/\\n/g, "\n");
+  const pattern = /\[([^\]\n]{1,240})\]\((https:\/\/[^)\s]+)\)|(https:\/\/[^\s<>"']+)|\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|(?<!\*)\*(.+?)\*(?!\*)/g;
   let cursor = 0, match;
+  const appendText = value => {
+    if (value) container.appendChild(document.createTextNode(value));
+  };
   while ((match = pattern.exec(source))) {
-    if (match.index > cursor) {
-      container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
-    }
-    const label = match[1] || "";
-    const rawUrl = match[2] || match[3];
-    const suffix = match[3] ? (rawUrl.match(/[),.!?؟،؛]+$/)?.[0] || "") : "";
-    const href = suffix ? rawUrl.slice(0, -suffix.length) : rawUrl;
-    try {
-      const parsed = new URL(href);
-      if (parsed.protocol === "https:") {
-        const link = document.createElement("a");
-        link.href = parsed.href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = label || href;
-        container.appendChild(link);
-        if (suffix) container.appendChild(document.createTextNode(suffix));
-      } else {
-        container.appendChild(document.createTextNode(match[0]));
-      }
-    } catch {
-      container.appendChild(document.createTextNode(match[0]));
+    appendText(source.slice(cursor, match.index));
+    if (match[1] || match[3]) {
+      const label = match[1] || "";
+      const rawUrl = match[2] || match[3];
+      const suffix = match[3] ? (rawUrl.match(/[),.!?؟،؛]+$/)?.[0] || "") : "";
+      const href = suffix ? rawUrl.slice(0, -suffix.length) : rawUrl;
+      try {
+        const parsed = new URL(href);
+        if (parsed.protocol === "https:") {
+          const link = document.createElement("a");
+          link.href = parsed.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = label || href;
+          container.appendChild(link);
+          appendText(suffix);
+        } else appendText(match[0]);
+      } catch { appendText(match[0]); }
+    } else {
+      const element = document.createElement(match[4] || match[5] ? "strong" : match[6] ? "del" : "em");
+      element.textContent = match[4] || match[5] || match[6] || match[7] || "";
+      container.appendChild(element);
     }
     cursor = match.index + match[0].length;
   }
-  if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
+  appendText(source.slice(cursor));
 }
 function hideExternalLinksFromDisplay(value) {
   let text = String(value ?? "");
