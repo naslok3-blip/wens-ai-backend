@@ -3212,8 +3212,8 @@ async function agentTasksRoute(request, env, user) {
 }
 
 async function handleChat(request, env, user) {
-  if (!env.AI) {
-    return json({ error: "خدمة الذكاء الاصطناعي المجانية غير مربوطة على الخادم." }, 503);
+  if (!env.OPENAI_API_KEY && !env.AI) {
+    return json({ error: "خدمة الذكاء الاصطناعي غير مربوطة على الخادم." }, 503);
   }
   const db = env.DB || null;
   let body;
