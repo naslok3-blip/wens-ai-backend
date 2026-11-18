@@ -1889,10 +1889,10 @@ async function executeAgentTool(name, args, env, user) {
         if (!extracted.text || !extracted.sources.length) throw new Error("NO_CITED_RESULTS");
         const sourceMarkdown = extracted.sources.slice(0, 8)
           .map(item => "[" + item.title + "](" + item.url + ")")
-          .join("\\n");
+          .join("\n");
         return {
           query,
-          results: (extracted.text + "\\n\\nمصادر البحث:\\n" + sourceMarkdown).slice(0, 14000),
+          results: (extracted.text + "\n\nمصادر البحث:\n" + sourceMarkdown).slice(0, 14000),
           sources: extracted.sources.slice(0, 8),
           engines: ["OpenAI Web Search"],
           diagnostics: [],
@@ -1901,7 +1901,7 @@ async function executeAgentTool(name, args, env, user) {
         };
       } catch (error) {
         const detail = String(error?.message || "");
-        const status = detail.match(/^HTTP_(\\d{3})$/)?.[1];
+        const status = detail.match(/^HTTP_(\d{3})$/)?.[1];
         openAiSearchDiagnostic = status
           ? "OpenAI Web Search: HTTP " + status
           : error?.name === "AbortError"
