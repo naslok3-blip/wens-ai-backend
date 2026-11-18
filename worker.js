@@ -5,6 +5,53 @@ import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from 
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
 
+
+async function runWensTextModel(env, fallbackModel, options = {}) {
+  // Image generation stays on Cloudflare Workers AI; conversational text uses OpenAI when configured.
+  if (options.multipart) {
+    if (!env.AI) throw new Error("WENS_IMAGE_AI_NOT_CONFIGURED");
+    return await env.AI.run(fallbackModel, options);
+  }
+  if (!env.OPENAI_API_KEY) {
+    if (!env.AI) throw new Error("WENS_AI_NOT_CONFIGURED");
+    return await env.AI.run(fallbackModel, options);
+  }
+
+  const model = env.WENS_OPENAI_MODEL || "gpt-6.2-sol";
+  const payload = {
+    model,
+    messages: options.messages || [],
+    max_completion_tokens: Number(options.max_tokens || 1000)
+  };
+  if (Array.isArray(options.tools) && options.tools.length) {
+    payload.tools = options.tools;
+    payload.tool_choice = "auto";
+    payload.parallel_tool_calls = false;
+  }
+  if (options.reasoning_effort) payload.reasoning_effort = options.reasoning_effort;
+  // Current GPT-6 reasoning models manage sampling internally; omit temperature and
+  // Cloudflare-specific chat_template_kwargs from the OpenAI request.
+  if (!model.startsWith("gpt-6") && Number.isFinite(options.temperature)) {
+    payload.temperature = options.temperature;
+  }
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + env.OPENAI_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  let result = {};
+  try { result = await response.json(); } catch {}
+  if (!response.ok) {
+    const detail = String(result?.error?.message || "OpenAI request failed").slice(0, 180);
+    throw new Error("OPENAI_API_ERROR_" + response.status + ": " + detail);
+  }
+  return result;
+}
+
 const enc = new TextEncoder();
 const COOKIE = "wens_session";
 const ADMIN_COOKIE = "wens_admin_session";
@@ -747,10 +794,10 @@ async function adminRoute(request, env, path) {
     });
   }
   if (path === "/api/admin/test-ai" && request.method === "POST") {
-    if (!env.AI) return json({ error: "ربط Cloudflare Workers AI غير موجود على هذا الخادم." }, 503);
+    if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "لم يتم ربط محرك الذكاء الاصطناعي على الخادم." }, 503);
     try {
       const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
-      const result = await env.AI.run(model, {
+      const result = await runWensTextModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: "اكتبي كلمة واحدة فقط: جاهزة" }
@@ -1094,7 +1141,7 @@ async function runAgentImage(env, action, args, sourceImage) {
       form.append("input_image_0",new Blob([bytes],{type:sourceImage.type || "image/jpeg"}),"wens-reference.jpg");
     }
     const serialized = new Response(form);
-    const result = await env.AI.run(model,{
+    const result = await runWensTextModel(env, model,{
       multipart:{body:serialized.body,contentType:serialized.headers.get("content-type")}
     });
     const image = typeof result?.image === "string" ? result.image : (typeof result?.result?.image === "string" ? result.result.image : "");
@@ -1302,7 +1349,7 @@ async function createWebProject(env, user, args, options = {}) {
       max_tokens: 4200,
       chat_template_kwargs: { enable_thinking: false }
     };
-    const result = await env.AI.run(model, runOptions);
+    const result = await runWensTextModel(env, model, runOptions);
     const message = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
     let source = typeof message?.content === "string"
       ? message.content.trim()
@@ -1433,7 +1480,7 @@ async function editWebProject(env, user, args = {}) {
     "Do not remove data, features, screens, or user content unrelated to the requested change. Output the entire HTML document only."
   ].join("\n");
   try {
-    const result = await env.AI.run(model, {
+    const result = await runWensTextModel(env, model, {
       messages: [
         { role: "system", content: system },
         {
@@ -2853,7 +2900,7 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+  const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
@@ -2873,7 +2920,7 @@ async function handleAgent(request, env, user, options = {}) {
       if (imageBase64 && turn === 0) {
         steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
       }
-      const result = await env.AI.run(model, runOptions);
+      const result = await runWensTextModel(env, model, runOptions);
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const rawAssistantText = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
@@ -3023,8 +3070,8 @@ async function handleAgent(request, env, user, options = {}) {
       if (model === "@cf/zai-org/glm-4.7-flash") {
         lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
       }
-      if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
-      const last = await env.AI.run(model, lastOptions);
+      if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";\n      else if (model.startsWith("gpt-6")) lastOptions.reasoning_effort = deepThink ? "high" : "medium";
+      const last = await runWensTextModel(env, model, lastOptions);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
@@ -3126,7 +3173,7 @@ async function handleChat(request, env, user) {
     if (model === "@cf/zai-org/glm-4.7-flash") {
       runOptions.chat_template_kwargs = { enable_thinking: false };
     }
-    const result = await env.AI.run(model, runOptions);
+    const result = await runWensTextModel(env, model, runOptions);
     const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const reply = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
