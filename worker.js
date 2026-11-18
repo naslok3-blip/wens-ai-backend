@@ -791,15 +791,15 @@ async function adminRoute(request, env, path) {
       features: {
         workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
-        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), openAIChatConfigured: Boolean(env.OPENAI_API_KEY), activeChatEngine: env.OPENAI_API_KEY ? "OpenAI Responses API" : (env.AI ? "Cloudflare Workers AI" : "unavailable"), browserConfigured: Boolean(env.BROWSER)
       }
     });
   }
   if (path === "/api/admin/test-ai" && request.method === "POST") {
-    if (!env.AI) return json({ error: "ربط Cloudflare Workers AI غير موجود على هذا الخادم." }, 503);
+    if (!env.AI && !env.OPENAI_API_KEY) return json({ error: "لا يوجد ربط لنموذج ذكاء اصطناعي على الخادم." }, 503);
     try {
-      const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
-      const result = await env.AI.run(model, {
+      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+      const result = await runWensModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: "اكتبي كلمة واحدة فقط: جاهزة" }
@@ -2664,7 +2664,7 @@ async function runWensModel(env, fallbackModel, options = {}) {
     if (!env.AI) throw new Error("لا يوجد مفتاح OpenAI ولا ربط Workers AI.");
     return await env.AI.run(fallbackModel, options);
   }
-  const model = String(env.WENS_OPENAI_MODEL || fallbackModel || "gpt-6.2-sol");
+  const model = String(fallbackModel || env.WENS_OPENAI_MODEL || "gpt-6.2-sol");
   const converted = toResponsesInput(options.messages || []);
   const tools = (Array.isArray(options.tools) ? options.tools : []).map(item => {
     const fn = item?.function || {};
@@ -3326,7 +3326,7 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+    const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
     const runOptions = {
       messages,
       temperature: 0.7,
@@ -3335,7 +3335,7 @@ async function handleChat(request, env, user) {
     if (model === "@cf/zai-org/glm-4.7-flash") {
       runOptions.chat_template_kwargs = { enable_thinking: false };
     }
-    const result = await env.AI.run(model, runOptions);
+    const result = await runWensModel(env, model, runOptions);
     const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const reply = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
