@@ -687,7 +687,7 @@ async function adminRoute(request, env, path) {
     });
   }
   if (path === "/api/admin/test-agent" && request.method === "POST") {
-    if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+    if (!env.AI && !env.OPENAI_API_KEY) return json({ error: "خدمة الذكاء الاصطناعي غير مربوطة. أضف مفتاح OpenAI أو اربط Workers AI." }, 503);
     const probe = new Request(new URL("/api/agent", request.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1322,7 +1322,7 @@ async function ensureGeneratedProjects(db) {
 }
 async function createWebProject(env, user, args, options = {}) {
   if (!env.DB || !user) return { error: "سجّل الدخول أولًا لحفظ التطبيقات والألعاب في حسابك." };
-  if (!env.AI) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
+  if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
   const kind = args.kind === "game" ? "game" : "app";
   const title = String(args.title || (kind === "game" ? "لعبة ونس" : "تطبيق ونس")).replace(/[\\r\\n<>]/g, " ").trim().slice(0, 80);
   const prompt = String(args.prompt || "").trim().slice(0, 3200);
@@ -1330,7 +1330,9 @@ async function createWebProject(env, user, args, options = {}) {
   await ensureGeneratedProjects(env.DB);
 
   // Prefer the low-latency multilingual model for code generation; do not inherit a reasoning-heavy chat model.
-  const model = env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash";
+  const model = env.OPENAI_API_KEY
+    ? (env.WENS_OPENAI_PROJECT_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.2-sol")
+    : (env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash");
   const system = [
     "You are a senior frontend engineer. Output only one complete standalone HTML5 document.",
     "Use inline CSS and vanilla JavaScript. The app/game must actually work, not be a mockup.",
@@ -1351,7 +1353,7 @@ async function createWebProject(env, user, args, options = {}) {
       max_tokens: 4200,
       chat_template_kwargs: { enable_thinking: false }
     };
-    const result = await env.AI.run(model, runOptions);
+    const result = await runWensModel(env, model, runOptions);
     const message = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
     let source = typeof message?.content === "string"
       ? message.content.trim()
@@ -2583,6 +2585,136 @@ function extractExternalSources(searchResult, maximum = 8) {
   }
   return found;
 }
+function toResponsesInput(messages) {
+  const input = [];
+  const instructions = [];
+  for (const message of (Array.isArray(messages) ? messages : [])) {
+    if (!message || typeof message !== "object") continue;
+    const role = String(message.role || "user");
+    if (role === "system" || role === "developer") {
+      if (message.content) instructions.push(String(message.content));
+      continue;
+    }
+    if (role === "tool") {
+      input.push({
+        type: "function_call_output",
+        call_id: String(message.tool_call_id || ""),
+        output: typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "")
+      });
+      continue;
+    }
+    if (role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length) {
+      if (typeof message.content === "string" && message.content.trim()) {
+        input.push({ role: "assistant", content: message.content });
+      }
+      for (const call of message.tool_calls) {
+        const fn = call?.function || call || {};
+        input.push({
+          type: "function_call",
+          call_id: String(call?.id || call?.call_id || crypto.randomUUID()),
+          name: String(fn.name || ""),
+          arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {})
+        });
+      }
+      continue;
+    }
+    let content = message.content ?? "";
+    if (Array.isArray(content)) {
+      content = content.map(part => {
+        if (part?.type === "text") return { type: "input_text", text: String(part.text || "") };
+        if (part?.type === "image_url") {
+          const url = typeof part.image_url === "string" ? part.image_url : part.image_url?.url;
+          return url ? { type: "input_image", image_url: url, detail: "auto" } : null;
+        }
+        return null;
+      }).filter(Boolean);
+    }
+    input.push({ role: role === "tool" ? "user" : role, content });
+  }
+  return { input, instructions: instructions.join("\n\n") };
+}
+
+function fromResponsesResult(data) {
+  const output = Array.isArray(data?.output) ? data.output : [];
+  const calls = output.filter(item => item?.type === "function_call").map(item => ({
+    id: String(item.call_id || item.id || crypto.randomUUID()),
+    type: "function",
+    function: { name: String(item.name || ""), arguments: String(item.arguments || "{}") }
+  }));
+  const text = output
+    .filter(item => item?.type === "message")
+    .flatMap(item => Array.isArray(item.content) ? item.content : [])
+    .filter(part => part?.type === "output_text" || part?.type === "refusal")
+    .map(part => String(part.text || ""))
+    .filter(Boolean)
+    .join("\n")
+    || String(data?.output_text || "");
+  return {
+    id: data?.id || "",
+    choices: [{
+      message: { role: "assistant", content: text, ...(calls.length ? { tool_calls: calls } : {}) },
+      finish_reason: calls.length ? "tool_calls" : "stop"
+    }],
+    usage: data?.usage || null
+  };
+}
+
+async function runWensModel(env, fallbackModel, options = {}) {
+  if (!env.OPENAI_API_KEY) {
+    if (!env.AI) throw new Error("لا يوجد مفتاح OpenAI ولا ربط Workers AI.");
+    return await env.AI.run(fallbackModel, options);
+  }
+  const model = String(env.WENS_OPENAI_MODEL || fallbackModel || "gpt-6.2-sol");
+  const converted = toResponsesInput(options.messages || []);
+  const tools = (Array.isArray(options.tools) ? options.tools : []).map(item => {
+    const fn = item?.function || {};
+    return {
+      type: "function",
+      name: String(fn.name || ""),
+      description: String(fn.description || ""),
+      parameters: fn.parameters || { type: "object", properties: {} },
+      strict: false
+    };
+  }).filter(item => item.name);
+  const payload = {
+    model,
+    input: converted.input,
+    store: false,
+    max_output_tokens: Math.max(128, Math.min(6000, Number(options.max_tokens) || 1000))
+  };
+  if (converted.instructions) payload.instructions = converted.instructions;
+  if (tools.length) {
+    payload.tools = tools;
+    payload.tool_choice = "auto";
+  }
+  const effort = ["low", "medium", "high", "xhigh", "max"].includes(options.reasoning_effort)
+    ? options.reasoning_effort
+    : "medium";
+  payload.reasoning = { effort };
+  let response;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.OPENAI_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60000)
+    });
+  } catch (error) {
+    throw new Error("تعذّر الاتصال بخدمة OpenAI: " + String(error?.message || error).slice(0, 140));
+  }
+  const raw = await response.text().catch(() => "");
+  let data = {};
+  try { data = raw ? JSON.parse(raw) : {}; } catch {}
+  if (!response.ok) {
+    const detail = String(data?.error?.message || "HTTP " + response.status).slice(0, 180);
+    throw new Error("OpenAI API " + response.status + ": " + detail);
+  }
+  return fromResponsesResult(data);
+}
+
 async function handleAgent(request, env, user, options = {}) {
   let body;
   try { body = await request.json(); } catch { return json({ error: "بيانات المهمة غير صالحة." }, 400); }
@@ -2928,7 +3060,9 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+  const model = env.OPENAI_API_KEY
+    ? (deepThink ? (env.WENS_OPENAI_REASONING_MODEL || "gpt-6.2-astra") : (env.WENS_OPENAI_MODEL || "gpt-6.2-sol"))
+    : (useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
@@ -2948,7 +3082,7 @@ async function handleAgent(request, env, user, options = {}) {
       if (imageBase64 && turn === 0) {
         steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
       }
-      const result = await env.AI.run(model, runOptions);
+      const result = await runWensModel(env, model, runOptions);
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const rawAssistantText = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
@@ -3099,7 +3233,7 @@ async function handleAgent(request, env, user, options = {}) {
         lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
       }
       if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
-      const last = await env.AI.run(model, lastOptions);
+      const last = await runWensModel(env, model, lastOptions);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
