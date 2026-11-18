@@ -123,3 +123,56 @@ export function fromResponsesResponse(response) {
     }]
   };
 }
+
+/**
+ * Extract the answer and grounded source URLs from a Responses API web search.
+ * Sources can appear on web_search_call.action.sources or as url_citation
+ * annotations on the returned message text.
+ */
+export function extractResponsesWebSearch(response) {
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const text = typeof response?.output_text === "string"
+    ? response.output_text.trim()
+    : output
+      .filter(item => item?.type === "message" && Array.isArray(item.content))
+      .flatMap(item => item.content
+        .filter(part => part?.type === "output_text" && typeof part.text === "string")
+        .map(part => part.text))
+      .join("\\n")
+      .trim();
+
+  const sources = [];
+  const seen = new Set();
+  const addSource = source => {
+    if (!source || typeof source !== "object") return;
+    const rawUrl = String(source.url || source.uri || "").trim();
+    try {
+      const url = new URL(rawUrl);
+      if (url.protocol !== "https:" || seen.has(url.href)) return;
+      seen.add(url.href);
+      sources.push({
+        title: String(source.title || url.hostname).replace(/\\s+/g, " ").trim().slice(0, 160),
+        url: url.href,
+        domain: url.hostname.replace(/^www\\./i, "")
+      });
+    } catch {}
+  };
+
+  for (const item of output) {
+    if (item?.type === "web_search_call") {
+      const actionSources = item.action?.sources ?? item.sources;
+      if (Array.isArray(actionSources)) {
+        for (const source of actionSources) addSource(source);
+      }
+    }
+    if (item?.type === "message" && Array.isArray(item.content)) {
+      for (const part of item.content) {
+        for (const annotation of (Array.isArray(part?.annotations) ? part.annotations : [])) {
+          if (annotation?.type === "url_citation") addSource(annotation);
+        }
+      }
+    }
+  }
+
+  return { text, sources };
+}
