@@ -167,7 +167,7 @@ test("builds a bilingual corrected query for Egypt national-team fixtures", () =
 
 test("upcoming fixture date parser rejects past dates and accepts future CAF dates", () => {
   const now = new Date("2026-11-11T10:00:00+02:00");
-  assert.equal(hasUpcomingFootballDate("Egypt v Malawi (13/11, 19h00)", now), true);
+  assert.equal(hasUpcomingFootballDate("Egypt v Malawi (23/11, 19h00)", now), true);
   assert.equal(hasUpcomingFootballDate("Egypt v Malawi (17 Nov 2026)", now), true);
   assert.equal(hasUpcomingFootballDate("Egypt v Malawi (13/10/2026)", now), false);
 });
@@ -175,16 +175,16 @@ test("upcoming fixture date parser rejects past dates and accepts future CAF dat
 test("Egypt national-team fixtures require two recent independent sources with future dates", () => {
   const result = {
     results:
-      "جدول منتخب مصر — CAF\\nPublished: 2026-11-10\\nEgypt v Malawi (13/11, 19h00) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
-      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2026-11-10\\nEgypt v Malawi (13 Nov 2026, 21:00 Cairo) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
+      "جدول منتخب مصر — CAF\\nPublished: 2026-11-10\\nEgypt v Malawi (23/11, 19h00) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
+      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2026-11-10\\nEgypt v Malawi (23 Nov 2026, 21:00 Cairo) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
   const oneSource = { results: result.results.split("\\n\\n")[0] };
   assert.equal(hasVerifiableSportsScheduleSources(oneSource), false);
   const stale = {
     results:
-      "جدول منتخب مصر — CAF\\nPublished: 2024-11-10\\nEgypt v Malawi (13/11/2024) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
-      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2024-11-10\\nEgypt v Malawi (13 Nov 2024) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
+      "جدول منتخب مصر — CAF\\nPublished: 2024-11-10\\nEgypt v Malawi (23/11/2024) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
+      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2024-11-10\\nEgypt v Malawi (23 Nov 2024) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
   };
   assert.equal(hasVerifiableSportsScheduleSources(stale), false);
 });
@@ -219,8 +219,8 @@ test("requires two independent fresh sources mentioning the current season for s
   const season = year + "-" + next;
   const result = {
     results:
-      "[جدول الدوري المصري " + season + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season + " اليوم آخر تحديث 10:30\n\n" +
-      "[مباريات الأهلي " + season + "](https://two.example/alahly) جدول الدوري موسم " + season + " منشور اليوم"
+      "[جدول الدوري المصري " + season + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season + " يوم 13 Nov " + next + " اليوم آخر تحديث 10:30\n\n" +
+      "[مباريات الأهلي " + season + "](https://two.example/alahly) جدول الدوري موسم " + season + " يوم 13 Nov " + next + " منشور اليوم"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
 });
@@ -258,8 +258,8 @@ test("current-season validator accepts the short season notation only with sched
   const season = getCurrentEgyptFootballSeason();
   const result = {
     results:
-      "[جدول الدوري " + season.short + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season.short + " اليوم آخر تحديث 10:30\n\n" +
-      "[مباريات الأهلي " + season.short + "](https://two.example/alahly) جدول الدوري موسم " + season.short + " منشور اليوم"
+      "[جدول الدوري " + season.short + "](https://one.example/fixtures) مواعيد مباريات الأهلي موسم " + season.short + " يوم 13 Nov " + season.endYear + " اليوم آخر تحديث 10:30\n\n" +
+      "[مباريات الأهلي " + season.short + "](https://two.example/alahly) جدول الدوري موسم " + season.short + " يوم 13 Nov " + season.endYear + " منشور اليوم"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
 });
