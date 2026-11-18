@@ -2057,20 +2057,20 @@ async function executeAgentTool(name, args, env, user) {
           }
           const plain = cleanText(
             html
-              .replace(/<script\\b[^>]*>[\\s\\S]*?<\\/script>/gi, " ")
-              .replace(/<style\\b[^>]*>[\\s\\S]*?<\\/style>/gi, " ")
-              .replace(/<noscript\\b[^>]*>[\\s\\S]*?<\\/noscript>/gi, " ")
+              .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+              .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+              .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
               .replace(/<[^>]+>/g, " ")
           );
           const snippets = [];
           const seenSnippets = new Set();
-          const matcher = /(?:\\bEgypt\\b|\\bMalawi\\b|مصر|مالاوي)/gi;
+          const matcher = /(?:\bEgypt\b|\bMalawi\b|مصر|مالاوي)/gi;
           let occurrence;
           while ((occurrence = matcher.exec(plain)) && snippets.length < 8) {
             const snippet = plain.slice(Math.max(0, occurrence.index - 150), Math.min(plain.length, occurrence.index + 260));
-            if (!/(?:\\bEgypt\\b|مصر)/i.test(snippet) ||
-                !/(?:\\bMalawi\\b|مالاوي)/i.test(snippet) ||
-                !/(?:\\d{1,2}\\s*\\/\\s*\\d{1,2}|\\d{1,2}\\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|نوفمبر|تصفيات|qualification|fixtures|schedule|matchday)/i.test(snippet)) continue;
+            if (!/(?:\bEgypt\b|مصر)/i.test(snippet) ||
+                !/(?:\bMalawi\b|مالاوي)/i.test(snippet) ||
+                !/(?:\d{1,2}\s*\/\s*\d{1,2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)|نوفمبر|تصفيات|qualification|fixtures|schedule|matchday)/i.test(snippet)) continue;
             const key = snippet.slice(0, 220);
             if (seenSnippets.has(key)) continue;
             seenSnippets.add(key);
