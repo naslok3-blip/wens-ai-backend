@@ -61,7 +61,7 @@
         <button id="testWorkersAiBtn" class="btn primary">اختبار Cloudflare AI الآن</button>
         <p id="serviceStatus" class="status-line" role="status" aria-live="polite"></p>
       </div>
-      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. اختبار النموذج يستهلك جزءًا صغيرًا من الحصة المجانية اليومية لـ Workers AI. بعد نفاد الحصة تتوقف الطلبات حتى موعد التجديد اليومي.</p>
+      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. تُستخدم خدمة OpenAI للمحادثة عند توافر المفتاح، وتظل بعض مهام الصور مرتبطة بخدمات Cloudflare.</p>
     </section>
 
     <div class="admin-grid">
@@ -123,7 +123,7 @@
             <p class="muted online-privacy-note">سجل مرات الدخول يبدأ من تاريخ تفعيل الميزة؛ لا يمكن استعادة مرات الدخول السابقة التي حُذفت جلساتها قبل وجود سجل تاريخي. لا تُعرض كلمات المرور أو نصوص المحادثات أو عناوين IP.</p>
           </section>
           <div class="diagnostic-grid">
-            <div class="diagnostic-item"><b>Workers AI</b><strong id="diagWorkersAI" class="state-pending">لم يُفحص</strong></div>
+            <div class="diagnostic-item"><b>محرك الدردشة</b><strong id="diagWorkersAI" class="state-pending">لم يُفحص</strong></div>
             <div class="diagnostic-item"><b>قاعدة D1</b><strong id="diagDatabase" class="state-pending">لم يُفحص</strong></div>
             <div class="diagnostic-item"><b>الصوت الطبيعي</b><strong id="diagVoice" class="state-pending">لم يُفحص</strong></div>
             <div class="diagnostic-item"><b>قراءة المستندات</b><strong id="diagDocuments" class="state-pending">لم يُفحص</strong></div>
