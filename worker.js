@@ -2452,7 +2452,7 @@ function hasVerifiableSportsScheduleSources(searchResult) {
     const hasFutureDate = hasUpcomingFootballDate(section);
     const hasRecentPublication = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|اخر تحديث|آخر تحديث)[^\\n]{0,120}(?:20\\d{2}|today|yesterday|اليوم|امس|أمس)/i.test(section);
     if (!hasScheduleWording || !hasFutureDate || !hasRecentPublication || (!hasSeason && !hasEgyptFixture)) continue;
-    const urls = section.match(/https?:\\/\\/[^\\s<>"')\\]]+/g) || [];
+    const urls = section.match(new RegExp("https?://[^\\s<>\"')\\]]+", "g")) || [];
     const sectionDomains = new Set();
     for (const rawUrl of urls) {
       try {
