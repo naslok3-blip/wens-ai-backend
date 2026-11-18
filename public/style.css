@@ -324,3 +324,12 @@ button:not(:disabled){transition:transform .16s ease,box-shadow .16s ease,backgr
 @media(min-width:760px){#appRoot>.panel{border-radius:28px}#appRoot .bubble{font-size:14px}}
 @media(max-width:480px){.topbar{min-height:60px;padding-inline:12px}.brand b{font-size:14px}.logo{width:40px;height:40px;border-radius:14px}main.app{padding:8px 8px max(8px,env(safe-area-inset-bottom))}#appRoot:not([hidden]){gap:7px}#appRoot .hero{padding:1px 4px 7px}#appRoot>.panel{padding:10px 9px 9px;border-radius:19px}#appRoot>.panel>.section-head{padding-bottom:9px}#appRoot .messages{gap:10px;padding:10px 1px}#appRoot .bubble{font-size:13px;line-height:1.8;padding:10px 12px;border-radius:16px}#appRoot .chat-composer{padding-top:9px}#appRoot .chat-form input{min-height:47px;border-radius:14px;font-size:13px}#appRoot .send-btn{min-height:44px;padding-inline:13px;border-radius:12px}#appRoot .attach-menu-btn,#appRoot .voice-input-btn{width:40px;height:40px;min-width:40px;flex-basis:40px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+
+/* Wens real portrait and readable chat formatting */
+.brand-avatar{display:block;width:44px;height:44px;flex:0 0 44px;object-fit:cover;border-radius:16px;border:2px solid #fff;box-shadow:0 6px 18px rgba(109,75,210,.18);cursor:pointer;touch-action:manipulation}
+.brand-avatar:focus-visible{outline:3px solid rgba(109,75,210,.3);outline-offset:3px}
+.auth-avatar{display:block;width:76px;height:76px;margin:0 auto 16px;object-fit:cover;border:3px solid #fff;border-radius:24px;box-shadow:0 10px 28px rgba(109,75,210,.18)}
+#appRoot .bubble-text strong{font-weight:800;color:inherit}
+#appRoot .bubble-text em{font-style:italic}
+#appRoot .bubble-text del{opacity:.78}
+@media(max-width:480px){.brand-avatar{width:40px;height:40px;flex-basis:40px;border-radius:14px}.auth-avatar{width:68px;height:68px;border-radius:21px}}
