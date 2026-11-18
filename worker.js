@@ -17,7 +17,7 @@ async function runWensTextModel(env, fallbackModel, options = {}) {
     return await env.AI.run(fallbackModel, options);
   }
 
-  const model = env.WENS_OPENAI_MODEL || "gpt-6.2-sol";
+  const model = env.WENS_OPENAI_MODEL || "gpt-6-astra";
   const input = [];
   for (const message of (Array.isArray(options.messages) ? options.messages : [])) {
     if (message.role === "tool") {
@@ -858,7 +858,7 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
+      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
       features: {
         openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
@@ -869,7 +869,7 @@ async function adminRoute(request, env, path) {
   if (path === "/api/admin/test-ai" && request.method === "POST") {
     if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "لم يتم ربط محرك الذكاء الاصطناعي على الخادم." }, 503);
     try {
-      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
       const result = await runWensTextModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -2973,7 +2973,7 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
+  const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
@@ -3238,7 +3238,7 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+    const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
     const runOptions = {
       messages,
       temperature: 0.7,
@@ -3375,7 +3375,7 @@ export default {
         diagnostics: {
           workersAiBindingPresent,
           browserBindingPresent: Boolean(env.BROWSER),
-          model: openAiConfigured ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
+          model: openAiConfigured ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
         }
       });
     }
