@@ -466,7 +466,7 @@ jobs:
           require_text /tmp/wens-index.html 'data-action="deep"' "deep-thinking action"
 
           fetch_asset "/app.js" /tmp/wens-app.js
-          require_text /tmp/wens-app.js "Cloudflare AI" "chat service diagnostics"
+          require_text /tmp/wens-app.js "OpenAI جاهز" "OpenAI chat engine diagnostics"
           require_text /tmp/wens-app.js "WensPlayVoicePreview" "voice preview bridge"
           require_text /tmp/wens-app.js "adminVoicePreviewDock" "owner voice preview dock"
           require_text /tmp/wens-app.js 'fetch("/api/voice/connect"' "voice connection route"
