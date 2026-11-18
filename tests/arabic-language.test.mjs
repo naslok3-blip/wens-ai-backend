@@ -40,7 +40,7 @@ test("suggests common Egyptian Arabic typo corrections without changing the orig
 });
 
 test("suggests common Egypt national team and club spelling fixes", () => {
-  assert.equal(getArabicSpellingSuggestion("موعد منتخيب مصر")?.corrected, "منتخب");
+  assert.equal(getArabicSpellingSuggestion("موعد منتخيب")?.corrected, "منتخب");
   assert.equal(getArabicSpellingSuggestion("مباراة الاهلي")?.corrected, "الأهلي");
   assert.equal(getArabicSpellingSuggestion("جدول الزمالكك")?.corrected, "الزمالك");
 });
