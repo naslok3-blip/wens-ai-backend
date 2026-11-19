@@ -2350,7 +2350,8 @@ function hasRecentFootballSchedulePublication(value, now = new Date()) {
   let markerMatch;
   while ((markerMatch = markerPattern.exec(text))) {
     const detail = markerMatch[1] || "";
-    if (recentRelative.test(detail)) return true;
+    const freshnessContext = text.slice(Math.max(0, markerMatch.index - 80), markerPattern.lastIndex + 80);
+    if (recentRelative.test(detail) || recentRelative.test(freshnessContext)) return true;
     let year, month, day;
     let dateMatch = detail.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
     if (dateMatch) {
