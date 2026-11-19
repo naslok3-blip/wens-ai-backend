@@ -90,7 +90,9 @@ async function runWensTextModel(env, fallbackModel, options = {}) {
   let result = {};
   try { result = await response.json(); } catch {}
   if (!response.ok) {
-    const detail = String(result?.error?.message || "OpenAI request failed").slice(0, 180);
+    const providerCode = String(result?.error?.code || result?.error?.type || "unknown").slice(0, 80);
+    const providerMessage = String(result?.error?.message || "OpenAI request failed").slice(0, 180);
+    const detail = providerCode + ": " + providerMessage;
     throw new Error("OPENAI_API_ERROR_" + response.status + ": " + detail);
   }
 
@@ -140,7 +142,9 @@ function json(data, status = 200, headers = {}) {
 function classifyWorkersAiFailure(error) {
   const raw = String(error?.message || error || "unknown");
   if (/OPENAI_API_ERROR_401|invalid_api_key/i.test(raw)) return { code: "OPENAI_KEY_INVALID", status: 503, message: "مفتاح OpenAI الموجود على الخادم غير صالح. راجع إعداد OPENAI_API_KEY في Cloudflare." };
-  if (/OPENAI_API_ERROR_429|rate_limit|insufficient_quota/i.test(raw)) return { code: "OPENAI_RATE_LIMIT", status: 429, message: "وصلنا لحد الاستخدام أو معدل الطلبات في OpenAI. راجع رصيد وميزانية API ثم جرّب تاني." };
+  if (/insufficient_quota|billing_hard_limit|billing.*limit|quota.*exceeded/i.test(raw)) return { code: "OPENAI_QUOTA_EXHAUSTED", status: 429, message: "رصيد أو حد الإنفاق المسموح لحساب OpenAI API غير كافٍ حاليًا. راجع Billing والميزانية وحدود الاستخدام في منصة OpenAI؛ اشتراك ChatGPT لا يضيف رصيد API." };
+  if (/rate_limit_exceeded|requests_per_minute|tokens_per_minute|rate_limit/i.test(raw)) return { code: "OPENAI_RATE_LIMIT", status: 429, message: "طلبات ونس وصلت للسرعة المسموح بها في OpenAI. استنى دقيقة وجرّب تاني، وقلّل الطلبات المتزامنة لو المشكلة بتتكرر." };
+  if (/OPENAI_API_ERROR_429/i.test(raw)) return { code: "OPENAI_429_UNCLASSIFIED", status: 429, message: "OpenAI رفض الطلب برمز 429. راجع تفاصيل الاستخدام والحدود في لوحة OpenAI API." };
   if (/OPENAI_API_ERROR_5\d\d/.test(raw)) return { code: "OPENAI_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مشغولة مؤقتًا. جرّب تاني بعد شوية." };
   const quotaExhausted =
     /daily free allocation/i.test(raw) ||
