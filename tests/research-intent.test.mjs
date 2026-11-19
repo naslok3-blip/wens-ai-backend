@@ -29,16 +29,17 @@ const helpers = [
   extractFunction("extractExternalSources", "handleAgent"),
   extractFunction("getCurrentEgyptFootballSeason", "hasVerifiableSportsScheduleSources"),
   extractFunction("hasUpcomingFootballDate", "hasVerifiableSportsScheduleSources"),
+  extractFunction("hasRecentFootballSchedulePublication", "hasVerifiableSportsScheduleSources"),
   extractFunction("hasVerifiableSportsScheduleSources", "hasVerifiableGoldPriceSources"),
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
 ].join("\n");
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };",
+  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };",
   sandbox
 );
-const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
+const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -287,6 +288,33 @@ test("rejects stale club fixtures even when the source mentions a current public
     results:
       "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي: 23 Nov 2024 الساعة 19:00. آخر تحديث: 2026-11-18 10:30\n\n" +
       "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي: 25 Nov 2024 الساعة 21:00. Published: 2026-11-18"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
+
+
+test("football schedule publication freshness checks the actual publication date", () => {
+  const now = new Date("2026-11-19T10:00:00+02:00");
+  assert.equal(hasRecentFootballSchedulePublication("Updated: 2026-11-18", now), true);
+  assert.equal(hasRecentFootballSchedulePublication("Published: 2026-08-01", now), false);
+  assert.equal(hasRecentFootballSchedulePublication("تاريخ النشر: 19 نوفمبر 2026", now), true);
+  assert.equal(hasRecentFootballSchedulePublication("آخر تحديث: yesterday", now), true);
+});
+
+test("accepts Al Ahly 2027 fixtures without a current-season or national-team allowlist", () => {
+  const result = {
+    results:
+      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: 23 Nov 2027 الساعة 19:00. آخر تحديث: 2026-11-18\n\n" +
+      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: 25 Nov 2027 الساعة 21:00. Published: 2026-11-18"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), true);
+});
+
+test("rejects future club fixtures copied from stale publication pages", () => {
+  const result = {
+    results:
+      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: 23 Nov 2027 الساعة 19:00. Published: 2026-08-01\n\n" +
+      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: 25 Nov 2027 الساعة 21:00. Updated: 2026-08-01"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
 });
