@@ -8,120 +8,12 @@ const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية 
 
 
 async function runWensTextModel(env, fallbackModel, options = {}) {
-  // Keep image generation on Workers AI; use OpenAI Responses for text and agent tools.
-  if (options.multipart) {
-    if (!env.AI) throw new Error("WENS_IMAGE_AI_NOT_CONFIGURED");
-    return await env.AI.run(fallbackModel, options);
-  }
-  if (!env.OPENAI_API_KEY) {
-    if (!env.AI) throw new Error("WENS_AI_NOT_CONFIGURED");
-    return await env.AI.run(fallbackModel, options);
-  }
-
-  const model = env.WENS_OPENAI_MODEL || "gpt-6-astra";
-  const input = [];
-  for (const message of (Array.isArray(options.messages) ? options.messages : [])) {
-    if (message.role === "tool") {
-      input.push({
-        type: "function_call_output",
-        call_id: String(message.tool_call_id || ""),
-        output: String(message.content ?? "")
-      });
-      continue;
-    }
-    if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
-      if (message.content) input.push({ role: "assistant", content: String(message.content) });
-      for (const call of message.tool_calls) {
-        input.push({
-          type: "function_call",
-          call_id: String(call.id || ""),
-          name: String(call.function?.name || call.name || ""),
-          arguments: typeof (call.function?.arguments ?? call.arguments) === "string"
-            ? (call.function?.arguments ?? call.arguments)
-            : JSON.stringify(call.function?.arguments ?? call.arguments ?? {})
-        });
-      }
-      continue;
-    }
-    const role = message.role === "system" ? "developer" : message.role;
-    let content = message.content;
-    if (Array.isArray(content)) {
-      content = content.map(part => {
-        if (part?.type === "text") return { type: "input_text", text: String(part.text || "") };
-        if (part?.type === "image_url") return {
-          type: "input_image",
-          image_url: String(part.image_url?.url || "")
-        };
-        return part;
-      });
-    }
-    input.push({ role, content });
-  }
-
-  const payload = {
-    model,
-    input,
-    max_output_tokens: Number(options.max_tokens || 1000)
-  };
-  if (Array.isArray(options.tools) && options.tools.length) {
-    payload.tools = options.tools.map(tool => {
-      const fn = tool.function || tool;
-      return {
-        type: "function",
-        name: String(fn.name || ""),
-        description: String(fn.description || ""),
-        parameters: fn.parameters || { type: "object", properties: {} },
-        strict: false
-      };
-    });
-    payload.tool_choice = "auto";
-    payload.parallel_tool_calls = false;
-  }
-  if (options.reasoning_effort) payload.reasoning = { effort: options.reasoning_effort };
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + env.OPENAI_API_KEY,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-  let result = {};
-  try { result = await response.json(); } catch {}
-  if (!response.ok) {
-    const detail = String(result?.error?.message || "OpenAI request failed").slice(0, 180);
-    throw new Error("OPENAI_API_ERROR_" + response.status + ": " + detail);
-  }
-
-  const output = Array.isArray(result.output) ? result.output : [];
-  const content = output
-    .filter(item => item?.type === "message")
-    .flatMap(item => Array.isArray(item.content) ? item.content : [])
-    .filter(item => item?.type === "output_text" && typeof item.text === "string")
-    .map(item => item.text)
-    .join("");
-  const toolCalls = output
-    .filter(item => item?.type === "function_call")
-    .map(item => ({
-      id: String(item.call_id || item.id || ""),
-      type: "function",
-      function: {
-        name: String(item.name || ""),
-        arguments: String(item.arguments || "{}")
-      }
-    }));
-  return {
-    id: result.id,
-    choices: [{
-      message: {
-        role: "assistant",
-        content: content || (typeof result.output_text === "string" ? result.output_text : ""),
-        ...(toolCalls.length ? { tool_calls: toolCalls } : {})
-      }
-    }]
-  };
+  // Wens runs entirely on the Cloudflare Workers AI binding.
+  // No OpenAI API key, external billing, or OpenAI Responses request is used.
+  if (!env.AI) throw new Error("WENS_AI_NOT_CONFIGURED");
+  return await env.AI.run(fallbackModel, options);
 }
+
 const enc = new TextEncoder();
 const COOKIE = "wens_session";
 const ADMIN_COOKIE = "wens_admin_session";
@@ -139,8 +31,8 @@ function json(data, status = 200, headers = {}) {
 // In particular, the daily free Neurons quota is shared across models in the account.
 function classifyWorkersAiFailure(error) {
   const raw = String(error?.message || error || "unknown");
-  if (/OPENAI_API_ERROR_401|invalid_api_key/i.test(raw)) return { code: "OPENAI_KEY_INVALID", status: 503, message: "مفتاح OpenAI الموجود على الخادم غير صالح. راجع إعداد OPENAI_API_KEY في Cloudflare." };
-  if (/OPENAI_API_ERROR_429|rate_limit|insufficient_quota/i.test(raw)) return { code: "OPENAI_RATE_LIMIT", status: 429, message: "وصلنا لحد الاستخدام أو معدل الطلبات في OpenAI. راجع رصيد وميزانية API ثم جرّب تاني." };
+  
+  
   if (/OPENAI_API_ERROR_5\d\d/.test(raw)) return { code: "OPENAI_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مشغولة مؤقتًا. جرّب تاني بعد شوية." };
   const quotaExhausted =
     /daily free allocation/i.test(raw) ||
@@ -687,16 +579,16 @@ async function adminRoute(request, env, path) {
       ok: true,
       checkedAt: new Date().toISOString(),
       features: {
-        openAI: Boolean(env.OPENAI_API_KEY),
+        openAI: false,
         workersAI: Boolean(env.AI),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
-        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
+        naturalVoiceConfigured: false,
         documentReadingConfigured: true,
         freeDocumentParsing: true,
         documentAIConfigured: Boolean(env.AI),
         browserConfigured: Boolean(env.BROWSER),
-        agentToolingConfigured: Boolean((env.OPENAI_API_KEY || env.AI) && tools.length)
+        agentToolingConfigured: Boolean(env.AI && tools.length)
       },
       counts,
       onlineUsers: databaseConnected && tableNames.has("sessions") && tableNames.has("users") && tableNames.has("messages")
@@ -759,7 +651,7 @@ async function adminRoute(request, env, path) {
     });
   }
   if (path === "/api/admin/test-agent" && request.method === "POST") {
-    if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+    if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
     const probe = new Request(new URL("/api/agent", request.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -859,18 +751,18 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
+      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
       features: {
-        openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
+        openAI: false, workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
-        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
+        naturalVoiceConfigured: false, browserConfigured: Boolean(env.BROWSER)
       }
     });
   }
   if (path === "/api/admin/test-ai" && request.method === "POST") {
     if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "لم يتم ربط محرك الذكاء الاصطناعي على الخادم." }, 503);
     try {
-      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+      const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
       const result = await runWensTextModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -1841,80 +1733,8 @@ async function executeAgentTool(name, args, env, user) {
     const query = String(args.query || "").trim().slice(0, 300);
     if (query.length < 2) return { error: "اكتبي موضوع بحث أو سؤالًا واضحًا." };
 
-    // Prefer OpenAI-hosted web search before the legacy public RSS fallbacks.
-    // If it is unavailable or returns no cited sources, continue with the free providers below.
-    let openAiSearchDiagnostic = "";
-    if (env.OPENAI_API_KEY) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 18000);
-      try {
-        const response = await fetch("https://api.openai.com/v1/responses", {
-          method: "POST",
-          headers: {
-            "Authorization": "Bearer " + env.OPENAI_API_KEY,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: env.WENS_OPENAI_SEARCH_MODEL || env.WENS_OPENAI_MODEL || "gpt-6.2-sol",
-            input: [
-              {
-                role: "system",
-                content: "أنت مساعد بحث على الويب. ابحث فعليًا عن مصادر حديثة وموثوقة، ثم اكتب خلاصة قصيرة باللغة العربية المصرية الواضحة. فرّق بين الخبر والرأي، واذكر التواريخ عند الحاجة، ولا تخمّن أي معلومة لا تدعمها المصادر."
-              },
-              {
-                role: "user",
-                content: "ابحث في الويب عن الموضوع التالي، واجمع أهم النتائج والمعلومات ذات الصلة: " + query
-              }
-            ],
-            tools: [{
-              type: "web_search",
-              search_context_size: "medium",
-              user_location: {
-                type: "approximate",
-                country: "EG",
-                timezone: "Africa/Cairo"
-              }
-            }],
-            tool_choice: "required",
-            include: ["web_search_call.action.sources"],
-            max_output_tokens: 1300
-          }),
-          signal: controller.signal
-        });
-        let responseBody = {};
-        try { responseBody = await response.json(); } catch {}
-        if (!response.ok) throw new Error("HTTP_" + response.status);
-
-        const extracted = extractResponsesWebSearch(responseBody);
-        if (!extracted.text || !extracted.sources.length) throw new Error("NO_CITED_RESULTS");
-        const sourceMarkdown = extracted.sources.slice(0, 8)
-          .map(item => "[" + item.title + "](" + item.url + ")")
-          .join("\n");
-        return {
-          query,
-          results: (extracted.text + "\n\nمصادر البحث:\n" + sourceMarkdown).slice(0, 14000),
-          sources: extracted.sources.slice(0, 8),
-          engines: ["OpenAI Web Search"],
-          diagnostics: [],
-          searchedAt: new Date().toISOString(),
-          freeSearch: false
-        };
-      } catch (error) {
-        const detail = String(error?.message || "");
-        const status = detail.match(/^HTTP_(\d{3})$/)?.[1];
-        openAiSearchDiagnostic = status
-          ? "OpenAI Web Search: HTTP " + status
-          : error?.name === "AbortError"
-            ? "OpenAI Web Search: timeout"
-            : "OpenAI Web Search: unavailable or no cited results";
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-
     // Free, keyless public sources. Do not depend on Browser Run or paid search credits.
     const diagnostics = [];
-    if (openAiSearchDiagnostic) diagnostics.push(openAiSearchDiagnostic);
     const engines = [];
     const sourceLinks = [];
     const sections = [];
@@ -2172,7 +1992,7 @@ async function executeAgentTool(name, args, env, user) {
       return {
         error: "جربت مصادر بحث مجانية، لكن مفيش نتائج موثوقة متاحة للطلب ده دلوقتي. مش هألف نتائج.",
         query,
-        attempted: ["OpenAI Web Search", "Google News RSS", "Bing News RSS", "DuckDuckGo Web Search", "DuckDuckGo Instant Answer", "Wikipedia"],
+        attempted: ["Google News RSS", "Bing News RSS", "DuckDuckGo Web Search", "DuckDuckGo Instant Answer", "Wikipedia"],
         diagnostics: diagnostics.slice(0, 4),
         sources: []
       };
@@ -3046,7 +2866,7 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (useReasoningModel ? "@cf/qwen/qwen3.8-27b" : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
+  const model = useReasoningModel ? (env.WENS_REASONING_MODEL || "@cf/qwen/qwen3.8-27b") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
@@ -3217,7 +3037,6 @@ async function handleAgent(request, env, user, options = {}) {
         lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
       }
       if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
-      else if (model.startsWith("gpt-6")) lastOptions.reasoning_effort = deepThink ? "high" : "medium";
       const last = await runWensTextModel(env, model, lastOptions);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
@@ -3311,7 +3130,7 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+    const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
     const runOptions = {
       messages,
       temperature: 0.7,
@@ -3338,7 +3157,7 @@ async function handleChat(request, env, user) {
 }
 
 async function handleRealtimeVoice(request, env) {
-  if (!env.OPENAI_API_KEY) return json({ error: "خدمة الصوت الطبيعي تحتاج مفتاح OpenAI صالحًا على الخادم." }, 503);
+  if (!env.OPENAI_API_KEY) return json({ error: "المحادثة الصوتية المباشرة غير مفعّلة بدون OpenAI API. استخدم زر القراءة الصوتية على الجهاز." }, 503);
   let user = null;
   let ownerAdminSession = false;
   if (env.DB) {
@@ -3429,7 +3248,7 @@ export default {
     }
     if (request.method === "GET" && path === "/api/health") {
       const workersAiBindingPresent = Boolean(env.AI);
-      const openAiConfigured = Boolean(env.OPENAI_API_KEY);
+      const openAiConfigured = false;
       return json({
         ok: true,
         service: "wens-ai",
@@ -3448,7 +3267,7 @@ export default {
         diagnostics: {
           workersAiBindingPresent,
           browserBindingPresent: Boolean(env.BROWSER),
-          model: openAiConfigured ? (env.WENS_OPENAI_MODEL || "gpt-6-astra") : workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
+          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
         }
       });
     }
