@@ -297,6 +297,8 @@ test("football schedule publication freshness checks the actual publication date
   const now = new Date("2026-11-19T10:00:00+02:00");
   assert.equal(hasRecentFootballSchedulePublication("Updated: 2026-11-18", now), true);
   assert.equal(hasRecentFootballSchedulePublication("Published: 2026-08-01", now), false);
+  assert.equal(hasRecentFootballSchedulePublication("Updated: 2026-10-01", now), false);
+  assert.equal(hasRecentFootballSchedulePublication("Last updated: 18/11/2026", now), true);
   assert.equal(hasRecentFootballSchedulePublication("تاريخ النشر: 19 نوفمبر 2026", now), true);
   assert.equal(hasRecentFootballSchedulePublication("آخر تحديث: yesterday", now), true);
 });
