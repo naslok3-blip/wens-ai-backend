@@ -39,4 +39,4 @@ CREATE INDEX IF NOT EXISTS idx_conversations_user_updated
   ON conversations(user_id, archived_at, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_created
-  ON messages(conversation_id, created_at ASC, rowid ASC);
+  ON messages(conversation_id, created_at ASC);
