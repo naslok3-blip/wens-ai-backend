@@ -2,6 +2,7 @@ import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
 import { extractResponsesWebSearch } from "./openai-responses-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
+import { conversationTitleFromMessage } from "./conversation-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
@@ -210,26 +211,7 @@ function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثن
       phase,
       errorType: String(error?.name || "Error").slice(0, 80),
       cryptoStage: /^(PBKDF2_IMPORT|PBKDF2_DERIVE)_/.exec(raw)?.[1] || null,
-      cryptoErrorType: /^PBKDF2_(?:IMPORT|DERIVE)_([A-Za-z]+)/.exec(raw)?.[1] || null
-    }
-  }, 500);
-}
-
-function conversationTitleFromMessage(value) {
-  const normalized = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
-  if (!normalized) return "محادثة جديدة";
-  return normalized.length > 56 ? normalized.slice(0, 55).trimEnd() + "…" : normalized;
-}
-
-async function persistConversationMessage(env, user, conversationId, role, content, timestamp = Math.floor(Date.now() / 1000)) {
-  if (!env.DB || !user?.id || !conversationId) return;
-  const text = String(content ?? "");
-  const title = conversationTitleFromMessage(text);
-  await env.DB.prepare(
-    "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
-  ).bind(crypto.randomUUID(), user.id, conversationId, role, text, timestamp).run();
-  await env.DB.prepare(
-    "UPDATE conversations SET updated_at=?, title=CASE WHEN title='محادثة جديدة' AND ?='user' THEN ? ELSE title END WHERE id=? AND user_id=?"
+      cryptoErrorType: /^PBKDF2_(d=?"
   ).bind(timestamp, role, title, conversationId, user.id).run();
 }
 
@@ -240,15 +222,14 @@ async function conversationsRoute(request, env, user, path) {
   if (path === "/api/conversations" && request.method === "GET") {
     const query = String(url.searchParams.get("q") || "").trim().slice(0, 120);
     const includeArchived = url.searchParams.get("archived") === "1";
-    const pattern = "%" + query.replace(/[\\%_]/g, "\\async function authRoute(request, env, path, requestId) {") + "%";
     const rows = await db.prepare(
       "SELECT c.id,c.title,c.created_at,c.updated_at,c.archived_at," +
       "(SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.user_id=c.user_id) AS message_count " +
       "FROM conversations c WHERE c.user_id=? AND (?=1 OR c.archived_at IS NULL) " +
-      "AND (?='' OR c.title LIKE ? ESCAPE '\\\\' OR EXISTS " +
-      "(SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.user_id=c.user_id AND m.content LIKE ? ESCAPE '\\\\')) " +
+      "AND (?='' OR instr(lower(c.title),lower(?))>0 OR EXISTS " +
+      "(SELECT 1 FROM messages m WHERE m.conversation_id=c.id AND m.user_id=c.user_id AND instr(lower(m.content),lower(?))>0)) " +
       "ORDER BY c.updated_at DESC,c.created_at DESC LIMIT 100"
-    ).bind(user.id, includeArchived ? 1 : 0, query, pattern, pattern).all();
+    ).bind(user.id, includeArchived ? 1 : 0, query, query, query).all();
     return json({ conversations: rows.results || [] });
   }
   if (path === "/api/conversations" && request.method === "POST") {
@@ -261,7 +242,7 @@ async function conversationsRoute(request, env, user, path) {
     ).bind(id, user.id, title, now, now).run();
     return json({ ok: true, conversation: { id, title, created_at: now, updated_at: now, archived_at: null, message_count: 0 } }, 201);
   }
-  const match = path.match(/^\\/api\\/conversations\\/([0-9a-f-]{36})$/i);
+  const match = path.match(/^\/api\/conversations\/([0-9a-f-]{36})$/i);
   if (!match) return json({ error: "المحادثة غير موجودة." }, 404);
   const id = match[1];
   const existing = await db.prepare(
