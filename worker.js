@@ -2330,34 +2330,32 @@ function hasUpcomingFootballDate(value, now = new Date()) {
 function hasVerifiableSportsScheduleSources(searchResult) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "").replace(/\\n/g, "\n");
-  const season = getCurrentEgyptFootballSeason();
-  const seasonPattern = new RegExp(
-    "(?:" + season.startYear + "\\s*[-/–]\\s*(?:" +
-      String(season.endYear).slice(-2) + "|" + season.endYear + "))",
-    "i"
-  );
   const sections = results.split(/\n{2,}/);
   const evidenceDomains = new Set();
+  const schedulePattern = /(?:مواعيد|جدول|مباريات|fixture|schedule|matches|kick.?off|upcoming|next match|next game)/i;
+  const publicationPattern = /(?:(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث)[^\n]{0,120}(?:20\d{2}|today|yesterday|اليوم|امس|أمس)|(?:20\d{2}|today|yesterday|اليوم|امس|أمس)[^\n]{0,120}(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث))/i;
   let evidenceSectionCount = 0;
+
   for (const section of sections) {
-    const hasSeason = seasonPattern.test(section);
-    const hasScheduleWording = /(?:مواعيد|جدول|مباريات|fixtures|schedule|matches|kick.?off|upcoming)/i.test(section);
-    const hasEgyptFixture = /(?:\begypt\b|مصر).{0,180}(?:\bmalawi\b|\b(?:angola|south sudan)\b)|(?:\bmalawi\b|\b(?:angola|south sudan)\b).{0,180}(?:\begypt\b|مصر)/i.test(section);
-    const hasFutureDate = hasUpcomingFootballDate(section);
-    const hasRecentPublication = /(?:(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث)[^\n]{0,120}(?:20\d{2}|today|yesterday|اليوم|امس|أمس)|(?:20\d{2}|today|yesterday|اليوم|امس|أمس)[^\n]{0,120}(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث))/i.test(section);
-    if (!hasScheduleWording || !hasFutureDate || !hasRecentPublication || (!hasSeason && !hasEgyptFixture)) continue;
+    // Accept club, national-team, league, and cup schedules equally.
+    // Require schedule wording, a future fixture date, and recent publication.
+    if (!schedulePattern.test(section) ||
+        !hasUpcomingFootballDate(section) ||
+        !publicationPattern.test(section)) continue;
+
     const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     const sectionDomains = new Set();
     for (const rawUrl of urls) {
       try {
         const host = new URL(rawUrl.replace(/[.,;]+$/, "")).hostname.toLowerCase().replace(/^www\./, "");
-        if (host) sectionDomains.add(host);
+        if (host && !/(?:^|\.)duckduckgo\.com$/.test(host)) sectionDomains.add(host);
       } catch {}
     }
     if (!sectionDomains.size) continue;
     evidenceSectionCount++;
     for (const host of sectionDomains) evidenceDomains.add(host);
   }
+
   return evidenceSectionCount >= 2 &&
     evidenceDomains.size >= 2 &&
     hasVerifiableLiveSources(searchResult, 2);
