@@ -6,6 +6,19 @@ const [app, admin, owner, worker, index, style] = await Promise.all([
   readFile("index.html", "utf8"), readFile("style.css", "utf8")
 ]);
 const checks = [
+  [worker, "async function ensureChatSchema(db)", "per-account conversation schema with legacy message migration"],
+  [worker, "async function conversationsRoute(request, env, user, path)", "authenticated conversation list/create/rename/archive/delete routes"],
+  [worker, "WHERE user_id=? AND conversation_id=?", "message context is scoped to the selected conversation"],
+  [worker, "conversationId", "chat requests and saved messages carry a conversation identifier"],
+  [worker, "INSERT OR IGNORE INTO conversations", "legacy chat history is preserved during migration"],
+  [app, "async function loadConversations(options = {})", "conversation sidebar loads the user's own conversations"],
+  [app, "async function openConversation(id)", "switching conversations loads only that thread"],
+  [app, "conversationId: currentConversationId", "chat sends messages to the selected thread"],
+  [app, "function renderConversationList(items)", "conversation actions render in the sidebar"],
+  [index, 'id="conversationSidebar"', "responsive conversation sidebar"],
+  [index, 'id="newConversationBtn"', "new conversation control"],
+  [index, 'id="conversationSearchInput"', "search conversations control"],
+  [index, 'id="toggleArchivedConversationsBtn"', "archived conversations control"],
   [app, "window.WensPlayVoicePreview", "parent voice preview"],
   [app, "getAdminVoicePreviewDock", "visible admin audio dock"],
   [app, "playbackStarted", "waits for audio playback"],
