@@ -2327,13 +2327,69 @@ function hasUpcomingFootballDate(value, now = new Date()) {
   return false;
 }
 
+function hasRecentFootballSchedulePublication(value, now = new Date()) {
+  const text = String(value || "");
+  const currentParts = new Intl.DateTimeFormat("en", {
+    timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(now);
+  const today = {
+    year: Number(currentParts.find(item => item.type === "year")?.value),
+    month: Number(currentParts.find(item => item.type === "month")?.value),
+    day: Number(currentParts.find(item => item.type === "day")?.value)
+  };
+  const todayUtc = Date.UTC(today.year, today.month - 1, today.day);
+  const recentRelative = /(?:today|yesterday|اليوم|امس|أمس|منذ\s*(?:أقل من\s*)?(?:\d+\s*)?(?:ثواني?|دقائق?|ساعات?|أيام?|يوم|day|days|hours?|minutes?)|(?:\d+\s*)?(?:days?|hours?)\s*ago)/i;
+  const markerPattern = /(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث)\s*[:：-]?\s*([^\n]{0,140})/gi;
+  const monthNumbers = {
+    jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+    jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+    "يناير": 1, "فبراير": 2, "مارس": 3, "ابريل": 4, "أبريل": 4,
+    "مايو": 5, "يونيو": 6, "يوليو": 7, "أغسطس": 8, "اغسطس": 8,
+    "سبتمبر": 9, "أكتوبر": 10, "اكتوبر": 10, "نوفمبر": 11, "ديسمبر": 12
+  };
+  let markerMatch;
+  while ((markerMatch = markerPattern.exec(text))) {
+    const detail = markerMatch[1] || "";
+    const freshnessContext = text.slice(Math.max(0, markerMatch.index - 80), markerPattern.lastIndex + 80);
+    if (recentRelative.test(detail) || recentRelative.test(freshnessContext)) return true;
+    let year, month, day;
+    let dateMatch = detail.match(/\b(20\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+    if (dateMatch) {
+      year = Number(dateMatch[1]); month = Number(dateMatch[2]); day = Number(dateMatch[3]);
+    } else {
+      dateMatch = detail.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2})\b/);
+      if (dateMatch) {
+        day = Number(dateMatch[1]); month = Number(dateMatch[2]); year = Number(dateMatch[3]);
+      } else {
+        dateMatch = detail.match(/\b(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?|يناير|فبراير|مارس|ابريل|أبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر)\s+(20\d{2})\b/i);
+        if (dateMatch) {
+          day = Number(dateMatch[1]);
+          month = monthNumbers[dateMatch[2].slice(0, 3).toLowerCase()] || monthNumbers[dateMatch[2]];
+          year = Number(dateMatch[3]);
+        } else {
+          dateMatch = detail.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(20\d{2})\b/i);
+          if (dateMatch) {
+            month = monthNumbers[dateMatch[1].slice(0, 3).toLowerCase()];
+            day = Number(dateMatch[2]);
+            year = Number(dateMatch[3]);
+          }
+        }
+      }
+    }
+    if (!year || !month || !day || month > 12 || day > 31) continue;
+    const publishedUtc = Date.UTC(year, month - 1, day);
+    const ageDays = (todayUtc - publishedUtc) / 86400000;
+    if (ageDays >= -1 && ageDays <= 45) return true;
+  }
+  return false;
+}
+
 function hasVerifiableSportsScheduleSources(searchResult) {
   if (!searchResult || searchResult.error) return false;
   const results = String(searchResult.results || "").replace(/\\n/g, "\n");
   const sections = results.split(/\n{2,}/);
   const evidenceDomains = new Set();
   const schedulePattern = /(?:مواعيد|جدول|مباريات|fixture|schedule|matches|kick.?off|upcoming|next match|next game)/i;
-  const publicationPattern = /(?:(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث)[^\n]{0,120}(?:20\d{2}|today|yesterday|اليوم|امس|أمس)|(?:20\d{2}|today|yesterday|اليوم|امس|أمس)[^\n]{0,120}(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث))/i;
   let evidenceSectionCount = 0;
 
   for (const section of sections) {
@@ -2341,7 +2397,7 @@ function hasVerifiableSportsScheduleSources(searchResult) {
     // Require schedule wording, a future fixture date, and recent publication.
     if (!schedulePattern.test(section) ||
         !hasUpcomingFootballDate(section) ||
-        !publicationPattern.test(section)) continue;
+        !hasRecentFootballSchedulePublication(section)) continue;
 
     const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     const sectionDomains = new Set();
