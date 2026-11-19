@@ -438,7 +438,7 @@ async function openConversation(id) {
     setCurrentConversationTitle(data.title || "محادثة");
     for (const item of data.messages || []) addMessage(item.content, item.role);
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
-    renderConversationList((await api("/api/conversations", undefined, "GET")).conversations || []);
+    await loadConversations({ selectLatest: false });
     closeConversationSidebar();
   } catch (error) {
     loading.remove();
