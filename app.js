@@ -549,37 +549,259 @@ function cleanRepeatedReplyText(value) {
   }
   return output.join("\n").trim();
 }
-function appendMessageText(container, text) {
-  const source = String(text ?? "");
-  const pattern = /\[([^\]\n]{1,100})\]\((https:\/\/[^)\s]+)\)|(https:\/\/[^\s<>"']+)/g;
-  let cursor = 0, match;
+function appendPlainTextWithBreaks(container, value) {
+  const parts = String(value || "").split("\n");
+  parts.forEach((part, index) => {
+    if (index) container.appendChild(document.createElement("br"));
+    if (part) container.appendChild(document.createTextNode(part));
+  });
+}
+
+function appendInlineMarkdown(container, value) {
+  const source = String(value || "");
+  const pattern = /(\[([^\]\n]{1,160})\]\((https?:\/\/[^\s)]+)\)|[\x60]([^\x60\n]+)[\x60]|\*\*([^*]+)\*\*|~~([^~]+)~~|\*([^*\n]+)\*|https?:\/\/[^\s<>"']+)/g;
+  let cursor = 0;
+  let match;
   while ((match = pattern.exec(source))) {
-    if (match.index > cursor) {
-      container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+    if (match.index > cursor) appendPlainTextWithBreaks(container, source.slice(cursor, match.index));
+    const full = match[0];
+    if (match[2] && match[3]) {
+      try {
+        const url = new URL(match[3]);
+        if (url.protocol === "https:" || url.protocol === "http:") {
+          const link = document.createElement("a");
+          link.href = url.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = match[2];
+          container.appendChild(link);
+        } else container.appendChild(document.createTextNode(match[2]));
+      } catch { container.appendChild(document.createTextNode(match[2])); }
+    } else if (match[4]) {
+      const code = document.createElement("code");
+      code.className = "inline-code";
+      code.dir = "ltr";
+      code.textContent = match[4];
+      container.appendChild(code);
+    } else if (match[5]) {
+      const strong = document.createElement("strong");
+      strong.textContent = match[5];
+      container.appendChild(strong);
+    } else if (match[6]) {
+      const del = document.createElement("del");
+      del.textContent = match[6];
+      container.appendChild(del);
+    } else if (match[7]) {
+      const em = document.createElement("em");
+      em.textContent = match[7];
+      container.appendChild(em);
+    } else if (match[8]) {
+      const raw = match[8];
+      const suffix = raw.match(/[),.!?؟،؛]+$/)?.[0] || "";
+      const href = suffix ? raw.slice(0, -suffix.length) : raw;
+      try {
+        const url = new URL(href);
+        if (url.protocol === "https:" || url.protocol === "http:") {
+          const link = document.createElement("a");
+          link.href = url.href;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = href;
+          container.appendChild(link);
+          if (suffix) container.appendChild(document.createTextNode(suffix));
+        } else container.appendChild(document.createTextNode(raw));
+      } catch { container.appendChild(document.createTextNode(raw)); }
+    } else {
+      container.appendChild(document.createTextNode(full));
     }
-    const label = match[1] || "";
-    const rawUrl = match[2] || match[3];
-    const suffix = match[3] ? (rawUrl.match(/[),.!?؟،؛]+$/)?.[0] || "") : "";
-    const href = suffix ? rawUrl.slice(0, -suffix.length) : rawUrl;
-    try {
-      const parsed = new URL(href);
-      if (parsed.protocol === "https:") {
-        const link = document.createElement("a");
-        link.href = parsed.href;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = label || href;
-        container.appendChild(link);
-        if (suffix) container.appendChild(document.createTextNode(suffix));
-      } else {
-        container.appendChild(document.createTextNode(match[0]));
-      }
-    } catch {
-      container.appendChild(document.createTextNode(match[0]));
-    }
-    cursor = match.index + match[0].length;
+    cursor = match.index + full.length;
   }
-  if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
+  if (cursor < source.length) appendPlainTextWithBreaks(container, source.slice(cursor));
+}
+
+async function copyChatText(value) {
+  const text = String(value || "");
+  if (!text) return false;
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const field = document.createElement("textarea");
+      field.value = text;
+      field.setAttribute("readonly", "");
+      field.style.position = "fixed";
+      field.style.opacity = "0";
+      field.style.pointerEvents = "none";
+      document.body.appendChild(field);
+      field.select();
+      const copied = document.execCommand("copy");
+      field.remove();
+      if (!copied) throw new Error("clipboard unavailable");
+    }
+    setVoiceStatus("تم نسخ النص.");
+    return true;
+  } catch {
+    setVoiceStatus("تعذّر النسخ تلقائيًا على الجهاز ده.");
+    return false;
+  }
+}
+
+function renderMarkdownTable(container, lines) {
+  const parseRow = line => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(cell => cell.trim());
+  const headers = parseRow(lines[0]);
+  const table = document.createElement("table");
+  table.className = "markdown-table";
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headers.forEach(value => {
+    const cell = document.createElement("th");
+    appendInlineMarkdown(cell, value);
+    headerRow.appendChild(cell);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  for (const line of lines.slice(2)) {
+    if (!line.trim()) continue;
+    const values = parseRow(line);
+    const row = document.createElement("tr");
+    headers.forEach((_, columnIndex) => {
+      const cell = document.createElement("td");
+      appendInlineMarkdown(cell, values[columnIndex] || "");
+      row.appendChild(cell);
+    });
+    tbody.appendChild(row);
+  }
+  table.appendChild(tbody);
+  const wrapper = document.createElement("div");
+  wrapper.className = "markdown-table-wrap";
+  wrapper.appendChild(table);
+  container.appendChild(wrapper);
+}
+
+function appendMarkdownText(container, value) {
+  const lines = String(value || "").replace(/\r\n?/g, "\n").split("\n");
+  const isTableSeparator = line => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+  const isList = line => /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(line);
+  const isSpecial = (line, lineIndex) =>
+    /^\s*[\x60]{3}/.test(line) ||
+    /^#{1,6}\s+/.test(line) ||
+    /^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line) ||
+    /^\s*>\s?/.test(line) ||
+    isList(line) ||
+    (line.includes("|") && lineIndex + 1 < lines.length && isTableSeparator(lines[lineIndex + 1]));
+
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) { index += 1; continue; }
+
+    if (/^\s*[\x60]{3}/.test(line)) {
+      const language = line.replace(/^\s*[\x60]{3}/, "").trim().slice(0, 32) || "code";
+      index += 1;
+      const codeLines = [];
+      while (index < lines.length && !/^\s*[\x60]{3}\s*$/.test(lines[index])) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      const block = document.createElement("section");
+      block.className = "markdown-code-block";
+      const heading = document.createElement("div");
+      heading.className = "markdown-code-heading";
+      const label = document.createElement("span");
+      label.textContent = language;
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "markdown-code-copy";
+      copy.textContent = "نسخ الكود";
+      const codeText = codeLines.join("\n");
+      copy.addEventListener("click", async () => {
+        const ok = await copyChatText(codeText);
+        if (ok) {
+          copy.textContent = "تم النسخ";
+          setTimeout(() => { if (copy.isConnected) copy.textContent = "نسخ الكود"; }, 1500);
+        }
+      });
+      heading.append(label, copy);
+      const pre = document.createElement("pre");
+      pre.dir = "ltr";
+      const code = document.createElement("code");
+      code.textContent = codeText;
+      pre.appendChild(code);
+      block.append(heading, pre);
+      container.appendChild(block);
+      continue;
+    }
+
+    const table = line.includes("|") && index + 1 < lines.length && isTableSeparator(lines[index + 1]);
+    if (table) {
+      const rows = [line];
+      index += 1;
+      rows.push(lines[index]);
+      index += 1;
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+        rows.push(lines[index]);
+        index += 1;
+      }
+      renderMarkdownTable(container, rows);
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      const element = document.createElement("h" + Math.min(6, heading[1].length));
+      appendInlineMarkdown(element, heading[2]);
+      container.appendChild(element);
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) {
+      container.appendChild(document.createElement("hr"));
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quote = document.createElement("blockquote");
+      while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+        const paragraph = document.createElement("p");
+        appendInlineMarkdown(paragraph, lines[index].replace(/^\s*>\s?/, ""));
+        quote.appendChild(paragraph);
+        index += 1;
+      }
+      container.appendChild(quote);
+      continue;
+    }
+
+    if (isList(line)) {
+      const ordered = /^\s*\d+[.)]\s+/.test(line);
+      const list = document.createElement(ordered ? "ol" : "ul");
+      while (index < lines.length && isList(lines[index]) && /^\s*\d+[.)]\s+/.test(lines[index]) === ordered) {
+        const item = document.createElement("li");
+        const text = lines[index].replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "");
+        appendInlineMarkdown(item, text);
+        list.appendChild(item);
+        index += 1;
+      }
+      container.appendChild(list);
+      continue;
+    }
+
+    const paragraph = document.createElement("p");
+    const paragraphLines = [];
+    while (index < lines.length && lines[index].trim() && !isSpecial(lines[index], index)) {
+      paragraphLines.push(lines[index]);
+      index += 1;
+    }
+    appendInlineMarkdown(paragraph, paragraphLines.join("\n"));
+    container.appendChild(paragraph);
+  }
+}
+
+function appendMessageText(container, text) {
+  appendMarkdownText(container, text);
 }
 function hideExternalLinksFromDisplay(value) {
   let text = String(value ?? "");
@@ -761,6 +983,20 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     notHelpful.addEventListener("click", () => sendRating("not_helpful", notHelpful, helpful));
     feedback.append(label, helpful, notHelpful);
     bubble.appendChild(feedback);
+  }
+  if (who === "assistant" && displayText.trim().length > 1) {
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "message-copy-btn";
+    copy.textContent = "نسخ الرد";
+    copy.addEventListener("click", async () => {
+      const copied = await copyChatText(displayText);
+      if (copied) {
+        copy.textContent = "تم النسخ";
+        setTimeout(() => { if (copy.isConnected) copy.textContent = "نسخ الرد"; }, 1500);
+      }
+    });
+    bubble.appendChild(copy);
   }
   if (who === "assistant") {
     const replay = document.createElement("button");
