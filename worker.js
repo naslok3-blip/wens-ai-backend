@@ -2389,7 +2389,6 @@ function hasVerifiableSportsScheduleSources(searchResult) {
   const sections = results.split(/\n{2,}/);
   const evidenceDomains = new Set();
   const schedulePattern = /(?:مواعيد|جدول|مباريات|fixture|schedule|matches|kick.?off|upcoming|next match|next game)/i;
-  const publicationPattern = /(?:(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث)[^\n]{0,120}(?:20\d{2}|today|yesterday|اليوم|امس|أمس)|(?:20\d{2}|today|yesterday|اليوم|امس|أمس)[^\n]{0,120}(?:published|updated|last updated|datepublished|تاريخ النشر|تاريخ المصدر|منشور|نُشر|اخر تحديث|آخر تحديث))/i;
   let evidenceSectionCount = 0;
 
   for (const section of sections) {
@@ -2397,7 +2396,7 @@ function hasVerifiableSportsScheduleSources(searchResult) {
     // Require schedule wording, a future fixture date, and recent publication.
     if (!schedulePattern.test(section) ||
         !hasUpcomingFootballDate(section) ||
-        !publicationPattern.test(section)) continue;
+        !hasRecentFootballSchedulePublication(section)) continue;
 
     const urls = section.match(/https?:\/\/[^\s<>"')\]]+/g) || [];
     const sectionDomains = new Set();
