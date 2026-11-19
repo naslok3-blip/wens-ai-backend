@@ -18,6 +18,7 @@ function extractFunction(name, nextName) {
 
 const helpers = [
   extractFunction("normalizeLiveDataText", "isEgyptGoldPriceRequest"),
+  extractFunction("buildConversationTitle", "ensureChatSchema"),
   extractFunction("isEgyptGoldPriceRequest", "isLiveDataRequest"),
   extractFunction("isLiveDataRequest", "isEgyptNationalTeamRequest"),
   extractFunction("isEgyptNationalTeamRequest", "isSportsScheduleRequest"),
@@ -36,10 +37,10 @@ const helpers = [
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery };",
+  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle };",
   sandbox
 );
-const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery } = sandbox.module.exports;
+const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -319,4 +320,31 @@ test("rejects future club fixtures copied from stale publication pages", () => {
       "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: 25 Nov 2027 الساعة 21:00. Updated: 2026-08-01"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
+
+
+test("conversation titles are safe, concise, and normalized for the sidebar", () => {
+  assert.equal(buildConversationTitle("  مباراة الأهلي القادمة  "), "مباراة الأهلي القادمة");
+  assert.equal(buildConversationTitle("سؤال أول\nسؤال ثاني"), "سؤال أول سؤال ثاني");
+  assert.equal(buildConversationTitle(""), "محادثة جديدة");
+  assert.equal(Array.from(buildConversationTitle("أ".repeat(80))).length, 52);
+  assert.equal(buildConversationTitle(" أ ".repeat(4)), "أ أ أ أ");
+});
+
+test("chat persistence is scoped to a conversation and legacy messages are preserved", () => {
+  assert.match(worker, /CREATE TABLE IF NOT EXISTS conversations/);
+  assert.match(worker, /ALTER TABLE messages ADD COLUMN conversation_id TEXT/);
+  assert.match(worker, /INSERT OR IGNORE INTO conversations[\s\S]*SELECT 'legacy-' \|\| user_id/);
+  assert.match(worker, /UPDATE messages SET conversation_id='legacy-' \|\| user_id WHERE conversation_id IS NULL/);
+  assert.match(worker, /SELECT role,content FROM messages WHERE user_id=\? AND conversation_id=\?/);
+  assert.match(worker, /INSERT INTO messages \(id,user_id,conversation_id,role,content,created_at\)/);
+  assert.match(worker, /SELECT id,title,archived_at FROM conversations WHERE id=\? AND user_id=\?/);
+});
+
+test("conversation APIs exist and are protected by the owning account", () => {
+  assert.match(worker, /async function conversationsRoute\(request, env, user, path\)/);
+  assert.match(worker, /path === "\/api\/conversations"/);
+  assert.match(worker, /path\.startsWith\("\/api\/conversations\/"\)/);
+  assert.match(worker, /DELETE FROM messages WHERE user_id=\? AND conversation_id=\?/);
+  assert.match(worker, /DELETE FROM conversations WHERE id=\? AND user_id=\?/);
 });
