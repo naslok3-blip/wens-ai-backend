@@ -6,6 +6,10 @@ let currentUser = null;
 let recognition = null;
 let pendingAttachments = [];
 let deepThinkEnabled = false;
+let selectedConversation = null;
+let conversationItems = [];
+let showingArchivedConversations = false;
+let conversationSearchTimer = null;
 const appSettings = loadLocalSettings();
 
 function loadLocalSettings() {
@@ -167,7 +171,10 @@ function showApp(user) {
   $("notificationsBtn").hidden = user.id === "guest";
   $("notificationsPanel").hidden = true;
   startPresenceHeartbeat();
-  loadChatHistory();
+  $("sidebarAccountName").textContent = user.id === "guest" ? "زائر" : user.name;
+  showingArchivedConversations = false;
+  selectedConversation = null;
+  loadConversations().catch(error => addMessage("تعذّر تحميل المحادثات: " + error.message));
   if (user.id !== "guest") refreshNotifications();
 }
 async function updateAdminShortcut() {
@@ -274,16 +281,256 @@ $("logoutBtn").addEventListener("click", async () => {
   showAuth();
   setAuthMessage("تم تسجيل الخروج.");
 });
-async function loadChatHistory() {
+function currentConversationId() {
+  return selectedConversation?.id || null;
+}
+function updateActiveConversationHeading() {
+  const title = selectedConversation?.title || (currentUser?.id === "guest" ? "محادثة تجريبية" : "محادثة جديدة");
+  $("activeConversationTitle").textContent = title;
+  $("activeConversationTitle").title = title;
+  updateComposerAccess();
+}
+function updateComposerAccess() {
+  const archived = Boolean(selectedConversation?.archived_at);
+  const busy = $("messageInput")?.disabled && $("messageInput")?.dataset.busy === "true";
+  const disabled = archived || Boolean(busy);
+  ["messageInput","attachMenuBtn","voiceBtn"].forEach(id => {
+    const element = $(id);
+    if (element) element.disabled = disabled;
+  });
+  const send = document.querySelector(".send-btn");
+  if (send) send.disabled = disabled;
+  if (archived) {
+    $("messageInput").placeholder = "المحادثة مؤرشفة — استعدها للمتابعة";
+    setVoiceStatus("المحادثة دي مؤرشفة. استعدها من القائمة علشان تكمل الكتابة فيها.");
+  } else if ($("messageInput")) {
+    $("messageInput").placeholder = "اكتب رسالتك أو أرفق ملفًا...";
+  }
+}
+function closeConversationSidebar() {
+  $("conversationSidebar")?.classList.remove("sidebar-open");
+  $("sidebarScrim").hidden = true;
+  $("sidebarToggleBtn").setAttribute("aria-expanded", "false");
+}
+function openConversationSidebar() {
+  $("conversationSidebar")?.classList.add("sidebar-open");
+  $("sidebarScrim").hidden = false;
+  $("sidebarToggleBtn").setAttribute("aria-expanded", "true");
+}
+async function fetchConversationList() {
+  if (!currentUser || currentUser.id === "guest") return [];
+  const query = String($("conversationSearchInput")?.value || "").trim();
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (showingArchivedConversations) params.set("archived", "1");
+  const suffix = params.toString();
+  const data = await api("/api/conversations" + (suffix ? "?" + suffix : ""), undefined, "GET");
+  return Array.isArray(data.conversations) ? data.conversations : [];
+}
+function renderConversationList() {
+  const list = $("conversationList");
+  if (!list) return;
+  list.replaceChildren();
+  if (!conversationItems.length) {
+    const empty = document.createElement("p");
+    empty.className = "conversation-list-empty";
+    empty.textContent = showingArchivedConversations
+      ? "مفيش محادثات مؤرشفة."
+      : "لسه مفيش محادثات. ابدأ محادثة جديدة.";
+    list.append(empty);
+    return;
+  }
+  for (const conversation of conversationItems) {
+    const row = document.createElement("article");
+    row.className = "conversation-item" + (selectedConversation?.id === conversation.id ? " conversation-current" : "");
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "conversation-open";
+    open.title = conversation.title || "محادثة";
+    const title = document.createElement("span");
+    title.className = "conversation-item-title";
+    title.textContent = conversation.title || "محادثة جديدة";
+    const meta = document.createElement("small");
+    meta.textContent = Number(conversation.message_count || 0).toLocaleString("ar-EG") + " رسالة";
+    open.append(title, meta);
+    open.addEventListener("click", () => selectConversation(conversation.id));
+    const actions = document.createElement("div");
+    actions.className = "conversation-item-actions";
+    const rename = document.createElement("button");
+    rename.type = "button";
+    rename.title = "إعادة تسمية";
+    rename.setAttribute("aria-label", "إعادة تسمية " + (conversation.title || "المحادثة"));
+    rename.textContent = "✎";
+    rename.addEventListener("click", event => {
+      event.stopPropagation();
+      renameConversation(conversation);
+    });
+    const archive = document.createElement("button");
+    archive.type = "button";
+    archive.title = showingArchivedConversations ? "استعادة المحادثة" : "أرشفة المحادثة";
+    archive.setAttribute("aria-label", archive.title);
+    archive.textContent = showingArchivedConversations ? "↶" : "▱";
+    archive.addEventListener("click", event => {
+      event.stopPropagation();
+      toggleArchiveConversation(conversation);
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.title = "حذف المحادثة";
+    remove.setAttribute("aria-label", "حذف المحادثة");
+    remove.textContent = "×";
+    remove.addEventListener("click", event => {
+      event.stopPropagation();
+      deleteConversation(conversation);
+    });
+    actions.append(rename, archive, remove);
+    row.append(open, actions);
+    list.append(row);
+  }
+}
+async function refreshConversationList() {
+  if (!currentUser || currentUser.id === "guest") return;
+  conversationItems = await fetchConversationList();
+  if (selectedConversation) {
+    const updated = conversationItems.find(item => item.id === selectedConversation.id);
+    if (updated) selectedConversation = updated;
+  }
+  renderConversationList();
+  updateActiveConversationHeading();
+}
+async function loadConversations(options = {}) {
+  if (!currentUser) return;
+  if (currentUser.id === "guest") {
+    conversationItems = [];
+    selectedConversation = null;
+    renderConversationList();
+    updateActiveConversationHeading();
+    await loadChatHistory(null);
+    return;
+  }
+  conversationItems = await fetchConversationList();
+  let requestedId = options.selectId || selectedConversation?.id || null;
+  selectedConversation = requestedId
+    ? conversationItems.find(item => item.id === requestedId) || null
+    : (conversationItems[0] || null);
+  if (!selectedConversation && !showingArchivedConversations && options.createIfEmpty !== false) {
+    const created = await api("/api/conversations", {}, "POST");
+    selectedConversation = created.conversation;
+    conversationItems = [selectedConversation, ...conversationItems];
+  }
+  if (selectedConversation && selectedConversation.archived_at) showingArchivedConversations = true;
+  $("activeConversationsBtn").classList.toggle("selected", !showingArchivedConversations);
+  $("activeConversationsBtn").setAttribute("aria-pressed", String(!showingArchivedConversations));
+  $("archivedConversationsBtn").classList.toggle("selected", showingArchivedConversations);
+  $("archivedConversationsBtn").setAttribute("aria-pressed", String(showingArchivedConversations));
+  renderConversationList();
+  updateActiveConversationHeading();
+  await loadChatHistory(selectedConversation?.id || null);
+}
+async function loadChatHistory(conversationId = currentConversationId()) {
   $("messages").replaceChildren();
   try {
-    const data = await api("/api/chat/history", undefined, "GET");
+    const query = conversationId ? "?conversationId=" + encodeURIComponent(conversationId) : "";
+    const data = await api("/api/chat/history" + query, undefined, "GET");
+    if (data.conversationId && !selectedConversation) {
+      selectedConversation = conversationItems.find(item => item.id === data.conversationId) || { id: data.conversationId, title: "محادثة" };
+      updateActiveConversationHeading();
+    }
     for (const item of data.messages || []) addMessage(item.content, item.role);
-    if (!(data.messages || []).length) addMessage(appSettings.greeting);
+    if (!(data.messages || []).length) {
+      addMessage(showingArchivedConversations ? "دي محادثة مؤرشفة. تقدر تقرأ رسائلها أو تستعيدها من القائمة." : appSettings.greeting);
+    }
   } catch (error) {
     addMessage("تعذّر تحميل المحادثة: " + error.message);
   }
 }
+async function selectConversation(id) {
+  const conversation = conversationItems.find(item => item.id === id);
+  if (!conversation) return;
+  selectedConversation = conversation;
+  updateActiveConversationHeading();
+  renderConversationList();
+  closeConversationSidebar();
+  await loadChatHistory(id);
+}
+async function createConversation() {
+  if (!currentUser) return;
+  if (currentUser.id === "guest") {
+    selectedConversation = null;
+    await loadChatHistory(null);
+    closeConversationSidebar();
+    return;
+  }
+  const created = await api("/api/conversations", {}, "POST");
+  showingArchivedConversations = false;
+  selectedConversation = created.conversation;
+  $("conversationSearchInput").value = "";
+  await loadConversations({ selectId: selectedConversation.id });
+  closeConversationSidebar();
+  $("messageInput").focus();
+}
+async function renameConversation(conversation) {
+  const title = window.prompt("اكتب اسمًا للمحادثة", conversation.title || "");
+  if (title === null) return;
+  const normalized = title.trim();
+  if (!normalized) {
+    setVoiceStatus("اكتب اسمًا فيه حرف واحد على الأقل.");
+    return;
+  }
+  try {
+    await api("/api/conversations/" + encodeURIComponent(conversation.id), { title: normalized }, "PATCH");
+    await refreshConversationList();
+  } catch (error) {
+    setVoiceStatus("تعذّرت إعادة التسمية: " + error.message);
+  }
+}
+async function toggleArchiveConversation(conversation) {
+  const archived = !Boolean(conversation.archived_at);
+  try {
+    await api("/api/conversations/" + encodeURIComponent(conversation.id), { archived }, "PATCH");
+    if (selectedConversation?.id === conversation.id) selectedConversation = null;
+    if (archived && !showingArchivedConversations) {
+      await loadConversations({ createIfEmpty: true });
+    } else if (!archived && showingArchivedConversations) {
+      showingArchivedConversations = false;
+      await loadConversations({ selectId: conversation.id });
+    } else {
+      await loadConversations({ createIfEmpty: false });
+    }
+  } catch (error) {
+    setVoiceStatus("تعذّرت أرشفة المحادثة: " + error.message);
+  }
+}
+async function deleteConversation(conversation) {
+  const approved = window.confirm("تحذف المحادثة دي بكل رسائلها؟ الحذف نهائي.");
+  if (!approved) return;
+  try {
+    await api("/api/conversations/" + encodeURIComponent(conversation.id), {}, "DELETE");
+    if (selectedConversation?.id === conversation.id) selectedConversation = null;
+    await loadConversations({ createIfEmpty: !showingArchivedConversations });
+  } catch (error) {
+    setVoiceStatus("تعذّر حذف المحادثة: " + error.message);
+  }
+}
+$("newConversationBtn").addEventListener("click", () => createConversation().catch(error => setVoiceStatus(error.message)));
+$("sidebarToggleBtn").addEventListener("click", openConversationSidebar);
+$("sidebarCloseBtn").addEventListener("click", closeConversationSidebar);
+$("sidebarScrim").addEventListener("click", closeConversationSidebar);
+$("activeConversationsBtn").addEventListener("click", async () => {
+  showingArchivedConversations = false;
+  selectedConversation = null;
+  await loadConversations();
+});
+$("archivedConversationsBtn").addEventListener("click", async () => {
+  showingArchivedConversations = true;
+  selectedConversation = null;
+  await loadConversations({ createIfEmpty: false });
+});
+$("conversationSearchInput").addEventListener("input", () => {
+  clearTimeout(conversationSearchTimer);
+  conversationSearchTimer = setTimeout(() => refreshConversationList().catch(error => setVoiceStatus(error.message)), 250);
+});
+
 function stripInternalToolMarkup(value) {
   return String(value ?? "")
     .replace(/(?:<\s*tool_call\b[^>]*>|tool_call\s*>|<\|tool_call\|>)[\s\S]*?(?:<\s*\/\s*tool_call\s*>|<<\s*\/\s*tool_call\s*>?|<\|tool_call_end\|>|$)/gi, " ")
@@ -569,9 +816,12 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   return row;
 }
 function setBusy(busy) {
-  document.querySelector(".send-btn").disabled = busy;
-  $("messageInput").disabled = busy;
-  $("attachMenuBtn").disabled = busy;
+  const archived = Boolean(selectedConversation?.archived_at);
+  document.querySelector(".send-btn").disabled = busy || archived;
+  $("messageInput").disabled = busy || archived;
+  $("attachMenuBtn").disabled = busy || archived;
+  $("voiceBtn").disabled = busy || archived;
+  $("messageInput").dataset.busy = busy ? "true" : "false";
   document.querySelector(".send-btn").textContent = busy ? "ونس بتفكر…" : "إرسال";
 }
 const ARABIC_SPELLING_ALIASES = new Map([
@@ -982,7 +1232,8 @@ $("chatForm").addEventListener("submit", async event => {
   const progressRow = addPendingActivityMessage(text, selected);
   try {
     const data = await api("/api/chat", {
-      message: text, attachments: payload, deepThink
+      message: text, attachments: payload, deepThink,
+      ...(selectedConversation?.id ? { conversationId: selectedConversation.id } : {})
     });
     progressRow.remove();
     const assistantRow = addMessage(
@@ -990,6 +1241,7 @@ $("chatForm").addEventListener("submit", async event => {
       data.generatedImages || [], data.generatedProjects || [],
       data.activity || [], data.sources || []
     );
+    refreshConversationList().catch(() => {});
     refreshNotifications();
     if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
   } catch (error) {
