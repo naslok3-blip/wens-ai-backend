@@ -42,11 +42,39 @@
   <p class="disclaimer">كلمة المرور تُخزّن مشفّرة تجزئيًا في قاعدة البيانات، ولا تُعرض داخل التطبيق. لا تستخدم كلمة مرور حسابك في مواقع أخرى.</p>
 </section>
 
-<div id="appRoot" hidden>
-
-
-<section class="panel">
-  <div class="section-head"><div><h2>الدردشة مع ونس</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div><div class="chat-head-actions"><button id="notificationsBtn" class="notification-toggle" type="button" aria-expanded="false" aria-label="مركز الإشعارات" hidden>🔔 <span id="notificationCount">0</span></button><button id="clearBtn" class="text-btn">مسح العرض</button></div></div>
+<div id="appRoot" class="chat-layout" hidden>
+  <aside id="conversationSidebar" class="conversation-sidebar" aria-label="قائمة المحادثات">
+    <div class="sidebar-top">
+      <div class="sidebar-brand"><strong>ونس AI</strong><span>محادثاتك</span></div>
+      <button id="sidebarCloseBtn" class="sidebar-close-btn" type="button" aria-label="إغلاق القائمة">×</button>
+    </div>
+    <button id="newConversationBtn" class="new-conversation-btn" type="button"><span>＋</span> محادثة جديدة</button>
+    <label class="conversation-search-wrap">
+      <span aria-hidden="true">⌕</span>
+      <input id="conversationSearchInput" type="search" placeholder="ابحث في المحادثات" autocomplete="off" aria-label="ابحث في المحادثات">
+    </label>
+    <div class="conversation-tabs" role="group" aria-label="نوع المحادثات">
+      <button id="activeConversationsBtn" type="button" aria-pressed="true" class="selected">المحادثات</button>
+      <button id="archivedConversationsBtn" type="button" aria-pressed="false">المؤرشفة</button>
+    </div>
+    <div id="conversationList" class="conversation-list" aria-live="polite">
+      <p class="conversation-list-empty">جاري تحميل محادثاتك…</p>
+    </div>
+    <div class="sidebar-footer"><span class="sidebar-account-dot"></span><span id="sidebarAccountName">حسابك</span></div>
+  </aside>
+  <button id="sidebarScrim" class="sidebar-scrim" type="button" aria-label="إغلاق قائمة المحادثات" hidden></button>
+  <div class="chat-main">
+<section class="panel" id="chatPanel">
+  <div class="section-head chat-section-head">
+    <div class="chat-heading-main">
+      <button id="sidebarToggleBtn" class="sidebar-toggle-btn" type="button" aria-label="فتح قائمة المحادثات" aria-expanded="false">☰</button>
+      <div><h2 id="activeConversationTitle">محادثة جديدة</h2><p id="accountLabel">محادثتك محفوظة في حسابك</p></div>
+    </div>
+    <div class="chat-head-actions">
+      <button id="notificationsBtn" class="notification-toggle" type="button" aria-expanded="false" aria-label="مركز الإشعارات" hidden>🔔 <span id="notificationCount">0</span></button>
+      <button id="clearBtn" class="text-btn" type="button">مسح العرض</button>
+    </div>
+  </div>
   <section id="notificationsPanel" class="notification-center" hidden>
     <div class="notification-heading"><strong>مركز الإشعارات</strong><button id="markNotificationsReadBtn" type="button">تحديد الكل كمقروء</button></div>
     <div id="notificationList" class="notification-list"><p class="notification-empty">لا توجد إشعارات بعد.</p></div>
@@ -104,6 +132,7 @@
   </div>
   <p class="disclaimer">رسائلك ومرفقاتك تُعالج لإعداد الرد. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.</p>
 </section>
+  </div>
 </div>
 <section id="adminInlinePanel" class="panel admin-inline-panel" hidden>
   <div class="section-head">
