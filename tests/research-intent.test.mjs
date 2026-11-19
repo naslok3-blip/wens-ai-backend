@@ -263,3 +263,30 @@ test("current-season validator accepts the short season notation only with sched
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
 });
+
+
+test("accepts Al Ahly club fixtures without requiring an Egypt national-team fixture or season label", () => {
+  const result = {
+    results:
+      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: 23 Nov 2026 الساعة 19:00. آخر تحديث: 2026-11-18 10:30\n\n" +
+      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: 25 Nov 2026 الساعة 21:00. Published: 2026-11-18"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), true);
+});
+
+test("keeps the two-independent-sources requirement for club fixtures", () => {
+  const result = {
+    results:
+      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: 23 Nov 2026 الساعة 19:00. آخر تحديث: 2026-11-18 10:30"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
+
+test("rejects stale club fixtures even when the source mentions a current publication date", () => {
+  const result = {
+    results:
+      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي: 23 Nov 2024 الساعة 19:00. آخر تحديث: 2026-11-18 10:30\n\n" +
+      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي: 25 Nov 2024 الساعة 21:00. Published: 2026-11-18"
+  };
+  assert.equal(hasVerifiableSportsScheduleSources(result), false);
+});
