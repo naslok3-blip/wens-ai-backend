@@ -20,16 +20,16 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"ونس AI","alternateName":"Wens AI","applicationCategory":"UtilitiesApplication","operatingSystem":"Web, Android, iOS","inLanguage":"ar-EG","description":"رفيقة ذكية للمحادثة والمساعدة باللغة العربية واللهجة المصرية.","url":"https://wens-ai-backend-b142.naqashy1.workers.dev/"}
 </script>
-<style>.messages{max-height:min(60vh,620px);min-height:150px;overflow:auto}.bubble-text{white-space:pre-wrap;overflow-wrap:anywhere}.bubble-text a{color:#6246b4;text-decoration:underline;overflow-wrap:anywhere}.execution-trace{margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;color:#6848c7;font-size:11px}.execution-trace summary{cursor:pointer}.execution-trace ul{margin:7px 0 0;padding-inline-start:20px;color:#64748b;line-height:1.8}.admin-inline-panel{margin-top:14px;padding:14px}.admin-inline-panel iframe{display:block;width:100%;height:82vh;min-height:760px;border:1px solid #ffffff18;border-radius:16px;background:#101020}@media(max-width:480px){.admin-inline-panel{padding:9px}.admin-inline-panel iframe{height:82vh;min-height:720px}}</style>
+<style>.messages{max-height:min(60vh,620px);min-height:150px;overflow:auto}.bubble-text{white-space:pre-wrap;overflow-wrap:anywhere}.bubble-text a{color:#6246b4;text-decoration:underline;overflow-wrap:anywhere}.execution-trace{margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;color:#6848c7;font-size:11px}.execution-trace summary{cursor:pointer}.execution-trace ul{margin:7px 0 0;padding-inline-start:20px;color:#64748b;line-height:1.8}.admin-inline-panel{margin-top:14px;padding:14px}.admin-inline-panel iframe{display:block;width:100%;height:82vh;min-height:760px;border:1px solid #ffffff18;border-radius:16px;background:#101020}@media(max-width:480px){.admin-inline-panel{padding:9px}.admin-inline-panel iframe{height:82vh;min-height:720px}}.owner-avatar-entry{overflow:hidden;padding:0}.wens-brand-avatar{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}.auth-avatar-wrap{width:104px;height:104px;border-radius:50%;padding:0;overflow:hidden;background:#eeeaff;box-shadow:0 12px 36px #6848c733}.auth-avatar-wrap img{display:block;width:100%;height:100%;object-fit:cover}</style>
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="index.html"><span class="logo" id="brandAdminEntry" tabindex="0" role="button" aria-label="مدخل مالك التطبيق">و</span><span><b id="brandName">ونس AI</b><small>رفيقة يومك الذكية</small></span></a>
+  <a class="brand" href="index.html"><span class="logo owner-avatar-entry" id="brandAdminEntry" tabindex="0" role="button" aria-label="مدخل مالك التطبيق"><img class="wens-brand-avatar" src="/avatar.jpg?v=real-jpg-20261119" alt="ونس"></span><span><b id="brandName">ونس AI</b><small>رفيقة يومك الذكية</small></span></a>
   <div class="top-actions"><button id="openAdminBtn" class="admin-shortcut" type="button" hidden>الإدارة</button><button id="backToAppBtn" class="admin-shortcut" type="button" hidden>العودة لونس</button><button id="logoutBtn" class="admin-shortcut" hidden>خروج</button></div>
 </header>
 <main class="app">
 <section id="authPanel" class="panel auth-panel">
-  <div class="auth-mark">و</div><p class="eyebrow">مساحتك الخاصة</p><h1 id="authTitle">أهلًا بيك في ونس</h1>
+  <div class="auth-mark auth-avatar-wrap"><img src="/avatar.jpg?v=real-jpg-20261119" alt="صورة ونس"></div><p class="eyebrow">مساحتك الخاصة</p><h1 id="authTitle">أهلًا بيك في ونس</h1>
   <p class="hero-text">سجّل دخولك علشان محادثاتك تتحفظ بأمان وتقدر تكمل من أي جهاز.</p>
   <form id="authForm" class="auth-form">
     <label id="nameField" hidden>الاسم<input id="nameInput" maxlength="60" autocomplete="name" placeholder="اسمك"></label>
@@ -53,7 +53,7 @@
   </section>
   <p id="voiceStatus" class="voice-status" role="status" aria-live="polite"></p>
   <div id="voicePlayerDock" class="voice-player-dock" aria-live="polite"></div>
-  <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><img class="mini-avatar" src="/avatar.jpg?v=real-jpg-20261104" alt="ونس" width="30" height="30"><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
+  <div id="messages" class="messages" aria-live="polite"><div class="message assistant"><img class="mini-avatar" src="/avatar.jpg?v=real-jpg-20261119" alt="ونس" width="30" height="30"><div class="bubble">أهلًا بيك! أنا ونس 💜 اسأليني أو احكيلي اللي في بالك.</div></div></div>
   <div class="chat-composer">
     <div id="attachmentMenu" class="attachment-menu" role="menu" aria-label="إضافة إلى المحادثة" hidden>
       <button type="button" class="attachment-option" data-action="camera">
