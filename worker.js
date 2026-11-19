@@ -3037,7 +3037,6 @@ async function handleAgent(request, env, user, options = {}) {
         lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
       }
       if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
-      else 
       const last = await runWensTextModel(env, model, lastOptions);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
