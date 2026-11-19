@@ -28,7 +28,7 @@ const helpers = [
   extractFunction("buildExternalSearchQuery", "extractExternalSources"),
   extractFunction("extractExternalSources", "handleAgent"),
   extractFunction("getCurrentEgyptFootballSeason", "hasVerifiableSportsScheduleSources"),
-  extractFunction("hasUpcomingFootballDate", "hasVerifiableSportsScheduleSources"),
+  extractFunction("hasUpcomingFootballDate", "hasRecentFootballSchedulePublication"),
   extractFunction("hasRecentFootballSchedulePublication", "hasVerifiableSportsScheduleSources"),
   extractFunction("hasVerifiableSportsScheduleSources", "hasVerifiableGoldPriceSources"),
   extractFunction("hasVerifiableGoldPriceSources", "isExplicitExternalSearchRequest")
