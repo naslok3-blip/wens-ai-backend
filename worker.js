@@ -18,6 +18,7 @@ const enc = new TextEncoder();
 const COOKIE = "wens_session";
 const ADMIN_COOKIE = "wens_admin_session";
 let adminTablesReady;
+let conversationSchemaReady;
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 
 function json(data, status = 200, headers = {}) {
@@ -213,6 +214,151 @@ function authDiagnostic(requestId, phase, error, message = "حصل خطأ أثن
       cryptoErrorType: /^PBKDF2_(?:IMPORT|DERIVE)_([A-Za-z]+)/.exec(raw)?.[1] || null
     }
   }, 500);
+}
+
+
+function buildConversationTitle(value) {
+  const title = String(value || "")
+    .normalize("NFKC")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!title) return "محادثة جديدة";
+  return Array.from(title).length > 52
+    ? Array.from(title).slice(0, 51).join("").trimEnd() + "…"
+    : title;
+}
+
+async function ensureChatSchema(db) {
+  if (conversationSchemaReady) return conversationSchemaReady;
+  conversationSchemaReady = (async () => {
+    await db.prepare(
+      "CREATE TABLE IF NOT EXISTS conversations (" +
+      "id TEXT PRIMARY KEY NOT NULL, " +
+      "user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, " +
+      "title TEXT NOT NULL DEFAULT 'محادثة جديدة', " +
+      "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, archived_at INTEGER)"
+    ).run();
+
+    let columns = await db.prepare("PRAGMA table_info(messages)").all();
+    const hasConversationColumn = () =>
+      (columns.results || []).some(column => column.name === "conversation_id");
+    if (!hasConversationColumn()) {
+      try {
+        await db.prepare("ALTER TABLE messages ADD COLUMN conversation_id TEXT").run();
+      } catch (error) {
+        columns = await db.prepare("PRAGMA table_info(messages)").all();
+        if (!hasConversationColumn()) throw error;
+      }
+    }
+
+    await db.batch([
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, archived_at, updated_at DESC)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, created_at)"),
+      db.prepare(
+        "CREATE TRIGGER IF NOT EXISTS trg_messages_update_conversation AFTER INSERT ON messages " +
+        "WHEN NEW.conversation_id IS NOT NULL BEGIN " +
+        "UPDATE conversations SET updated_at=NEW.created_at WHERE id=NEW.conversation_id AND user_id=NEW.user_id; END"
+      )
+    ]);
+
+    // Preserve every pre-existing message by grouping the old single-thread history
+    // into one legacy conversation per account. The deterministic ID makes retries safe.
+    await db.prepare(
+      "INSERT OR IGNORE INTO conversations (id,user_id,title,created_at,updated_at) " +
+      "SELECT 'legacy-' || user_id,user_id,'المحادثة السابقة',MIN(created_at),MAX(created_at) " +
+      "FROM messages WHERE conversation_id IS NULL GROUP BY user_id"
+    ).run();
+    await db.prepare(
+      "UPDATE messages SET conversation_id='legacy-' || user_id WHERE conversation_id IS NULL"
+    ).run();
+  })();
+  try {
+    await conversationSchemaReady;
+  } catch (error) {
+    conversationSchemaReady = null;
+    throw error;
+  }
+}
+
+async function conversationsRoute(request, env, user, path) {
+  if (!env.DB || !user) return json({ error: "سجّل الدخول أولًا لإدارة محادثاتك." }, 401);
+  const db = requireDb(env);
+  await ensureChatSchema(db);
+  const url = new URL(request.url);
+
+  if (path === "/api/conversations" && request.method === "GET") {
+    const query = String(url.searchParams.get("q") || "").trim().slice(0, 100);
+    const archived = url.searchParams.get("archived") === "1";
+    const archiveClause = archived ? "c.archived_at IS NOT NULL" : "c.archived_at IS NULL";
+    const pattern = "%" + query + "%";
+    const rows = await db.prepare(
+      "SELECT c.id,c.title,c.created_at,c.updated_at,c.archived_at," +
+      "(SELECT m.content FROM messages m WHERE m.user_id=c.user_id AND m.conversation_id=c.id " +
+      "ORDER BY m.created_at DESC,m.rowid DESC LIMIT 1) AS last_message " +
+      "FROM conversations c WHERE c.user_id=? AND " + archiveClause +
+      " AND (?='' OR c.title LIKE ? OR EXISTS (" +
+      "SELECT 1 FROM messages sm WHERE sm.user_id=c.user_id AND sm.conversation_id=c.id AND sm.content LIKE ?)) " +
+      "ORDER BY c.updated_at DESC LIMIT 100"
+    ).bind(user.id, query, pattern, pattern).all();
+    return json({ ok: true, conversations: rows.results || [], archived });
+  }
+
+  if (path === "/api/conversations" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "بيانات المحادثة غير صالحة." }, 400); }
+    const now = Math.floor(Date.now() / 1000);
+    const id = crypto.randomUUID();
+    const title = buildConversationTitle(body.title);
+    await db.prepare(
+      "INSERT INTO conversations (id,user_id,title,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,NULL)"
+    ).bind(id, user.id, title, now, now).run();
+    return json({ ok: true, conversation: { id, title, created_at: now, updated_at: now, archived_at: null } });
+  }
+
+  const match = path.match(/^\/api\/conversations\/([A-Za-z0-9_-]{1,100})$/);
+  if (!match) return json({ error: "المحادثة غير موجودة." }, 404);
+  const id = match[1];
+  const existing = await db.prepare(
+    "SELECT id,title,archived_at FROM conversations WHERE id=? AND user_id=? LIMIT 1"
+  ).bind(id, user.id).first();
+  if (!existing) return json({ error: "المحادثة غير موجودة أو لا تملك صلاحية الوصول إليها." }, 404);
+
+  if (request.method === "PATCH") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "بيانات التعديل غير صالحة." }, 400); }
+    const now = Math.floor(Date.now() / 1000);
+    const updates = [];
+    const params = [];
+    if (Object.prototype.hasOwnProperty.call(body, "title")) {
+      updates.push("title=?");
+      params.push(buildConversationTitle(body.title));
+    }
+    if (typeof body.archived === "boolean") {
+      updates.push("archived_at=?");
+      params.push(body.archived ? now : null);
+    }
+    if (!updates.length) return json({ error: "لا توجد تغييرات صالحة للحفظ." }, 400);
+    updates.push("updated_at=?");
+    params.push(now, id, user.id);
+    await db.prepare(
+      "UPDATE conversations SET " + updates.join(",") + " WHERE id=? AND user_id=?"
+    ).bind(...params).run();
+    const updated = await db.prepare(
+      "SELECT id,title,created_at,updated_at,archived_at FROM conversations WHERE id=? AND user_id=?"
+    ).bind(id, user.id).first();
+    return json({ ok: true, conversation: updated });
+  }
+
+  if (request.method === "DELETE") {
+    await db.batch([
+      db.prepare("DELETE FROM messages WHERE user_id=? AND conversation_id=?").bind(user.id, id),
+      db.prepare("DELETE FROM conversations WHERE id=? AND user_id=?").bind(id, user.id)
+    ]);
+    return json({ ok: true, deleted: true, id });
+  }
+
+  return json({ error: "طريقة الطلب غير مدعومة." }, 405);
 }
 
 async function authRoute(request, env, path, requestId) {
@@ -2586,6 +2732,16 @@ async function handleAgent(request, env, user, options = {}) {
   const message = typeof body.message === "string" ? body.message.trim() : "";
   const attachments = Array.isArray(body.attachments) ? body.attachments.slice(0, 4) : [];
   const deepThink = body.deepThink === true;
+  const conversationId = options.persist && env.DB && user
+    ? String(options.conversationId || body.conversationId || "")
+    : "";
+  if (options.persist && env.DB && user) {
+    await ensureChatSchema(env.DB);
+    const conversation = conversationId
+      ? await env.DB.prepare("SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1").bind(conversationId, user.id).first()
+      : null;
+    if (!conversation) return json({ error: "المحادثة غير موجودة أو مؤرشفة. افتح محادثة جديدة وحاول مرة أخرى." }, 404);
+  }
   if ((!message && !attachments.length) || message.length > 4000) {
     return json({ error: "اكتب رسالة أو أرفق ملفًا، وبحد أقصى 4000 حرف." }, 400);
   }
@@ -2602,10 +2758,10 @@ async function handleAgent(request, env, user, options = {}) {
     if (options.persist && env.DB && user) {
       const timestamp = Math.floor(Date.now() / 1000);
       await env.DB.batch([
-        env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
-          .bind(crypto.randomUUID(), user.id, "user", message, timestamp),
-        env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
-          .bind(crypto.randomUUID(), user.id, "assistant", reply, timestamp)
+        env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
+          .bind(crypto.randomUUID(), user.id, conversationId, "user", message, timestamp),
+        env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
+          .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, timestamp)
       ]);
     }
     return json({
@@ -2725,8 +2881,8 @@ async function handleAgent(request, env, user, options = {}) {
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
     const prior = await env.DB.prepare(
-      "SELECT role,content FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 10"
-    ).bind(user.id).all();
+      "SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC, rowid DESC LIMIT 20"
+    ).bind(user.id, conversationId).all();
     conversationHistory = (prior.results || []).reverse().map(item => ({
       role: item.role,
       content: item.content
@@ -2745,8 +2901,8 @@ async function handleAgent(request, env, user, options = {}) {
       });
     }
     await env.DB.prepare(
-      "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
-    ).bind(crypto.randomUUID(), user.id, "user", storedMessage, Math.floor(Date.now() / 1000)).run();
+      "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+    ).bind(crypto.randomUUID(), user.id, conversationId, "user", storedMessage, Math.floor(Date.now() / 1000)).run();
   }
 
   const imageWords = /(?:صورة|صوره|صور|الصورة|الصوره|رسم|رسمة|رسمة|لوحة|image|picture|photo|illustration|artwork)/i;
@@ -2780,8 +2936,8 @@ async function handleAgent(request, env, user, options = {}) {
     }];
     if (options.persist && env.DB && user) {
       await env.DB.prepare(
-        "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
-      ).bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+        "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+      ).bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
     }
     return json({ ok: true, model: result.model, steps, activity: [{ label: requestedImageTool === "edit_image" ? "تعديل الصورة المرفقة" : "إنشاء صورة", status: "completed" }], sources, reply, generatedImages });
   }
@@ -2797,8 +2953,8 @@ async function handleAgent(request, env, user, options = {}) {
     steps.push((kind === "game" ? "إنشاء لعبة متصفح" : "إنشاء تطبيق ويب") + " — تم");
     const reply = "جهزت لك " + (kind === "game" ? "اللعبة" : "التطبيق") + " وحفظته في حسابك. تقدر تجربه من المعاينة تحت الرد أو تنزّل ملف HTML.";
     if (options.persist && env.DB && user) {
-      await env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
-        .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+      await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
+        .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
     }
     return json({ ok: true, model: env.WENS_PROJECT_MODEL || env.WENS_AGENT_MODEL || "@cf/qwen/qwen3.8-27b", steps, activity: [{ label: kind === "game" ? "إنشاء لعبة متصفح" : "إنشاء تطبيق ويب", status: "completed" }], sources, reply, generatedImages, generatedProjects });
   }
@@ -2880,16 +3036,16 @@ async function handleAgent(request, env, user, options = {}) {
           ? "بحثت عن مواعيد المباريات القادمة، لكن ما قدرتش أثبت الموعد من مصدرين حديثين مستقلين. مش هذكر تاريخ أو وقت غير مؤكد."
           : "بحثت في المواقع الخارجية، لكن النتائج ما أثبتتش معلومة حديثة برقم أو توقيت ومصدر واضح. مش هخمن معلومة متغيرة.";
       if (options.persist && env.DB && user) {
-        await env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
-          .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+        await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
+          .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
       return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
     }
     if (explicitSearchRequest && !searchVerified) {
       const reply = "حاولت أبحث في المواقع الخارجية، لكن ما قدرتش أوصل لنتائج ومصادر قابلة للتحقق دلوقتي. مش هقدّم معلومات على إنها نتيجة بحث ناجح.";
       if (options.persist && env.DB && user) {
-        await env.DB.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
-          .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
+        await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
+          .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
       return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
     }
@@ -3105,8 +3261,8 @@ async function handleAgent(request, env, user, options = {}) {
     if (options.persist && env.DB && user) {
       const safeStoredReply = finalText.replace(/https:\/\/live\.browser\.run\/[^\s)]+/g, "[رابط متصفح مؤقت]");
       await env.DB.prepare(
-        "INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)"
-      ).bind(crypto.randomUUID(), user.id, "assistant", safeStoredReply, Math.floor(Date.now() / 1000)).run();
+        "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+      ).bind(crypto.randomUUID(), user.id, conversationId, "assistant", safeStoredReply, Math.floor(Date.now() / 1000)).run();
     }
     const payload = { ok: true, model, steps, activity, sources, reply: finalText, generatedImages, generatedProjects };
     if (toolAudit) payload.toolAudit = toolAudit;
@@ -3326,6 +3482,11 @@ export default {
       });
     }
     try {
+      if (path === "/api/conversations" || path.startsWith("/api/conversations/")) {
+        const conversationUser = env.DB ? await currentUser(request, env) : null;
+        if (!conversationUser) return json({ error: "سجّل الدخول أولًا لإدارة محادثاتك." }, 401);
+        return await conversationsRoute(request, env, conversationUser, path);
+      }
       if (path === "/api/settings" && request.method === "GET") return json({ settings: await readAppSettings(env) });
       if (path === "/api/notifications") {
         const notificationUser = env.DB ? await currentUser(request, env) : null;
@@ -3341,11 +3502,24 @@ export default {
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
       if (path === "/api/chat/history" && request.method === "GET") {
-        if (!env.DB) return json({ messages: [], persistence: false });
+        if (!env.DB) return json({ messages: [], persistence: false, conversationId: null });
         const user = await currentUser(request, env);
         if (!user) return json({ error: "سجّل الدخول الأول." }, 401);
-        const rows = await requireDb(env).prepare("SELECT role,content,created_at FROM messages WHERE user_id=? ORDER BY created_at DESC, rowid DESC LIMIT 60").bind(user.id).all();
-        return json({ messages: (rows.results || []).reverse(), persistence: true });
+        await ensureChatSchema(env.DB);
+        const requestedId = String(url.searchParams.get("conversationId") || "");
+        const conversation = requestedId
+          ? await env.DB.prepare("SELECT id,title FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1").bind(requestedId, user.id).first()
+          : await env.DB.prepare("SELECT id,title FROM conversations WHERE user_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1").bind(user.id).first();
+        if (!conversation) return json({ messages: [], persistence: true, conversationId: null });
+        const rows = await env.DB.prepare(
+          "SELECT role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at ASC,rowid ASC LIMIT 100"
+        ).bind(user.id, conversation.id).all();
+        return json({
+          messages: rows.results || [],
+          persistence: true,
+          conversationId: conversation.id,
+          title: conversation.title
+        });
       }
       const projectRouteMatch = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/(preview|download)$/i);
       if (projectRouteMatch && request.method === "GET") {
@@ -3367,7 +3541,34 @@ export default {
       if (path === "/api/chat" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
         if (env.DB && !user) return json({ error: "سجّل الدخول الأول لاستخدام ونس." }, 401);
-        return await handleAgent(request, env, user, { persist: true });
+        if (!env.DB || !user) return await handleAgent(request, env, user, { persist: false });
+        await ensureChatSchema(env.DB);
+        let body;
+        try { body = await request.clone().json(); } catch { return json({ error: "بيانات الرسالة غير صالحة." }, 400); }
+        const now = Math.floor(Date.now() / 1000);
+        const messageText = String(body.message || "").trim();
+        let conversationId = String(body.conversationId || "");
+        let conversation = conversationId
+          ? await env.DB.prepare("SELECT id,title,archived_at FROM conversations WHERE id=? AND user_id=? LIMIT 1").bind(conversationId, user.id).first()
+          : null;
+        if (conversationId && (!conversation || conversation.archived_at)) {
+          return json({ error: "المحادثة غير موجودة أو مؤرشفة. افتح محادثة جديدة." }, 404);
+        }
+        if (!conversation) {
+          conversationId = crypto.randomUUID();
+          const title = buildConversationTitle(messageText || "محادثة جديدة");
+          await env.DB.prepare(
+            "INSERT INTO conversations (id,user_id,title,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,NULL)"
+          ).bind(conversationId, user.id, title, now, now).run();
+        } else if (conversation.title === "محادثة جديدة" && messageText) {
+          const title = buildConversationTitle(messageText);
+          await env.DB.prepare("UPDATE conversations SET title=?,updated_at=? WHERE id=? AND user_id=?")
+            .bind(title, now, conversationId, user.id).run();
+        }
+        const response = await handleAgent(request, env, user, { persist: true, conversationId });
+        let payload = {};
+        try { payload = await response.json(); } catch {}
+        return json({ ...payload, conversationId }, response.status);
       }
       if (request.method === "GET") {
         const asset = INLINE_ASSETS.get(path);
