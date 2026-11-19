@@ -254,12 +254,7 @@ async function ensureChatSchema(db) {
 
     await db.batch([
       db.prepare("CREATE INDEX IF NOT EXISTS idx_conversations_user_updated ON conversations(user_id, archived_at, updated_at DESC)"),
-      db.prepare("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, created_at)"),
-      db.prepare(
-        "CREATE TRIGGER IF NOT EXISTS trg_messages_update_conversation AFTER INSERT ON messages " +
-        "WHEN NEW.conversation_id IS NOT NULL BEGIN " +
-        "UPDATE conversations SET updated_at=NEW.created_at WHERE id=NEW.conversation_id AND user_id=NEW.user_id; END"
-      )
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id, created_at)")
     ]);
 
     // Preserve every pre-existing message by grouping the old single-thread history
@@ -3512,10 +3507,10 @@ export default {
           : await env.DB.prepare("SELECT id,title FROM conversations WHERE user_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1").bind(user.id).first();
         if (!conversation) return json({ messages: [], persistence: true, conversationId: null });
         const rows = await env.DB.prepare(
-          "SELECT role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at ASC,rowid ASC LIMIT 100"
+          "SELECT role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100"
         ).bind(user.id, conversation.id).all();
         return json({
-          messages: rows.results || [],
+          messages: (rows.results || []).reverse(),
           persistence: true,
           conversationId: conversation.id,
           title: conversation.title
@@ -3565,6 +3560,8 @@ export default {
           await env.DB.prepare("UPDATE conversations SET title=?,updated_at=? WHERE id=? AND user_id=?")
             .bind(title, now, conversationId, user.id).run();
         }
+        await env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
+          .bind(now, conversationId, user.id).run();
         const response = await handleAgent(request, env, user, { persist: true, conversationId });
         let payload = {};
         try { payload = await response.json(); } catch {}
