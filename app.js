@@ -28,7 +28,7 @@ function loadLocalSettings() {
     return {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "device") && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || value === "device"))
+        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || ["device", "realtime"].includes(value)) && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || ["device", "coral", "shimmer", "marin", "cedar", "sage"].includes(value)))
       ))
     };
   } catch { return defaults; }
@@ -2058,12 +2058,19 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
     }
   });
 }
-async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
+async function speak(text, voiceOverride, playerTarget, waitForPlayback = false, engineOverride) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
-  setVoiceStatus("بدور على صوت مصري مثبت على الموبايل…");
+  const engine = engineOverride || appSettings.voiceEngine || "device";
   try {
-    await speakOnDevice(message, playerTarget, waitForPlayback);
+    if (engine === "realtime") {
+      const voice = voiceOverride || (appSettings.voiceName && appSettings.voiceName !== "device" ? appSettings.voiceName : "coral");
+      setVoiceStatus("جاري تجهيز الصوت الطبيعي باللهجة المصرية…");
+      await speakRealtime(message, voice, playerTarget, waitForPlayback);
+    } else {
+      setVoiceStatus("بدور على صوت مصري مثبت على الموبايل…");
+      await speakOnDevice(message, playerTarget, waitForPlayback);
+    }
     return true;
   } catch (error) {
     stopRealtimeVoice();
@@ -2091,8 +2098,8 @@ function getAdminVoicePreviewDock() {
   dock.scrollIntoView({ behavior: "smooth", block: "nearest" });
   return dock;
 }
-window.WensPlayVoicePreview = text =>
-  speak(text, null, getAdminVoicePreviewDock(), true);
+window.WensPlayVoicePreview = (text, options = {}) =>
+  speak(text, options.voiceName || null, getAdminVoicePreviewDock(), true, options.voiceEngine);
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
