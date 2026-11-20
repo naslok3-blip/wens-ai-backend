@@ -155,6 +155,15 @@ async function requestStreamedReply(path, body, pendingRow = null, onMeta = () =
   } catch (error) {
     streamedRow?.row.remove();
     pendingRow?.remove();
+    if (path === "/api/chat/edit" && error?.meta?.forked && error.meta.conversationId) {
+      currentConversationId = String(error.meta.conversationId);
+      try {
+        await loadConversations({ selectLatest: false });
+        await openConversation(currentConversationId);
+      } catch {
+        // Keep the original stream error as the user-facing diagnostic.
+      }
+    }
     throw error;
   }
 }
