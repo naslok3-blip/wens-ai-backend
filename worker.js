@@ -2879,7 +2879,7 @@ async function handleAgent(request, env, user, options = {}) {
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
     const prior = await env.DB.prepare(
-      "SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY created_at DESC, rowid DESC LIMIT 20"
+      "SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT 20"
     ).bind(user.id, conversationId, Number(options.historyBeforeRowid || 9007199254740991)).all();
     conversationHistory = (prior.results || []).reverse().map(item => ({
       role: item.role,
@@ -3235,7 +3235,7 @@ async function handleAgent(request, env, user, options = {}) {
       finalText = "استخرجت محتوى الملفات المرفقة بالفعل. إليك النص الذي تمت قراءته:\n\n" + documentExtractionText;
       steps.push("عرض المحتوى المستخرج بدل إنكار المرفقات — تم");
     }
-    if (!finalText) {
+    if (!finalText && !options.stream) {
       const lastOptions = {
         messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]),
         temperature: 0.2,
@@ -3570,7 +3570,7 @@ export default {
           : await env.DB.prepare("SELECT id,title FROM conversations WHERE user_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1").bind(user.id).first();
         if (!conversation) return json({ messages: [], persistence: true, conversationId: null });
         const rows = await env.DB.prepare(
-          "SELECT id,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100"
+          "SELECT id,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 100"
         ).bind(user.id, conversation.id).all();
         return json({
           messages: (rows.results || []).reverse(),
