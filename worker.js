@@ -3454,9 +3454,16 @@ async function saveVoiceTranscriptRoute(request, env, user) {
       "INSERT OR IGNORE INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
     ).bind(messageId, user.id, conversationId, role, content, now),
     env.DB.prepare(
+      "UPDATE messages SET role=?,content=? WHERE id=? AND user_id=? AND conversation_id=?"
+    ).bind(role, content, messageId, user.id, conversationId),
+    env.DB.prepare(
       "UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?"
     ).bind(now, conversationId, user.id)
   ]);
+  const saved = await env.DB.prepare(
+    "SELECT id FROM messages WHERE id=? AND user_id=? AND conversation_id=? LIMIT 1"
+  ).bind(messageId, user.id, conversationId).first();
+  if (!saved) return json({ error: "تعذّر حفظ نص المكالمة في المحادثة المحددة." }, 409);
   return json({ ok: true, messageId, conversationId, role, saved: true });
 }
 
