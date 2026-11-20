@@ -377,6 +377,26 @@ test("chat UI streams edits and regenerates any identified text-only turn in a p
 });
 
 
+test("stream metadata preserves saved message IDs and recovers an edited fork after a stream error", () => {
+  assert.ok(client.includes('event === "meta"'));
+  assert.ok(client.includes("streamError.meta = currentStreamMeta"));
+  assert.ok(client.includes("meta => {"));
+  assert.ok(client.includes("meta.userMessageId"));
+  assert.ok(client.includes('path === "/api/chat/edit" && error?.meta?.forked'));
+  assert.ok(client.includes("await openConversation(currentConversationId)"));
+});
+
+test("historical edit removes an incomplete fork when context cloning fails", () => {
+  const routeStart = worker.indexOf('path === "/api/chat/edit"');
+  const routeEnd = worker.indexOf('const projectRouteMatch', routeStart);
+  const route = worker.slice(routeStart, routeEnd);
+  assert.ok(route.includes("const discardIncompleteFork = async () =>"));
+  assert.ok(route.includes("catch (cloneError)"));
+  assert.ok(route.includes("await discardIncompleteFork()"));
+  assert.ok(route.includes("if (cloned !== totalPriorMessages)"));
+  assert.ok(route.indexOf("if (cloned !== totalPriorMessages)") < route.indexOf("const response = await handleAgent"));
+});
+
 test("chat history uses stable rowid cursor pagination beyond the initial 100 messages", () => {
   assert.match(worker, /url\.searchParams\.get\("before"\)/);
   assert.match(worker, /rowid AS seq/);
