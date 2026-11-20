@@ -233,6 +233,10 @@ function stopPresenceHeartbeat() {
   if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer);
   presenceHeartbeatTimer = null;
 }
+
+window.addEventListener("pagehide", () => {
+  try { stopRealtimeVoice(); } catch {}
+});
 function startPresenceHeartbeat() {
   stopPresenceHeartbeat();
   if (!currentUser || currentUser.id === "guest") return;
