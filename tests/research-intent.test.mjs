@@ -366,10 +366,10 @@ test("chat retry is owner-scoped, context-safe, and only replaces a successful l
 });
 
 test("chat UI streams edits and regenerates any identified text-only turn in a preserved fork", () => {
-  assert.match(client, /requestStreamedReply\("\\/api\\/chat\\/edit"/);
-  assert.match(client, /messageId:\s*previousRow\.dataset\.messageId/);
-  assert.match(client, /إعادة توليد الرد/);
-  assert.match(client, /تعديل سؤالي/);
-  assert.match(client, /previousRow\.dataset\.messageId && !previousRow\.querySelector\("\\.message-attachments"\\)/);
-  assert.match(client, /await openConversation\(currentConversationId\)/);
+  assert.ok(client.includes('requestStreamedReply("/api/chat/edit"'));
+  assert.ok(client.includes("messageId: previousRow.dataset.messageId"));
+  assert.ok(client.includes("إعادة توليد الرد"));
+  assert.ok(client.includes("تعديل سؤالي"));
+  assert.ok(client.includes('previousRow.dataset.messageId && !previousRow.querySelector(".message-attachments")'));
+  assert.ok(client.includes("await openConversation(currentConversationId)"));
 });
