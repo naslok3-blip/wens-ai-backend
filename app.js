@@ -1473,12 +1473,9 @@ function loadWensTesseract() {
   if (window.Tesseract) return Promise.resolve(window.Tesseract);
   if (!tesseractLibraryPromise) {
     tesseractLibraryPromise = new Promise((resolve, reject) => {
-      const existing = document.querySelector('script[data-wens-tesseract="true"]');
-      if (existing) {
-        existing.addEventListener("load", () => resolve(window.Tesseract), { once: true });
-        existing.addEventListener("error", () => reject(new Error("تعذّر تحميل محرك OCR.")), { once: true });
-        return;
-      }
+      // Remove a stale failed script so a later retry doesn't wait on an event already fired.
+      const stale = document.querySelector('script[data-wens-tesseract="true"]');
+      if (stale) stale.remove();
       const script = document.createElement("script");
       script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
       script.async = true;
@@ -1487,7 +1484,10 @@ function loadWensTesseract() {
       script.onload = () => window.Tesseract
         ? resolve(window.Tesseract)
         : reject(new Error("محرك OCR لم يبدأ بشكل صحيح."));
-      script.onerror = () => reject(new Error("تعذّر تحميل محرك OCR. تحقق من اتصال الإنترنت."));
+      script.onerror = () => {
+        script.remove();
+        reject(new Error("تعذّر تحميل محرك OCR. تحقق من اتصال الإنترنت."));
+      };
       document.head.appendChild(script);
     }).catch(error => {
       tesseractLibraryPromise = null;
