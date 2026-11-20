@@ -361,30 +361,42 @@ test("normalizes common Workers AI streaming chunk envelopes", () => {
 });
 
 test("stream and mutation routes are authenticated, conversation-scoped, and keep full-agent fallbacks", () => {
-  assert.match(worker, /async function simpleChatStreamRoute\(request, env, user\)/);
-  assert.match(worker, /stream: true/);
-  assert.match(worker, /Content-Type": "text\/event-stream; charset=utf-8"/);
-  assert.match(worker, /path === "\\/api\\/chat\\/stream"/);
-  assert.match(worker, /async function chatMessageMutationRoute\(request, env, user, mode\)/);
-  assert.match(worker, /path === "\\/api\\/chat\\/edit"/);
-  assert.match(worker, /path === "\\/api\\/chat\\/regenerate"/);
-  assert.match(worker, /DELETE FROM messages WHERE user_id=\\? AND conversation_id=\\? AND rowid>=\\?/);
-  assert.match(worker, /skipUserPersist: mode === "regenerate"/);
-  assert.match(worker, /AND id<>\\?/);
-  assert.match(worker, /SELECT id,role,content,created_at FROM messages/);
+  for (const snippet of [
+    "async function simpleChatStreamRoute(request, env, user)",
+    "stream: true",
+    '"Content-Type": "text/event-stream; charset=utf-8"',
+    'path === "/api/chat/stream"',
+    "async function chatMessageMutationRoute(request, env, user, mode)",
+    'path === "/api/chat/edit"',
+    'path === "/api/chat/regenerate"',
+    "DELETE FROM messages WHERE user_id=? AND conversation_id=? AND rowid>=?",
+    'skipUserPersist: mode === "regenerate"',
+    "AND id<>?",
+    "SELECT id,role,content,created_at FROM messages"
+  ]) {
+    assert.ok(worker.includes(snippet), "Missing streaming contract: " + snippet);
+  }
 });
 
 test("streaming is bypassed for requests requiring research, tools, files, or deep reasoning", () => {
-  assert.match(worker, /body\\.deepThink === true \\|\\| \\(Array\\.isArray\\(body\\.attachments\\) && body\\.attachments\\.length\\)/);
-  assert.match(worker, /isExternalResearchIntent\\(message\\)/);
-  assert.match(worker, /isProjectCreationIntent\\(message\\)/);
-  assert.match(worker, /getEgyptDateTimeIntent\\(message\\)\\.matched/);
-  assert.match(worker, /return json\\(\\{ fallback: true \\}, 409\\)/);
+  for (const snippet of [
+    "body.deepThink === true || (Array.isArray(body.attachments) && body.attachments.length)",
+    "isExternalResearchIntent(message)",
+    "isProjectCreationIntent(message)",
+    "getEgyptDateTimeIntent(message).matched",
+    "return json({ fallback: true }, 409)"
+  ]) {
+    assert.ok(worker.includes(snippet), "Missing fallback contract: " + snippet);
+  }
 });
 
 test("Realtime voice is opt-in and the free device voice remains the default", () => {
-  assert.match(worker, /voiceEngine: "device"/);
-  assert.match(worker, /\\["device", "realtime"\\]\\.includes\\(input\\.voiceEngine\\)/);
-  assert.match(worker, /WENS_REALTIME_MODEL/);
-  assert.match(worker, /function handleRealtimeVoice/);
+  for (const snippet of [
+    'voiceEngine: "device"',
+    '["device", "realtime"].includes(input.voiceEngine)',
+    "WENS_REALTIME_MODEL",
+    "async function handleRealtimeVoice"
+  ]) {
+    assert.ok(worker.includes(snippet), "Missing voice contract: " + snippet);
+  }
 });
