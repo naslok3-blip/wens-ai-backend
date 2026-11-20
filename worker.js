@@ -356,6 +356,278 @@ async function conversationsRoute(request, env, user, path) {
   return json({ error: "طريقة الطلب غير مدعومة." }, 405);
 }
 
+
+async function enrichChatResponse(response, env, user, conversationId) {
+  let payload = {};
+  try { payload = await response.json(); } catch {}
+  if (response.ok && env.DB && user) {
+    const rows = await env.DB.prepare(
+      "SELECT id,role FROM messages WHERE user_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 2"
+    ).bind(user.id, conversationId).all();
+    const latest = rows.results || [];
+    const userRow = latest.find(item => item.role === "user");
+    const assistantRow = latest.find(item => item.role === "assistant");
+    payload.userMessageId = userRow?.id || null;
+    payload.assistantMessageId = assistantRow?.id || null;
+  }
+  payload.conversationId = conversationId;
+  return json(payload, response.status);
+}
+
+async function chatMessageMutationRoute(request, env, user, mode) {
+  if (!env.DB || !user) return json({ error: "سجّل الدخول أولًا لتعديل محادثاتك." }, 401);
+  await ensureChatSchema(env.DB);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "بيانات تعديل الرسالة غير صالحة." }, 400); }
+  const conversationId = String(body.conversationId || "");
+  const messageId = String(mode === "edit" ? body.messageId || "" : body.assistantMessageId || "");
+  const conversation = await env.DB.prepare(
+    "SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1"
+  ).bind(conversationId, user.id).first();
+  if (!conversation) return json({ error: "المحادثة غير موجودة أو مؤرشفة." }, 404);
+
+  let prompt = "";
+  let existingUserMessageId = "";
+  let deleteFromRow = 0;
+  if (mode === "edit") {
+    prompt = String(body.message || "").trim();
+    if (!messageId || !prompt || prompt.length > 4000) {
+      return json({ error: "اكتب الرسالة المعدّلة، بحد أقصى 4000 حرف." }, 400);
+    }
+    const target = await env.DB.prepare(
+      "SELECT id,content,rowid AS message_order FROM messages " +
+      "WHERE id=? AND user_id=? AND conversation_id=? AND role='user' LIMIT 1"
+    ).bind(messageId, user.id, conversationId).first();
+    if (!target) return json({ error: "رسالة المستخدم غير موجودة داخل هذه المحادثة." }, 404);
+    if (/\[أسماء المرفقات:/.test(String(target.content || ""))) {
+      return json({ error: "الرسالة الأصلية تحتوي على مرفقات لا يحتفظ ونس بنسختها لإعادة الإرسال. ابعت المرفق مرة أخرى في رسالة جديدة." }, 409);
+    }
+    deleteFromRow = Number(target.message_order);
+    const previous = await env.DB.prepare(
+      "SELECT COUNT(*) AS total FROM messages WHERE user_id=? AND conversation_id=? AND role='user' AND rowid<?"
+    ).bind(user.id, conversationId, deleteFromRow).first();
+    if (!Number(previous?.total || 0)) {
+      await env.DB.prepare("UPDATE conversations SET title=?,updated_at=? WHERE id=? AND user_id=?")
+        .bind(buildConversationTitle(prompt), Math.floor(Date.now() / 1000), conversationId, user.id).run();
+    }
+  } else {
+    if (!messageId) return json({ error: "معرّف رد ونس مطلوب لإعادة المحاولة." }, 400);
+    const target = await env.DB.prepare(
+      "SELECT id,rowid AS message_order FROM messages " +
+      "WHERE id=? AND user_id=? AND conversation_id=? AND role='assistant' LIMIT 1"
+    ).bind(messageId, user.id, conversationId).first();
+    if (!target) return json({ error: "رد ونس غير موجود داخل هذه المحادثة." }, 404);
+    deleteFromRow = Number(target.message_order);
+    const previousUser = await env.DB.prepare(
+      "SELECT id,content FROM messages WHERE user_id=? AND conversation_id=? AND role='user' AND rowid<? ORDER BY rowid DESC LIMIT 1"
+    ).bind(user.id, conversationId, deleteFromRow).first();
+    if (!previousUser) return json({ error: "لم أجد رسالة المستخدم الأصلية لهذا الرد." }, 409);
+    if (/\[أسماء المرفقات:/.test(String(previousUser.content || ""))) {
+      return json({ error: "الرسالة الأصلية كانت تحتوي على مرفق. أرفقه مرة أخرى في رسالة جديدة لإعادة التحليل." }, 409);
+    }
+    prompt = String(previousUser.content || "").trim();
+    existingUserMessageId = previousUser.id;
+  }
+
+  await env.DB.prepare(
+    "DELETE FROM messages WHERE user_id=? AND conversation_id=? AND rowid>=?"
+  ).bind(user.id, conversationId, deleteFromRow).run();
+  await env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
+    .bind(Math.floor(Date.now() / 1000), conversationId, user.id).run();
+
+  const agentRequest = new Request(request.url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: prompt,
+      attachments: [],
+      deepThink: body.deepThink === true,
+      conversationId
+    })
+  });
+  const response = await handleAgent(agentRequest, env, user, {
+    persist: true,
+    conversationId,
+    skipUserPersist: mode === "regenerate",
+    existingUserMessageId: mode === "regenerate" ? existingUserMessageId : undefined
+  });
+  return await enrichChatResponse(response, env, user, conversationId);
+}
+
+function streamSseEvent(controller, payload) {
+  controller.enqueue(enc.encode("data: " + JSON.stringify(payload) + "\n\n"));
+}
+
+async function simpleChatStreamRoute(request, env, user) {
+  if (!env.DB || !user) return json({ error: "سجّل الدخول أولًا لاستخدام المحادثات المباشرة." }, 401);
+  if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "بيانات الرسالة غير صالحة." }, 400); }
+  const message = String(body.message || "").trim();
+  if (!message || message.length > 4000) return json({ error: "اكتب رسالة من حرف واحد إلى 4000 حرف." }, 400);
+  if (body.deepThink === true || (Array.isArray(body.attachments) && body.attachments.length)) {
+    return json({ fallback: true }, 409);
+  }
+  const actionIntent = /(?:ابحث|بحث في|افتح(?:ي)? (?:موقع|صفحة)|متصفح|احجز|حجز|اشتر|شراء|ارفع|نزّل|حمل ملف|أنشئ|انشئ|تطبيق|برنامج|موقع|لعبة|صورة|ارسم|نفّذ|نفذ|استخدم(?:ي)? أداة|مهمة محفوظة|بريد إلكتروني|إيميل)/i.test(message);
+  if (actionIntent || isExternalResearchIntent(message) || isProjectCreationIntent(message) ||
+      getEgyptDateTimeIntent(message).matched || isLiveDataRequest(message)) {
+    return json({ fallback: true }, 409);
+  }
+
+  await ensureChatSchema(env.DB);
+  const now = Math.floor(Date.now() / 1000);
+  let conversationId = String(body.conversationId || "");
+  let conversation = conversationId
+    ? await env.DB.prepare("SELECT id,title,archived_at FROM conversations WHERE id=? AND user_id=? LIMIT 1")
+        .bind(conversationId, user.id).first()
+    : null;
+  if (conversationId && (!conversation || conversation.archived_at)) {
+    return json({ error: "المحادثة غير موجودة أو مؤرشفة." }, 404);
+  }
+  if (!conversation) {
+    conversationId = crypto.randomUUID();
+    const title = buildConversationTitle(message);
+    await env.DB.prepare(
+      "INSERT INTO conversations (id,user_id,title,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,NULL)"
+    ).bind(conversationId, user.id, title, now, now).run();
+  } else {
+    await env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
+      .bind(now, conversationId, user.id).run();
+  }
+
+  const userMessageId = crypto.randomUUID();
+  await env.DB.prepare(
+    "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+  ).bind(userMessageId, user.id, conversationId, "user", message, now).run();
+
+  const history = await env.DB.prepare(
+    "SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? AND id<>? ORDER BY rowid DESC LIMIT 20"
+  ).bind(user.id, conversationId, userMessageId).all();
+  const messages = [
+    {
+      role: "system",
+      content: SYSTEM_PROMPT + "\n\n" + AGENT_SYSTEM_PROMPT +
+        "\nفي الدردشة العادية أجيبي باختصار طبيعي باللهجة المصرية. لا تستخدمي الأدوات في هذا المسار؛ أي بحث أو تنفيذ أو معلومة متغيرة يجب أن يعود لمسار الوكيل الكامل."
+    }
+  ];
+  try {
+    await ensureUserMemorySchema(env.DB);
+    const memories = await env.DB.prepare(
+      "SELECT category,content FROM user_memories WHERE user_id=? ORDER BY updated_at DESC LIMIT 20"
+    ).bind(user.id).all();
+    if (memories.results?.length) {
+      messages.push({
+        role: "system",
+        content: "تفضيلات غير حساسة حفظها المستخدم صراحةً. استخدميها فقط عند فائدتها ولا تعرضيها من غير طلب:\n" +
+          memories.results.map(item => "- [" + String(item.category || "preference") + "] " + String(item.content || "").slice(0, 400)).join("\n")
+      });
+    }
+  } catch {}
+  messages.push(...(history.results || []).reverse().map(item => ({ role: item.role, content: item.content })));
+  messages.push({ role: "user", content: message });
+
+  const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+  const runOptions = { messages, temperature: 0.7, max_tokens: 650, stream: true };
+  if (model === "@cf/zai-org/glm-4.7-flash") {
+    runOptions.chat_template_kwargs = { enable_thinking: false };
+  }
+  let upstream;
+  try {
+    upstream = await runWensTextModel(env, model, runOptions);
+  } catch (error) {
+    const failure = classifyWorkersAiFailure(error);
+    return json({ error: failure.message, code: failure.code, retryAt: failure.retryAt || null }, failure.status);
+  }
+  if (upstream instanceof Response) upstream = upstream.body;
+  if (!upstream || typeof upstream.getReader !== "function") {
+    return json({ fallback: true, error: "النموذج الحالي لم يوفر بثًا مباشرًا." }, 409);
+  }
+
+  const reader = upstream.getReader();
+  const output = new ReadableStream({
+    start(controller) {
+      let buffer = "";
+      let assistantText = "";
+      const decoder = new TextDecoder();
+      const processEvent = eventText => {
+        const data = eventText.split(/\r?\n/)
+          .filter(line => line.startsWith("data:"))
+          .map(line => line.slice(5).trim())
+          .join("\n");
+        if (!data || data === "[DONE]") return;
+        let payload;
+        try { payload = JSON.parse(data); } catch { return; }
+        if (payload?.error) {
+          const reason = typeof payload.error === "string" ? payload.error : payload.error.message;
+          streamSseEvent(controller, { type: "error", error: String(reason || "فشل توليد الرد.") });
+          return;
+        }
+        const delta = payload?.choices?.[0]?.delta?.content ??
+          payload?.choices?.[0]?.text ??
+          payload?.response ??
+          payload?.result?.response ??
+          payload?.delta?.content ??
+          "";
+        if (typeof delta === "string" && delta) {
+          assistantText += delta;
+          streamSseEvent(controller, { type: "delta", text: delta });
+        }
+      };
+      (async () => {
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let boundary;
+            while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+              processEvent(buffer.slice(0, boundary));
+              buffer = buffer.slice(boundary + 2);
+            }
+          }
+          buffer += decoder.decode();
+          if (buffer.trim()) processEvent(buffer);
+          if (!assistantText.trim()) throw new Error("لم يصل رد نصي من النموذج.");
+          const assistantMessageId = crypto.randomUUID();
+          const completedAt = Math.floor(Date.now() / 1000);
+          await env.DB.batch([
+            env.DB.prepare(
+              "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+            ).bind(assistantMessageId, user.id, conversationId, "assistant", assistantText, completedAt),
+            env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
+              .bind(completedAt, conversationId, user.id)
+          ]);
+          streamSseEvent(controller, {
+            type: "done",
+            conversationId,
+            userMessageId,
+            assistantMessageId,
+            model
+          });
+          controller.close();
+        } catch (error) {
+          const failure = classifyWorkersAiFailure(error);
+          streamSseEvent(controller, { type: "error", error: failure.message, code: failure.code });
+          controller.close();
+        } finally {
+          try { reader.releaseLock(); } catch {}
+        }
+      })();
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    }
+  });
+  return new Response(output, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+      "X-Content-Type-Options": "nosniff"
+    }
+  });
+}
+
 async function authRoute(request, env, path, requestId) {
   const db = requireDb(env);
   if (path === "/api/auth/me" && request.method === "GET") {
