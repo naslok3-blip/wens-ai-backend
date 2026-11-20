@@ -2877,7 +2877,7 @@ async function handleAgent(request, env, user, options = {}) {
   if (options.persist && env.DB && user) {
     const prior = await env.DB.prepare(
       "SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY created_at DESC, rowid DESC LIMIT 20"
-    ).bind(user.id, conversationId, Number(options.historyBeforeRowid || 9223372036854775807)).all();
+    ).bind(user.id, conversationId, Number(options.historyBeforeRowid || 9007199254740991)).all();
     conversationHistory = (prior.results || []).reverse().map(item => ({
       role: item.role,
       content: item.content
