@@ -2197,6 +2197,17 @@ function stopRealtimeVoice() {
   activeVoiceDataChannel = null;
   activeVoiceAudio = null;
   activeVoiceMicStream = null;
+  for (const record of voiceCallInputItems.values()) {
+    if (!record.completed) {
+      record.text = record.text && !record.isPlaceholder
+        ? "تفريغ جزئي: " + record.text
+        : "لم يكتمل تفريغ هذا المقطع الصوتي قبل إنهاء المكالمة.";
+      record.isPlaceholder = false;
+      record.completed = true;
+      voiceCallRowText(record.row, record.text);
+      saveVoiceCallTranscript(record, "user");
+    }
+  }
   activeVoiceCallConversationId = null;
   voiceCallInputItems.clear();
   voiceCallOutputItems.clear();
@@ -2251,7 +2262,8 @@ function ensureVoiceCallTranscriptRow(map, itemId, role, placeholder) {
     saving: null,
     persistQueue: Promise.resolve(),
     lastQueuedText: "",
-    isPlaceholder: false
+    isPlaceholder: false,
+    completed: false
   };
   map.set(key, record);
   return record;
@@ -2320,6 +2332,7 @@ function receiveWensVoiceCallEvent(data) {
     );
     record.text = String(data.transcript || "").trim() || "لم يتمكن محرك التفريغ من قراءة هذا المقطع الصوتي.";
     record.isPlaceholder = false;
+    record.completed = true;
     voiceCallRowText(record.row, record.text);
     saveVoiceCallTranscript(record, "user");
     setVoiceStatus("وصل كلامك لونس…");
