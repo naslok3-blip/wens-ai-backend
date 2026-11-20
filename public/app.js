@@ -436,7 +436,7 @@ async function openConversation(id) {
     if (currentConversationId !== requestedId) return;
     loading.remove();
     setCurrentConversationTitle(data.title || "محادثة");
-    for (const item of data.messages || []) addMessage(item.content, item.role);
+    for (const item of data.messages || []) addMessage(item.content, item.role, [], [], [], [], [], [], item.id || "");
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
     await loadConversations({ selectLatest: false });
     closeConversationSidebar();
@@ -815,7 +815,169 @@ function hideExternalLinksFromDisplay(value) {
   return text.trim();
 }
 
-function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = []) {
+
+function bindChatMessageActions(row, role, messageText, messageId, hasAttachments = false) {
+  if (!row || !messageId || row.querySelector(".chat-message-actions")) return;
+  row.dataset.messageId = String(messageId);
+  const bubble = row.querySelector(".bubble");
+  if (!bubble) return;
+  const actions = document.createElement("div");
+  actions.className = "chat-message-actions";
+  if (role === "user" && !hasAttachments && !/\[أسماء المرفقات:/.test(String(messageText || ""))) {
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "chat-message-action";
+    edit.textContent = "تعديل";
+    edit.setAttribute("aria-label", "تعديل رسالتك وإعادة الإرسال");
+    edit.addEventListener("click", () => mutateChatMessage("edit", String(messageId), String(messageText || ""), edit));
+    actions.appendChild(edit);
+  } else if (role === "assistant") {
+    const regenerate = document.createElement("button");
+    regenerate.type = "button";
+    regenerate.className = "chat-message-action";
+    regenerate.textContent = "إعادة المحاولة";
+    regenerate.setAttribute("aria-label", "إعادة توليد رد ونس");
+    regenerate.addEventListener("click", () => mutateChatMessage("regenerate", String(messageId), "", regenerate));
+    actions.appendChild(regenerate);
+  }
+  if (actions.childNodes.length) bubble.appendChild(actions);
+}
+
+async function mutateChatMessage(mode, messageId, oldText, button) {
+  if (!currentConversationId || !messageId || !currentUser || currentUser.id === "guest") return;
+  let editedText = "";
+  if (mode === "edit") {
+    editedText = window.prompt("عدّل رسالتك ثم اضغط موافق لإعادة إرسالها:", oldText);
+    if (editedText === null) return;
+    editedText = editedText.trim();
+    if (!editedText) {
+      setVoiceStatus("الرسالة المعدّلة لا يمكن أن تكون فارغة.");
+      return;
+    }
+    if (editedText.length > 4000) {
+      setVoiceStatus("الحد الأقصى للرسالة 4000 حرف.");
+      return;
+    }
+  }
+  if (button) button.disabled = true;
+  setBusy(true);
+  const progress = addMessage(mode === "edit" ? "جاري تعديل الرسالة وإعادة توليد الرد…" : "جاري إعادة توليد الرد…", "assistant");
+  try {
+    const endpoint = mode === "edit" ? "/api/chat/edit" : "/api/chat/regenerate";
+    const payload = mode === "edit"
+      ? { conversationId: currentConversationId, messageId, message: editedText, deepThink: deepThinkEnabled }
+      : { conversationId: currentConversationId, assistantMessageId: messageId, deepThink: deepThinkEnabled };
+    await api(endpoint, payload);
+    progress.remove();
+    await loadChatHistory(currentConversationId);
+    await loadConversations({ selectLatest: false });
+    setVoiceStatus(mode === "edit" ? "تم تعديل الرسالة وتوليد رد جديد." : "تم توليد رد جديد.");
+  } catch (error) {
+    progress.remove();
+    setVoiceStatus(error.message || "تعذّر تحديث الرسالة.");
+    if (button) button.disabled = false;
+  } finally {
+    setBusy(false);
+    $("messageInput")?.focus();
+  }
+}
+
+async function tryStreamChat(message, userRow, progressRow) {
+  if (!currentUser || currentUser.id === "guest" || pendingAttachments.length || deepThinkEnabled) return false;
+  const response = await fetch("/api/chat/stream", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, conversationId: currentConversationId, deepThink: false })
+  });
+  const contentType = response.headers.get("Content-Type") || "";
+  if (response.status === 409) {
+    const result = await response.json().catch(() => ({}));
+    if (result.fallback) return false;
+    throw new Error(result.error || "تعذّر بدء البث المباشر.");
+  }
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || "تعذّر إرسال الرسالة.");
+  }
+  if (!contentType.includes("text/event-stream") || !response.body) return false;
+
+  const row = document.createElement("div");
+  row.className = "message assistant streaming-message";
+  const avatar = document.createElement("img");
+  avatar.className = "mini-avatar";
+  avatar.src = appSettings.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
+  avatar.alt = "ونس";
+  avatar.width = 30;
+  avatar.height = 30;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const liveText = document.createElement("div");
+  liveText.className = "bubble-text streaming-text";
+  liveText.textContent = "ونس بتكتب…";
+  bubble.appendChild(liveText);
+  row.append(avatar, bubble);
+  $("messages").appendChild(row);
+  $("messages").scrollTop = $("messages").scrollHeight;
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  let completion = null;
+  let streamError = "";
+  const processEvent = eventText => {
+    const data = eventText.split(/\r?\n/)
+      .filter(line => line.startsWith("data:"))
+      .map(line => line.slice(5).trim())
+      .join("\n");
+    if (!data) return;
+    let item;
+    try { item = JSON.parse(data); } catch { return; }
+    if (item.type === "delta" && typeof item.text === "string") {
+      fullText += item.text;
+      liveText.textContent = fullText;
+      $("messages").scrollTop = $("messages").scrollHeight;
+    } else if (item.type === "done") {
+      completion = item;
+    } else if (item.type === "error") {
+      streamError = String(item.error || "تعذّر إكمال الرد.");
+    }
+  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+        processEvent(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) processEvent(buffer);
+    if (streamError) throw new Error(streamError);
+    if (!completion || !fullText.trim()) throw new Error("انقطع الاتصال قبل اكتمال الرد.");
+    if (progressRow?.isConnected) progressRow.remove();
+    if (userRow && completion.userMessageId) {
+      bindChatMessageActions(userRow, "user", message, completion.userMessageId, false);
+    }
+    row.remove();
+    const assistantRow = addMessage(fullText, "assistant", [], [], [], [], [], [], completion.assistantMessageId || "");
+    refreshNotifications();
+    loadConversations({ selectLatest: false }).catch(error => setVoiceStatus("تعذّر تحديث قائمة المحادثات: " + error.message));
+    if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
+    return true;
+  } catch (error) {
+    row.remove();
+    throw error;
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+}
+
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = [], messageId = "") {
   const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
   const messageContainer = $("messages");
@@ -1028,6 +1190,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   row.appendChild(bubble);
   if (who === "assistant") row.dataset.replyKey = replyKey;
   messageContainer.appendChild(row);
+  if (messageId) bindChatMessageActions(row, who, displayText, messageId, attachments.length > 0);
   messageContainer.scrollTop = messageContainer.scrollHeight;
   return row;
 }
@@ -1434,7 +1597,7 @@ $("chatForm").addEventListener("submit", async event => {
   const text = message || (selected.some(item => item.kind === "image")
     ? "افحص الصورة المرفقة واشرح لي ما يظهر فيها."
     : "ساعدني في قراءة المرفقات المرسلة.");
-  addMessage(text, "user", [], selected);
+  const userRow = addMessage(text, "user", [], selected);
   const payload = attachmentPayload();
   const deepThink = deepThinkEnabled;
   $("messageInput").value = "";
@@ -1449,19 +1612,25 @@ $("chatForm").addEventListener("submit", async event => {
       currentConversationId = created.conversation.id;
       setCurrentConversationTitle(created.conversation.title);
     }
-    const data = await api("/api/chat", {
-      message: text, attachments: payload, deepThink, conversationId: currentConversationId
-    });
-    if (data.conversationId) currentConversationId = data.conversationId;
-    progressRow.remove();
-    const assistantRow = addMessage(
-      data.reply, "assistant", data.steps || [], [],
-      data.generatedImages || [], data.generatedProjects || [],
-      data.activity || [], data.sources || []
-    );
-    refreshNotifications();
-    loadConversations({ selectLatest: false }).catch(error => setVoiceStatus("تعذّر تحديث قائمة المحادثات: " + error.message));
-    if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
+    const streamed = selected.length === 0 && !deepThink
+      ? await tryStreamChat(text, userRow, progressRow)
+      : false;
+    if (!streamed) {
+      const data = await api("/api/chat", {
+        message: text, attachments: payload, deepThink, conversationId: currentConversationId
+      });
+      if (data.conversationId) currentConversationId = data.conversationId;
+      if (data.userMessageId) bindChatMessageActions(userRow, "user", text, data.userMessageId, selected.length > 0);
+      progressRow.remove();
+      const assistantRow = addMessage(
+        data.reply, "assistant", data.steps || [], [],
+        data.generatedImages || [], data.generatedProjects || [],
+        data.activity || [], data.sources || [], data.assistantMessageId || ""
+      );
+      refreshNotifications();
+      loadConversations({ selectLatest: false }).catch(error => setVoiceStatus("تعذّر تحديث قائمة المحادثات: " + error.message));
+      if (appSettings.autoSpeak) assistantRow.querySelector(".voice-replay-btn")?.click();
+    }
   } catch (error) {
     progressRow.remove();
     addMessage("معلش، مش قادرة أكمل دلوقتي. " + error.message);
