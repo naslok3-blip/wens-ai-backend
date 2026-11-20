@@ -40,11 +40,12 @@ export function encodeWensSseEvent(event, payload) {
   return "event: " + event + "\ndata: " + JSON.stringify(payload) + "\n\n";
 }
 
-export async function consumeWorkersAiStream(readable, onDelta = () => {}) {
+export async function consumeWorkersAiStream(readable, onDelta = () => {}, onReader = () => {}) {
   if (!readable || typeof readable.getReader !== "function") {
     throw new TypeError("Workers AI streaming did not return a ReadableStream.");
   }
   const reader = readable.getReader();
+  onReader(reader);
   const decoder = new TextDecoder();
   let buffer = "";
   let output = "";
@@ -70,27 +71,31 @@ export async function consumeWorkersAiStream(readable, onDelta = () => {}) {
     buffer += decoder.decode();
     if (buffer.trim()) processFrame(buffer);
   } finally {
-    reader.releaseLock();
+    try { reader.releaseLock(); } catch {}
   }
   return output;
 }
 
 export function createWensStreamResponse(providerStream, options = {}) {
-  let reader;
+  let reader = null;
+  let canceled = false;
   const body = new ReadableStream({
     start(controller) {
       controller.enqueue(encoder.encode(encodeWensSseEvent("meta", options.meta || {})));
       (async () => {
         const reply = await consumeWorkersAiStream(providerStream, delta => {
-          controller.enqueue(encoder.encode(encodeWensSseEvent("delta", { text: delta })));
-        });
+          if (!canceled) controller.enqueue(encoder.encode(encodeWensSseEvent("delta", { text: delta })));
+        }, currentReader => { reader = currentReader; });
+        if (canceled) return;
         if (!reply.trim()) throw new Error("لم يصل نص من بث نموذج الذكاء الاصطناعي.");
         const finalReply = typeof options.normalize === "function" ? options.normalize(reply) : reply.trim();
         if (!finalReply) throw new Error("لم يصل رد نصي نهائي من نموذج الذكاء الاصطناعي.");
         if (typeof options.onComplete === "function") await options.onComplete(finalReply);
+        if (canceled) return;
         controller.enqueue(encoder.encode(encodeWensSseEvent("done", { ...(options.done || {}), reply: finalReply })));
         controller.close();
       })().catch(error => {
+        if (canceled) return;
         const failure = typeof options.onError === "function" ? options.onError(error) : null;
         controller.enqueue(encoder.encode(encodeWensSseEvent("error", {
           error: failure?.message || String(error?.message || "تعذّر إكمال الرد المباشر."),
@@ -99,8 +104,12 @@ export function createWensStreamResponse(providerStream, options = {}) {
         controller.close();
       });
     },
-    cancel(reason) {
-      try { reader?.cancel(reason); } catch {}
+    async cancel(reason) {
+      canceled = true;
+      try {
+        if (reader) await reader.cancel(reason);
+        else if (typeof providerStream?.cancel === "function") await providerStream.cancel(reason);
+      } catch {}
     }
   });
   return new Response(body, {
@@ -113,7 +122,6 @@ export function createWensStreamResponse(providerStream, options = {}) {
     }
   });
 }
-
 export async function jsonResponseAsWensStream(response, extra = {}) {
   let payload = {};
   try { payload = await response.json(); } catch {}
