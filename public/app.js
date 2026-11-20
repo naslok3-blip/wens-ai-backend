@@ -524,8 +524,10 @@ async function openConversation(id) {
     setCurrentConversationTitle(data.title || "محادثة");
     if (data.hasMore && data.nextBefore) renderOlderMessagesControl(data.nextBefore);
     for (const item of data.messages || []) {
-      addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq);
+      const row = addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq);
+      if (item.hasAttachments) row.dataset.hasAttachments = "true";
     }
+    rebuildChatMessageEditActions();
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
     await loadConversations({ selectLatest: false });
     closeConversationSidebar();
@@ -580,10 +582,12 @@ async function loadOlderMessages(button) {
     }
     const older = document.createDocumentFragment();
     for (const item of items) {
-      addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq, older);
+      const row = addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq, older);
+      if (item.hasAttachments) row.dataset.hasAttachments = "true";
     }
     button.remove();
     messages.insertBefore(older, messages.firstChild);
+    rebuildChatMessageEditActions(messages);
     if (data.hasMore && data.nextBefore) {
       renderOlderMessagesControl(data.nextBefore);
     }
@@ -983,6 +987,74 @@ function hideExternalLinksFromDisplay(value) {
   return text.trim();
 }
 
+function attachChatMessageEditActions(assistantRow, userRow) {
+  if (!assistantRow || !userRow || !assistantRow.classList.contains("assistant") ||
+      !userRow.classList.contains("user") || assistantRow.querySelector(".message-retry-actions") ||
+      !currentUser || currentUser.id === "guest" || !currentConversationId ||
+      !userRow.dataset.messageId || userRow.dataset.hasAttachments === "true") return;
+  const retryActions = document.createElement("div");
+  retryActions.className = "message-retry-actions";
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "إعادة توليد الرد";
+  retry.addEventListener("click", async () => {
+    retry.disabled = true;
+    try {
+      const result = await requestStreamedReply("/api/chat/edit", {
+        conversationId: currentConversationId,
+        messageId: userRow.dataset.messageId,
+        deepThink: deepThinkEnabled
+      });
+      currentConversationId = result.conversationId || currentConversationId;
+      await loadConversations({ selectLatest: false });
+      await openConversation(currentConversationId);
+      if (appSettings.autoSpeak) $("messages").lastElementChild?.querySelector(".voice-replay-btn")?.click();
+    } catch (error) {
+      setVoiceStatus("تعذّرت إعادة توليد الرد: " + error.message);
+      retry.disabled = false;
+    }
+  });
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.textContent = "تعديل سؤالي";
+  edit.addEventListener("click", async () => {
+    const original = userRow.querySelector(".bubble-text")?.textContent || "";
+    const revised = window.prompt("عدّل سؤالك ثم اضغط موافق لإعادة توليد الرد", original);
+    if (revised === null || !revised.trim() || revised.trim() === original.trim()) return;
+    edit.disabled = true;
+    retry.disabled = true;
+    try {
+      const result = await requestStreamedReply("/api/chat/edit", {
+        conversationId: currentConversationId,
+        messageId: userRow.dataset.messageId,
+        message: revised.trim(),
+        deepThink: deepThinkEnabled
+      });
+      currentConversationId = result.conversationId || currentConversationId;
+      await loadConversations({ selectLatest: false });
+      await openConversation(currentConversationId);
+    } catch (error) {
+      setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
+      edit.disabled = false;
+      retry.disabled = false;
+    }
+  });
+  retryActions.append(retry, edit);
+  assistantRow.querySelector(".bubble")?.appendChild(retryActions);
+}
+
+function rebuildChatMessageEditActions(container = $("messages")) {
+  if (!container || !currentUser || currentUser.id === "guest" || !currentConversationId) return;
+  const rows = Array.from(container.querySelectorAll(".message"));
+  for (let index = 1; index < rows.length; index++) {
+    const userRow = rows[index - 1];
+    const assistantRow = rows[index];
+    if (userRow.classList.contains("user") && assistantRow.classList.contains("assistant")) {
+      attachChatMessageEditActions(assistantRow, userRow);
+    }
+  }
+}
+
 function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = [], messageId = null, messageSeq = null, targetContainer = $("messages")) {
   const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
@@ -1120,59 +1192,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       bubble.appendChild(sourceTrace);
     }
   }
-  if (who === "assistant" && previousRow?.classList.contains("user") &&
-      currentUser && currentUser.id !== "guest" && currentConversationId &&
-      previousRow.dataset.messageId && !previousRow.querySelector(".message-attachments")) {
-    const retryActions = document.createElement("div");
-    retryActions.className = "message-retry-actions";
-    const retry = document.createElement("button");
-    retry.type = "button";
-    retry.textContent = "إعادة توليد الرد";
-    retry.addEventListener("click", async () => {
-      retry.disabled = true;
-      try {
-        const result = await requestStreamedReply("/api/chat/edit", {
-          conversationId: currentConversationId,
-          messageId: previousRow.dataset.messageId,
-          deepThink: deepThinkEnabled
-        });
-        currentConversationId = result.conversationId || currentConversationId;
-        await loadConversations({ selectLatest: false });
-        await openConversation(currentConversationId);
-        if (appSettings.autoSpeak) $("messages").lastElementChild?.querySelector(".voice-replay-btn")?.click();
-      } catch (error) {
-        setVoiceStatus("تعذّرت إعادة توليد الرد: " + error.message);
-        retry.disabled = false;
-      }
-    });
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.textContent = "تعديل سؤالي";
-    edit.addEventListener("click", async () => {
-      const original = previousRow.querySelector(".bubble-text")?.textContent || "";
-      const revised = window.prompt("عدّل سؤالك ثم اضغط موافق لإعادة توليد الرد", original);
-      if (revised === null || !revised.trim() || revised.trim() === original.trim()) return;
-      edit.disabled = true;
-      retry.disabled = true;
-      try {
-        const result = await requestStreamedReply("/api/chat/edit", {
-          conversationId: currentConversationId,
-          messageId: previousRow.dataset.messageId,
-          message: revised.trim(),
-          deepThink: deepThinkEnabled
-        });
-        currentConversationId = result.conversationId || currentConversationId;
-        await loadConversations({ selectLatest: false });
-        await openConversation(currentConversationId);
-      } catch (error) {
-        setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
-        edit.disabled = false;
-        retry.disabled = false;
-      }
-    });
-    retryActions.append(retry, edit);
-    bubble.appendChild(retryActions);
-  }
+  if (who === "assistant") attachChatMessageEditActions(row, previousRow);
   if (who === "assistant" && currentUser && currentUser.id !== "guest" && displayText.trim().length > 1) {
     const feedback = document.createElement("div");
     feedback.className = "reply-feedback";
