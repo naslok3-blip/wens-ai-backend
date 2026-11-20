@@ -522,7 +522,10 @@ async function openConversation(id) {
     if (currentConversationId !== requestedId) return;
     loading.remove();
     setCurrentConversationTitle(data.title || "محادثة");
-    for (const item of data.messages || []) addMessage(item.content, item.role, [], [], [], [], [], [], item.id);
+    if (data.hasMore && data.nextBefore) renderOlderMessagesControl(data.nextBefore);
+    for (const item of data.messages || []) {
+      addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq);
+    }
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
     await loadConversations({ selectLatest: false });
     closeConversationSidebar();
@@ -530,6 +533,65 @@ async function openConversation(id) {
     loading.remove();
     addMessage("تعذّر تحميل المحادثة: " + error.message);
     setVoiceStatus("تعذّر تحميل المحادثة: " + error.message);
+  }
+}
+
+function renderOlderMessagesControl(before) {
+  const messages = $("messages");
+  const existing = $("loadOlderMessagesBtn");
+  if (existing) existing.remove();
+  if (!before) return;
+  const button = document.createElement("button");
+  button.id = "loadOlderMessagesBtn";
+  button.type = "button";
+  button.className = "text-btn load-older-messages";
+  button.dataset.before = String(before);
+  button.textContent = "عرض رسائل أقدم";
+  button.addEventListener("click", () => loadOlderMessages(button));
+  messages.insertBefore(button, messages.firstChild);
+}
+
+async function loadOlderMessages(button) {
+  if (!button || button.disabled || !currentConversationId) return;
+  const conversationId = currentConversationId;
+  const before = Number(button.dataset.before);
+  if (!Number.isSafeInteger(before) || before <= 0) {
+    button.remove();
+    setVoiceStatus("تعذّر تحديد موضع الرسائل الأقدم.");
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "جاري تحميل الرسائل الأقدم…";
+  const messages = $("messages");
+  const previousHeight = messages.scrollHeight;
+  const previousTop = messages.scrollTop;
+  try {
+    const data = await api(
+      "/api/chat/history?conversationId=" + encodeURIComponent(conversationId) + "&before=" + encodeURIComponent(String(before)),
+      undefined,
+      "GET"
+    );
+    if (currentConversationId !== conversationId) return;
+    const items = Array.isArray(data.messages) ? data.messages : [];
+    if (!items.length) {
+      button.remove();
+      setVoiceStatus("وصلت لبداية المحادثة.");
+      return;
+    }
+    const older = document.createDocumentFragment();
+    for (const item of items) {
+      addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq, older);
+    }
+    button.remove();
+    messages.insertBefore(older, messages.firstChild);
+    if (data.hasMore && data.nextBefore) {
+      renderOlderMessagesControl(data.nextBefore);
+    }
+    messages.scrollTop = previousTop + (messages.scrollHeight - previousHeight);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "تعذّر التحميل — حاول مرة تانية";
+    setVoiceStatus("تعذّر تحميل الرسائل الأقدم: " + error.message);
   }
 }
 
@@ -921,10 +983,10 @@ function hideExternalLinksFromDisplay(value) {
   return text.trim();
 }
 
-function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = [], messageId = null) {
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = [], messageId = null, messageSeq = null, targetContainer = $("messages")) {
   const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
-  const messageContainer = $("messages");
+  const messageContainer = targetContainer || $("messages");
   const previousRow = messageContainer.lastElementChild;
   const hasExtras = (steps?.length || attachments?.length || generatedImages?.length || generatedProjects?.length || activity?.length || sources?.length);
   if (who === "assistant" && replyKey && !hasExtras &&
@@ -934,6 +996,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   const row = document.createElement("div");
   row.className = "message " + who;
   if (messageId) row.dataset.messageId = String(messageId);
+  if (messageSeq !== null && messageSeq !== undefined) row.dataset.messageSeq = String(messageSeq);
   if (who === "assistant") {
     const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
@@ -1188,7 +1251,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   row.appendChild(bubble);
   if (who === "assistant") row.dataset.replyKey = replyKey;
   messageContainer.appendChild(row);
-  messageContainer.scrollTop = messageContainer.scrollHeight;
+  if (typeof messageContainer.scrollTop === "number") messageContainer.scrollTop = messageContainer.scrollHeight;
   return row;
 }
 function setBusy(busy) {
