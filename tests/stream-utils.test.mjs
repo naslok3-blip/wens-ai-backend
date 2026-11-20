@@ -67,7 +67,7 @@ test("streams Wens delta events and persists only the normalized final reply", a
     normalize: value => value.trim(),
     onComplete: async value => { saved = value; }
   });
-  assert.match(response.headers.get("content-type"), /text\\/event-stream/);
+  assert.match(response.headers.get("content-type"), /text\/event-stream/);
   const payload = await response.text();
   assert.match(payload, /event: meta/);
   assert.match(payload, /event: delta/);
