@@ -98,13 +98,13 @@ async function streamApi(path, body = {}, onDelta = () => {}) {
   const processFrame = frame => {
     let event = "message";
     const dataLines = [];
-    for (const line of frame.split(/\\r?\\n/)) {
+    for (const line of frame.split(/\r?\n/)) {
       if (line.startsWith("event:")) event = line.slice(6).trim();
       else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
     }
     if (!dataLines.length) return;
     let payload;
-    try { payload = JSON.parse(dataLines.join("\\n")); } catch { return; }
+    try { payload = JSON.parse(dataLines.join("\n")); } catch { return; }
     if (event === "delta" && typeof payload.text === "string") onDelta(payload.text);
     else if (event === "done") completed = payload;
     else if (event === "error") streamError = new Error(payload.error || "تعذّر إكمال الرد المباشر.");
@@ -115,8 +115,8 @@ async function streamApi(path, body = {}, onDelta = () => {}) {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let boundary;
-      while ((boundary = buffer.search(/\\r?\\n\\r?\\n/)) !== -1) {
-        const match = buffer.slice(boundary).match(/^\\r?\\n\\r?\\n/);
+      while ((boundary = buffer.search(/\r?\n\r?\n/)) !== -1) {
+        const match = buffer.slice(boundary).match(/^\r?\n\r?\n/);
         const frame = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + match[0].length);
         processFrame(frame);
