@@ -454,6 +454,16 @@ async function chatMessageMutationRoute(request, env, user, mode) {
   return await enrichChatResponse(response, env, user, conversationId);
 }
 
+function extractWorkersAiStreamDelta(payload) {
+  const value = payload?.choices?.[0]?.delta?.content ??
+    payload?.choices?.[0]?.text ??
+    payload?.response ??
+    payload?.result?.response ??
+    payload?.delta?.content ??
+    "";
+  return typeof value === "string" ? value : "";
+}
+
 function streamSseEvent(controller, payload) {
   controller.enqueue(enc.encode("data: " + JSON.stringify(payload) + "\n\n"));
 }
@@ -562,13 +572,8 @@ async function simpleChatStreamRoute(request, env, user) {
           streamSseEvent(controller, { type: "error", error: String(reason || "فشل توليد الرد.") });
           return;
         }
-        const delta = payload?.choices?.[0]?.delta?.content ??
-          payload?.choices?.[0]?.text ??
-          payload?.response ??
-          payload?.result?.response ??
-          payload?.delta?.content ??
-          "";
-        if (typeof delta === "string" && delta) {
+        const delta = extractWorkersAiStreamDelta(payload);
+        if (delta) {
           assistantText += delta;
           streamSseEvent(controller, { type: "delta", text: delta });
         }
