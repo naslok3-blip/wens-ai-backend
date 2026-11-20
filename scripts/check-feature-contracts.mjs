@@ -6,6 +6,19 @@ const [app, admin, owner, worker, index, style] = await Promise.all([
   readFile("index.html", "utf8"), readFile("style.css", "utf8")
 ]);
 const checks = [
+  [worker, "async function simpleChatStreamRoute(request, env, user)", "authenticated streamed plain-text chat route"],
+  [worker, "stream: true", "Workers AI returns tokens incrementally for simple chat"],
+  [worker, "async function chatMessageMutationRoute(request, env, user, mode)", "owner-scoped edit and regenerate endpoints"],
+  [worker, "skipUserPersist: mode === \"regenerate\"", "regeneration reuses the original user message without duplicating it"],
+  [worker, "extractWorkersAiStreamDelta", "normalizes provider-specific streaming chunk envelopes"],
+  [app, "async function tryStreamChat(message, userRow, progressRow)", "browser consumes server-sent response chunks"],
+  [app, "function bindChatMessageActions", "individual messages expose edit or regenerate actions"],
+  [app, 'api("/api/chat/edit"', "editing a user message reruns only the selected conversation"],
+  [app, 'api("/api/chat/regenerate"', "regenerate action is wired to the selected assistant message"],
+  [app, 'fetch("/api/chat/stream"', "chat UI streams tokens while keeping the full agent fallback"],
+  [worker, 'voiceEngine: "device"', "free device voice remains the default"],
+  [worker, '["device", "realtime"].includes(input.voiceEngine)', "natural Realtime voice requires explicit owner settings"],
+  [admin, 'option value="realtime"', "owner can opt in to natural realtime voice"],
   [worker, "async function ensureChatSchema(db)", "per-account conversation schema with legacy message migration"],
   [worker, "async function conversationsRoute(request, env, user, path)", "authenticated conversation list/create/rename/archive/delete routes"],
   [worker, "WHERE user_id=? AND conversation_id=?", "message context is scoped to the selected conversation"],
