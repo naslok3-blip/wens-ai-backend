@@ -2248,43 +2248,57 @@ function ensureVoiceCallTranscriptRow(map, itemId, role, placeholder) {
     messageId: crypto.randomUUID(),
     text: "",
     saved: false,
-    saving: null
+    saving: null,
+    persistQueue: Promise.resolve(),
+    lastQueuedText: "",
+    isPlaceholder: false
   };
   map.set(key, record);
   return record;
 }
 
 async function saveVoiceCallTranscript(record, role) {
-  if (!record || record.saved || record.saving || !record.text.trim()) return record?.saving || null;
+  if (!record || !record.text.trim()) return record?.persistQueue || null;
   const conversationId = String(record.row.dataset.voiceConversationId || activeVoiceCallConversationId || "");
   if (!conversationId) return null;
-  record.saving = api("/api/voice/transcript", {
-    conversationId,
-    role,
-    text: record.text.trim().slice(0, 6000),
-    messageId: record.messageId
-  }).then(result => {
+  const snapshot = record.text.trim().slice(0, 6000);
+  if (record.lastQueuedText === snapshot) return record.persistQueue;
+  record.lastQueuedText = snapshot;
+  const persist = async () => {
+    const result = await api("/api/voice/transcript", {
+      conversationId,
+      role,
+      text: snapshot,
+      messageId: record.messageId
+    });
     record.saved = true;
     record.row.dataset.messageId = result.messageId;
     rebuildChatMessageEditActions();
     return result;
-  }).catch(error => {
+  };
+  record.persistQueue = (record.persistQueue || Promise.resolve()).then(persist).catch(error => {
+    record.lastQueuedText = "";
     setVoiceStatus("المكالمة شغالة، لكن تعذّر حفظ نص أحد الأدوار في سجل المحادثة: " + error.message);
     return null;
-  }).finally(() => { record.saving = null; });
-  return record.saving;
+  });
+  record.saving = record.persistQueue;
+  return record.persistQueue;
 }
 
 function receiveWensVoiceCallEvent(data) {
   if (!data || typeof data.type !== "string") return;
   const itemId = String(data.item_id || data.item?.id || data.response_id || "");
   if (data.type === "input_audio_buffer.speech_started") {
-    ensureVoiceCallTranscriptRow(
+    const record = ensureVoiceCallTranscriptRow(
       voiceCallInputItems,
       itemId,
       "user",
       "🎙️ جاري التقاط كلامك..."
     );
+    record.text = "جاري تحويل كلامك إلى نص...";
+    record.isPlaceholder = true;
+    voiceCallRowText(record.row, record.text);
+    saveVoiceCallTranscript(record, "user");
     setVoiceStatus("سامعاك… كمّل كلامك 💜");
     return;
   }
@@ -2292,6 +2306,10 @@ function receiveWensVoiceCallEvent(data) {
     const record = ensureVoiceCallTranscriptRow(
       voiceCallInputItems, itemId, "user", "🎙️ جاري كتابة كلامك..."
     );
+    if (record.isPlaceholder) {
+      record.text = "";
+      record.isPlaceholder = false;
+    }
     record.text += String(data.delta || "");
     voiceCallRowText(record.row, record.text);
     return;
@@ -2300,14 +2318,10 @@ function receiveWensVoiceCallEvent(data) {
     const record = ensureVoiceCallTranscriptRow(
       voiceCallInputItems, itemId, "user", ""
     );
-    record.text = String(data.transcript || "").trim();
-    if (record.text) {
-      voiceCallRowText(record.row, record.text);
-      saveVoiceCallTranscript(record, "user");
-    } else {
-      record.row.remove();
-      voiceCallInputItems.delete(itemId);
-    }
+    record.text = String(data.transcript || "").trim() || "لم يتمكن محرك التفريغ من قراءة هذا المقطع الصوتي.";
+    record.isPlaceholder = false;
+    voiceCallRowText(record.row, record.text);
+    saveVoiceCallTranscript(record, "user");
     setVoiceStatus("وصل كلامك لونس…");
     return;
   }
@@ -2328,7 +2342,8 @@ function receiveWensVoiceCallEvent(data) {
     if (finalText) record.text = finalText;
     if (record.text.trim()) {
       voiceCallRowText(record.row, record.text);
-      saveVoiceCallTranscript(record, "assistant");
+      Promise.all(Array.from(voiceCallInputItems.values()).map(item => item.persistQueue).filter(Boolean))
+        .then(() => saveVoiceCallTranscript(record, "assistant"));
     } else {
       record.row.remove();
       voiceCallOutputItems.delete(itemId);
