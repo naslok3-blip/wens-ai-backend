@@ -2,6 +2,7 @@ import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
 import { extractResponsesWebSearch } from "./openai-responses-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
+import { createWensStreamResponse, jsonResponseAsWensStream } from "./stream-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
@@ -2730,6 +2731,7 @@ async function handleAgent(request, env, user, options = {}) {
   const conversationId = options.persist && env.DB && user
     ? String(options.conversationId || body.conversationId || "")
     : "";
+  const userMessageId = crypto.randomUUID();
   if (options.persist && env.DB && user) {
     await ensureChatSchema(env.DB);
     const conversation = conversationId
@@ -2754,7 +2756,7 @@ async function handleAgent(request, env, user, options = {}) {
       const timestamp = Math.floor(Date.now() / 1000);
       await env.DB.batch([
         env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
-          .bind(crypto.randomUUID(), user.id, conversationId, "user", message, timestamp),
+          .bind(userMessageId, user.id, conversationId, "user", message, timestamp),
         env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, timestamp)
       ]);
@@ -2769,7 +2771,8 @@ async function handleAgent(request, env, user, options = {}) {
         detail: "المنطقة الزمنية: Africa/Cairo · " + current.utcOffset
       }],
       sources: [],
-      reply
+      reply,
+      userMessageId
     });
   }
 
@@ -2897,7 +2900,7 @@ async function handleAgent(request, env, user, options = {}) {
     }
     await env.DB.prepare(
       "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
-    ).bind(crypto.randomUUID(), user.id, conversationId, "user", storedMessage, Math.floor(Date.now() / 1000)).run();
+    ).bind(userMessageId, user.id, conversationId, "user", storedMessage, Math.floor(Date.now() / 1000)).run();
   }
 
   const imageWords = /(?:صورة|صوره|صور|الصورة|الصوره|رسم|رسمة|رسمة|لوحة|image|picture|photo|illustration|artwork)/i;
@@ -2934,7 +2937,7 @@ async function handleAgent(request, env, user, options = {}) {
         "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
       ).bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
     }
-    return json({ ok: true, model: result.model, steps, activity: [{ label: requestedImageTool === "edit_image" ? "تعديل الصورة المرفقة" : "إنشاء صورة", status: "completed" }], sources, reply, generatedImages });
+    return json({ ok: true, model: result.model, steps, activity: [{ label: requestedImageTool === "edit_image" ? "تعديل الصورة المرفقة" : "إنشاء صورة", status: "completed" }], sources, reply, generatedImages, userMessageId });
   }
   const projectCreationIntent = isProjectCreationIntent(message);
   if (projectCreationIntent) {
@@ -2951,7 +2954,7 @@ async function handleAgent(request, env, user, options = {}) {
       await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
         .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
     }
-    return json({ ok: true, model: env.WENS_PROJECT_MODEL || env.WENS_AGENT_MODEL || "@cf/qwen/qwen3.8-27b", steps, activity: [{ label: kind === "game" ? "إنشاء لعبة متصفح" : "إنشاء تطبيق ويب", status: "completed" }], sources, reply, generatedImages, generatedProjects });
+    return json({ ok: true, model: env.WENS_PROJECT_MODEL || env.WENS_AGENT_MODEL || "@cf/qwen/qwen3.8-27b", steps, activity: [{ label: kind === "game" ? "إنشاء لعبة متصفح" : "إنشاء تطبيق ويب", status: "completed" }], sources, reply, generatedImages, generatedProjects, userMessageId });
   }
   const systemPrompt = options.persist
     ? SYSTEM_PROMPT + "\\n\\n" + AGENT_SYSTEM_PROMPT + "\\nفي المحادثة الرئيسية، كوني رفيقة طبيعية: جاوبي مباشرة وباختصار مناسب، ولا تحولي كل سؤال بسيط إلى خطة. استخدمي الأدوات عند الحاجة الفعلية فقط. إذا طلب المستخدم تنفيذ شيء، خططي ونفذي ما تسمح به الأدوات ثم اشرحي النتيجة بصدق. خلي الرد مختصرًا، باللهجة المصرية، ومن غير تكرار لأي جملة أو نقطة."
@@ -3034,7 +3037,7 @@ async function handleAgent(request, env, user, options = {}) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
-      return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
+      return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects, userMessageId });
     }
     if (explicitSearchRequest && !searchVerified) {
       const reply = "حاولت أبحث في المواقع الخارجية، لكن ما قدرتش أوصل لنتائج ومصادر قابلة للتحقق دلوقتي. مش هقدّم معلومات على إنها نتيجة بحث ناجح.";
@@ -3246,6 +3249,66 @@ async function handleAgent(request, env, user, options = {}) {
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
+    if (options.stream) {
+      const streamMessages = messages.concat([{
+        role: "user",
+        content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود. اكتبي الرد للمستخدم فقط دون أي صيغة تقنية أو استدعاء أدوات."
+      }]);
+      const streamOptions = {
+        messages: streamMessages,
+        temperature: 0.2,
+        max_tokens: deepThink ? 1500 : 1100,
+        stream: true
+      };
+      if (model === "@cf/zai-org/glm-4.7-flash") {
+        streamOptions.chat_template_kwargs = { enable_thinking: deepThink };
+      }
+      if (model === "@cf/qwen/qwen3.8-27b") {
+        streamOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
+      }
+      try {
+        const providerStream = await runWensTextModel(env, model, streamOptions);
+        const assistantMessageId = crypto.randomUUID();
+        const responseMeta = options.responseMeta && typeof options.responseMeta === "object"
+          ? options.responseMeta
+          : {};
+        return createWensStreamResponse(providerStream?.body || providerStream, {
+          meta: { conversationId, userMessageId, model, ...responseMeta },
+          done: {
+            ok: true, model, steps, activity, sources, generatedImages, generatedProjects,
+            conversationId, userMessageId, assistantMessageId, ...responseMeta
+          },
+          normalize: value => cleanRepeatedResponseText(stripToolCallMarkup(value)),
+          onComplete: async reply => {
+            if (options.persist && env.DB && user) {
+              const safeStoredReply = reply.replace(/https:\/\/live\.browser\.run\/[^\s)]+/g, "[رابط متصفح مؤقت]");
+              const timestamp = Math.floor(Date.now() / 1000);
+              await env.DB.prepare(
+                "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+              ).bind(assistantMessageId, user.id, conversationId, "assistant", safeStoredReply, timestamp).run();
+              await env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
+                .bind(timestamp, conversationId, user.id).run();
+            }
+          },
+          onError: error => classifyWorkersAiFailure(error)
+        });
+      } catch (streamError) {
+        // Older/unsupported stream adapters fall back to a normal completion.
+        const fallbackOptions = { ...streamOptions, stream: false };
+        try {
+          const fallback = await runWensTextModel(env, model, fallbackOptions);
+          const fallbackMessage = fallback?.choices?.[0]?.message || fallback?.result?.choices?.[0]?.message || fallback;
+          finalText = typeof fallbackMessage?.content === "string"
+            ? fallbackMessage.content.trim()
+            : typeof fallback?.response === "string" ? fallback.response.trim() : "";
+          if (!finalText) throw streamError;
+          steps.push("النموذج لم يدعم البث في هذه المحاولة؛ تم استخدام الرد العادي بدل تعطيل المحادثة");
+        } catch (fallbackError) {
+          const failure = classifyWorkersAiFailure(fallbackError);
+          return json({ error: failure.message, code: failure.code }, failure.status);
+        }
+      }
+    }
     if (!finalText && generatedProjects.length) finalText = "خلصت النسخة الأولى من مشروعك. جرّب المعاينة وحمّل ملف HTML من البطاقة تحت الرد.";
     const containedToolProtocol = containsToolCallMarkup(finalText);
     finalText = cleanRepeatedResponseText(stripToolCallMarkup(finalText));
@@ -3259,7 +3322,7 @@ async function handleAgent(request, env, user, options = {}) {
         "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
       ).bind(crypto.randomUUID(), user.id, conversationId, "assistant", safeStoredReply, Math.floor(Date.now() / 1000)).run();
     }
-    const payload = { ok: true, model, steps, activity, sources, reply: finalText, generatedImages, generatedProjects };
+    const payload = { ok: true, model, steps, activity, sources, reply: finalText, generatedImages, generatedProjects, userMessageId };
     if (toolAudit) payload.toolAudit = toolAudit;
     if (documentAudit) payload.documentAudit = documentAudit;
     return json(payload);
@@ -3507,7 +3570,7 @@ export default {
           : await env.DB.prepare("SELECT id,title FROM conversations WHERE user_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1").bind(user.id).first();
         if (!conversation) return json({ messages: [], persistence: true, conversationId: null });
         const rows = await env.DB.prepare(
-          "SELECT role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100"
+          "SELECT id,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100"
         ).bind(user.id, conversation.id).all();
         return json({
           messages: (rows.results || []).reverse(),
@@ -3515,6 +3578,82 @@ export default {
           conversationId: conversation.id,
           title: conversation.title
         });
+      }
+      if (path === "/api/chat/edit" && request.method === "POST") {
+        const editUser = env.DB ? await currentUser(request, env) : null;
+        if (!editUser) return json({ error: "سجّل الدخول أولًا لتعديل رسالة محفوظة." }, 401);
+        await ensureChatSchema(env.DB);
+        let body;
+        try { body = await request.json(); } catch { return json({ error: "بيانات التعديل غير صالحة." }, 400); }
+        const sourceConversationId = String(body.conversationId || "");
+        const targetMessageId = String(body.messageId || "");
+        const revisedMessage = typeof body.message === "string" ? body.message.trim() : "";
+        const sourceConversation = await env.DB.prepare(
+          "SELECT id,title FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1"
+        ).bind(sourceConversationId, editUser.id).first();
+        if (!sourceConversation) return json({ error: "المحادثة الأصلية غير موجودة أو مؤرشفة." }, 404);
+        const target = await env.DB.prepare(
+          "SELECT id,rowid AS seq,role,content FROM messages WHERE id=? AND user_id=? AND conversation_id=? AND role='user' LIMIT 1"
+        ).bind(targetMessageId, editUser.id, sourceConversationId).first();
+        if (!target) return json({ error: "الرسالة المطلوبة غير موجودة في هذه المحادثة." }, 404);
+        const originalText = String(target.content || "");
+        if (/\[أسماء المرفقات:|\[تم إرفاق صورة باسم/.test(originalText)) {
+          return json({ error: "تعديل الرسائل التي تحتوي على مرفقات غير مدعوم حاليًا. أرسل الملف أو الصورة مرة أخرى في رسالة جديدة." }, 409);
+        }
+        const nextMessage = revisedMessage || originalText;
+        if (!nextMessage || nextMessage.length > 4000) return json({ error: "الرسالة المعدلة مطلوبة وبحد أقصى 4000 حرف." }, 400);
+        const priorRows = await env.DB.prepare(
+          "SELECT role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT 100"
+        ).bind(editUser.id, sourceConversationId, Number(target.seq)).all();
+        const forkConversationId = crypto.randomUUID();
+        const now = Math.floor(Date.now() / 1000);
+        const forkTitle = buildConversationTitle("نسخة معدلة: " + String(sourceConversation.title || "محادثة"));
+        await env.DB.prepare(
+          "INSERT INTO conversations (id,user_id,title,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,NULL)"
+        ).bind(forkConversationId, editUser.id, forkTitle, now, now).run();
+        const priorMessages = (priorRows.results || []).reverse();
+        if (priorMessages.length) {
+          await env.DB.batch(priorMessages.map(item =>
+            env.DB.prepare(
+              "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+            ).bind(crypto.randomUUID(), editUser.id, forkConversationId, item.role, item.content, item.created_at)
+          ));
+        }
+        const replayRequest = new Request(request.url.replace("/api/chat/edit", "/api/chat"), {
+          method: "POST",
+          headers: request.headers,
+          body: JSON.stringify({
+            message: nextMessage,
+            conversationId: forkConversationId,
+            deepThink: body.deepThink === true
+          })
+        });
+        const responseMeta = {
+          conversationId: forkConversationId,
+          forked: true,
+          forkedFromConversationId: sourceConversationId,
+          editedMessageId: targetMessageId
+        };
+        const response = await handleAgent(replayRequest, env, editUser, {
+          persist: true,
+          conversationId: forkConversationId,
+          stream: body.stream === true,
+          responseMeta
+        });
+        if (!response.ok) {
+          await env.DB.batch([
+            env.DB.prepare("DELETE FROM messages WHERE user_id=? AND conversation_id=?").bind(editUser.id, forkConversationId),
+            env.DB.prepare("DELETE FROM conversations WHERE id=? AND user_id=?").bind(forkConversationId, editUser.id)
+          ]);
+          return response;
+        }
+        if (body.stream === true) {
+          if (response.headers.get("Content-Type")?.includes("text/event-stream")) return response;
+          return await jsonResponseAsWensStream(response, responseMeta);
+        }
+        let payload = {};
+        try { payload = await response.json(); } catch {}
+        return json({ ...payload, ...responseMeta }, response.status);
       }
       const projectRouteMatch = path.match(/^\/api\/projects\/([0-9a-f-]{36})\/(preview|download)$/i);
       if (projectRouteMatch && request.method === "GET") {
@@ -3576,10 +3715,15 @@ export default {
       if (path === "/api/chat" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
         if (env.DB && !user) return json({ error: "سجّل الدخول الأول لاستخدام ونس." }, 401);
-        if (!env.DB || !user) return await handleAgent(request, env, user, { persist: false });
-        await ensureChatSchema(env.DB);
         let body;
         try { body = await request.clone().json(); } catch { return json({ error: "بيانات الرسالة غير صالحة." }, 400); }
+        const streamRequested = body.stream === true;
+        if (!env.DB || !user) {
+          const response = await handleAgent(request, env, user, { persist: false, stream: streamRequested });
+          if (!streamRequested || response.headers.get("Content-Type")?.includes("text/event-stream")) return response;
+          return await jsonResponseAsWensStream(response);
+        }
+        await ensureChatSchema(env.DB);
         const now = Math.floor(Date.now() / 1000);
         const messageText = String(body.message || "").trim();
         let conversationId = String(body.conversationId || "");
@@ -3602,7 +3746,11 @@ export default {
         }
         await env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
           .bind(now, conversationId, user.id).run();
-        const response = await handleAgent(request, env, user, { persist: true, conversationId });
+        const response = await handleAgent(request, env, user, { persist: true, conversationId, stream: streamRequested });
+        if (streamRequested) {
+          if (response.headers.get("Content-Type")?.includes("text/event-stream")) return response;
+          return await jsonResponseAsWensStream(response, { conversationId });
+        }
         let payload = {};
         try { payload = await response.json(); } catch {}
         return json({ ...payload, conversationId }, response.status);
