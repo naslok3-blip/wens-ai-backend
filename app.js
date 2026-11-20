@@ -1497,6 +1497,101 @@ function loadWensTesseract() {
   return tesseractLibraryPromise;
 }
 
+let legacyDocParserPromise = null;
+
+async function loadWensLegacyDocParser() {
+  if (!legacyDocParserPromise) {
+    legacyDocParserPromise = import("https://esm.sh/@file-viewer/doc@3.3.0?bundle&target=es2022")
+      .then(module => {
+        if (typeof module.parseMsDoc !== "function") {
+          throw new Error("قارئ Word القديم لم يوفّر دالة تحليل صالحة.");
+        }
+        return module;
+      })
+      .catch(error => {
+        legacyDocParserPromise = null;
+        throw error;
+      });
+  }
+  return legacyDocParserPromise;
+}
+
+function legacyDocInlineText(inlines) {
+  return (Array.isArray(inlines) ? inlines : []).map(node => {
+    if (!node || typeof node !== "object") return "";
+    if (node.type === "text") return String(node.text || "");
+    if (node.type === "lineBreak" || node.type === "pageBreak") return "\n";
+    if (node.type === "image") return "[صورة مضمّنة]";
+    if (node.type === "attachment") return "[مرفق مضمّن: " + String(node.asset?.name || "ملف") + "]";
+    return "";
+  }).join("").replace(/\u0000/g, "").trim();
+}
+
+async function extractLegacyDocOnDevice(file) {
+  if (!file || file.size <= 0 || file.size > 8 * 1024 * 1024) {
+    throw new Error("حجم ملف DOC فارغ أو يتجاوز 8 ميجابايت.");
+  }
+  setAttachmentStatus("تحميل قارئ Word القديم...");
+  const parser = await loadWensLegacyDocParser();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const parsed = parser.parseMsDoc(bytes, { maxPictureBytes: 0 });
+  if (!parsed || parsed.kind !== "msdoc" || !Array.isArray(parsed.blocks)) {
+    throw new Error("ملف DOC لا يحتوي على بنية Word قابلة للقراءة.");
+  }
+  if (parsed.blocks.length > 10000) {
+    throw new Error("ملف DOC يحتوي على عناصر أكثر من حد القراءة الآمن.");
+  }
+  const sections = [];
+  let rowsCount = 0;
+  let cellsCount = 0;
+  for (const block of parsed.blocks) {
+    if (block?.type === "paragraph") {
+      const text = String(block.text || legacyDocInlineText(block.inlines)).trim();
+      if (text) sections.push(text);
+    } else if (block?.type === "table") {
+      const tableRows = [];
+      for (const row of block.rows || []) {
+        rowsCount += 1;
+        if (rowsCount > 10000) throw new Error("ملف DOC يحتوي على أكثر من 10 آلاف صف جداول.");
+        const cells = [];
+        for (const cell of row.cells || []) {
+          if (cell.hidden) continue;
+          cellsCount += 1;
+          if (cellsCount > 100000) throw new Error("عدد خلايا جداول DOC يتجاوز حد القراءة الآمن.");
+          const value = (cell.paragraphs || [])
+            .map(paragraph => String(paragraph.text || legacyDocInlineText(paragraph.inlines)).trim())
+            .filter(Boolean)
+            .join(" / ");
+          cells.push(value || "—");
+        }
+        if (cells.length) tableRows.push(cells.join(" | "));
+      }
+      if (tableRows.length) sections.push("جدول:\n" + tableRows.join("\n"));
+    } else if (block?.type === "attachments") {
+      for (const item of block.items || []) {
+        sections.push("[مرفق مضمّن في المستند: " + String(item.name || "ملف") + "]");
+      }
+    }
+  }
+  const output = sections.join("\n\n").trim();
+  if (!output) throw new Error("لم يتم العثور على نص واضح داخل ملف DOC.");
+  const truncated = output.length > 90000;
+  const warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
+  const text = output.slice(0, 90000) + (truncated
+    ? "\n\n[تم اختصار نص DOC عند 90 ألف حرف. أرسل المستند على أجزاء لقراءة الباقي.]"
+    : "");
+  const warningNote = warnings.length
+    ? "\n\n[ملاحظة: أبلغ قارئ DOC عن " + warnings.length + " تنبيهًا أثناء التحليل؛ راجع المستند الأصلي للجداول أو العناصر المعقدة.]"
+    : "";
+  return {
+    text: text + warningNote,
+    blockCount: parsed.blocks.length,
+    tableRows: rowsCount,
+    warnings: warnings.length,
+    truncated
+  };
+}
+
 let sheetJsLibraryPromise = null;
 
 async function loadWensSheetJs() {
@@ -1778,7 +1873,20 @@ async function addSelectedFile(file) {
   } else {
     const extension = String(file.name.split(".").pop() || "").toLowerCase();
     const textExtensions = ["txt","md","csv","json","xml","html","js","css","log"];
-    if (extension === "xls") {
+    if (extension === "doc") {
+      try {
+        setAttachmentStatus("قراءة مستند Word القديم على جهازك...");
+        const result = await extractLegacyDocOnDevice(file);
+        pendingAttachments.push({
+          kind: "text", name: file.name, type: "application/msword",
+          size: file.size, text: result.text, localExtracted: true,
+          blockCount: result.blockCount, tableRows: result.tableRows
+        });
+        setAttachmentStatus("تم استخراج محتوى DOC وجداوله محليًا. " + result.blockCount + " عنصر، " + result.tableRows + " صف جدول." + (result.warnings ? " توجد تحذيرات في بعض عناصر المستند." : ""));
+      } catch (error) {
+        setAttachmentStatus(error.message || "تعذّرت قراءة ملف DOC القديم.", true);
+      }
+    } else if (extension === "xls") {
       try {
         setAttachmentStatus("قراءة أوراق ملف Excel القديم على جهازك...");
         const result = await extractLegacyXlsOnDevice(file);
