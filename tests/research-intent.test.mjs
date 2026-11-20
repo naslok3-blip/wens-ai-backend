@@ -402,7 +402,7 @@ test("legacy XLS extraction runs locally and preserves worksheet structure and f
   assert.match(client, /extractLegacyXlsOnDevice/);
   assert.match(client, /XLSX\.utils\.decode_range/);
   assert.match(client, /XLSX\.utils\.encode_cell/);
-  assert.match(client, /\\[صيغة:/);
+  assert.ok(client.includes("[صيغة:"));
   assert.match(client, /totalCells > 250000/);
   assert.match(client, /extension === "xls"/);
 });
