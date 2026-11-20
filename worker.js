@@ -897,7 +897,7 @@ async function adminRoute(request, env, path) {
       features: {
         openAI: false, workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
-        naturalVoiceConfigured: false, browserConfigured: Boolean(env.BROWSER)
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
       }
     });
   }
