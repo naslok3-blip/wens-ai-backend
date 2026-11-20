@@ -3575,8 +3575,8 @@ export default {
           return json({ error: "مؤشر صفحة المحادثة غير صالح." }, 400);
         }
         const pageQuery = before
-          ? "SELECT id,rowid AS seq,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT 101"
-          : "SELECT id,rowid AS seq,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 101";
+          ? "SELECT id,rowid AS seq,role,content,created_at,CASE WHEN role='user' AND (content LIKE '%[أسماء المرفقات:%' OR content LIKE '%[تم إرفاق صورة باسم%') THEN 1 ELSE 0 END AS hasAttachments FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT 101"
+          : "SELECT id,rowid AS seq,role,content,created_at,CASE WHEN role='user' AND (content LIKE '%[أسماء المرفقات:%' OR content LIKE '%[تم إرفاق صورة باسم%') THEN 1 ELSE 0 END AS hasAttachments FROM messages WHERE user_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 101";
         const rows = before
           ? await env.DB.prepare(pageQuery).bind(user.id, conversation.id, before).all()
           : await env.DB.prepare(pageQuery).bind(user.id, conversation.id).all();
