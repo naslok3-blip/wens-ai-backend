@@ -373,3 +373,36 @@ test("chat UI streams edits and regenerates any identified text-only turn in a p
   assert.ok(client.includes('previousRow.dataset.messageId && !previousRow.querySelector(".message-attachments")'));
   assert.ok(client.includes("await openConversation(currentConversationId)"));
 });
+
+
+test("chat history uses stable rowid cursor pagination beyond the initial 100 messages", () => {
+  assert.match(worker, /url\.searchParams\.get\("before"\)/);
+  assert.match(worker, /rowid AS seq/);
+  assert.match(worker, /ORDER BY rowid DESC LIMIT 101/);
+  assert.match(worker, /nextBefore/);
+  assert.match(client, /renderOlderMessagesControl/);
+  assert.match(client, /loadOlderMessages/);
+  assert.match(client, /&before=/);
+  assert.match(client, /messages\.scrollTop = previousTop \+ \(messages\.scrollHeight - previousHeight\)/);
+});
+
+test("scanned PDF extraction uses on-device Arabic OCR with bounded workload", () => {
+  assert.match(client, /pdfjs-dist@6\.5\.438/);
+  assert.match(client, /tesseract\.js@5\.1\.1/);
+  assert.match(client, /createWorker\("ara\+eng"/);
+  assert.match(client, /pdf\.numPages > 100/);
+  assert.match(client, /ocrPages >= 8/);
+  assert.match(client, /ocrWorker\.recognize\(canvas\)/);
+  assert.match(client, /kind: "text", name: file\.name, type: "application\/pdf"/);
+});
+
+test("legacy XLS extraction runs locally and preserves worksheet structure and formulas", () => {
+  assert.match(client, /xlsx-0\.20\.3\/package\/xlsx\.mjs/);
+  assert.match(client, /cpexcel\.full\.mjs/);
+  assert.match(client, /extractLegacyXlsOnDevice/);
+  assert.match(client, /XLSX\.utils\.decode_range/);
+  assert.match(client, /XLSX\.utils\.encode_cell/);
+  assert.match(client, /\\[صيغة:/);
+  assert.match(client, /totalCells > 250000/);
+  assert.match(client, /extension === "xls"/);
+});
