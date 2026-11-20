@@ -751,8 +751,8 @@ function normalizeAppSettings(input) {
   if (Number.isFinite(Number(input.voiceRate))) next.voiceRate = Math.min(1.35, Math.max(0.65, Number(input.voiceRate)));
   if (["purple", "blue", "green", "rose"].includes(input.theme)) next.theme = input.theme;
   if (input.voiceLocale === "ar-EG") next.voiceLocale = "ar-EG";
-  if (input.voiceEngine === "device") next.voiceEngine = "device";
-  if (input.voiceName === "device") next.voiceName = "device";
+  if (["device", "realtime"].includes(input.voiceEngine)) next.voiceEngine = input.voiceEngine;
+  if (["device", "coral", "shimmer", "marin", "cedar", "sage"].includes(input.voiceName)) next.voiceName = input.voiceName;
   if (typeof input.avatarDataUrl === "string") {
     const avatar = input.avatarDataUrl.trim();
     if (!avatar) next.avatarDataUrl = "";
