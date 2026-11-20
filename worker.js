@@ -500,6 +500,9 @@ async function simpleChatStreamRoute(request, env, user) {
     await env.DB.prepare(
       "INSERT INTO conversations (id,user_id,title,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,NULL)"
     ).bind(conversationId, user.id, title, now, now).run();
+  } else if (conversation.title === "محادثة جديدة") {
+    await env.DB.prepare("UPDATE conversations SET title=?,updated_at=? WHERE id=? AND user_id=?")
+      .bind(buildConversationTitle(message), now, conversationId, user.id).run();
   } else {
     await env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
       .bind(now, conversationId, user.id).run();
@@ -585,9 +588,10 @@ async function simpleChatStreamRoute(request, env, user) {
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
             let boundary;
-            while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+            while ((boundary = buffer.search(/\r?\n\r?\n/)) >= 0) {
+              const separator = buffer.match(/\r?\n\r?\n/)[0];
               processEvent(buffer.slice(0, boundary));
-              buffer = buffer.slice(boundary + 2);
+              buffer = buffer.slice(boundary + separator.length);
             }
           }
           buffer += decoder.decode();
