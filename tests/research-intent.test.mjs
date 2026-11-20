@@ -406,3 +406,15 @@ test("legacy XLS extraction runs locally and preserves worksheet structure and f
   assert.match(client, /totalCells > 250000/);
   assert.match(client, /extension === "xls"/);
 });
+
+
+test("legacy DOC parsing runs locally and preserves Word tables without rendering embedded HTML", () => {
+  assert.match(client, /@file-viewer\/doc@3\.3\.0/);
+  assert.match(client, /module\.parseMsDoc\(bytes, \{ maxPictureBytes: 0 \}\)/);
+  assert.match(client, /legacyDocInlineText/);
+  assert.match(client, /block\?\.type === "table"/);
+  assert.match(client, /cellsCount > 100000/);
+  assert.match(client, /rowsCount > 10000/);
+  assert.match(client, /extension === "doc"/);
+  assert.ok(client.includes('kind: "text", name: file.name, type: "application/msword"'));
+});
