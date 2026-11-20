@@ -1497,6 +1497,118 @@ function loadWensTesseract() {
   return tesseractLibraryPromise;
 }
 
+let sheetJsLibraryPromise = null;
+
+async function loadWensSheetJs() {
+  if (!sheetJsLibraryPromise) {
+    sheetJsLibraryPromise = (async () => {
+      const xlsx = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      try {
+        const codepages = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/cpexcel.full.mjs");
+        xlsx.set_cptable?.(codepages);
+      } catch {
+        // Core parsing remains available for codepages supported natively by the browser build.
+      }
+      if (typeof xlsx.read !== "function" || !xlsx.utils?.decode_range) {
+        throw new Error("مكتبة قراءة Excel لم تبدأ بشكل صحيح.");
+      }
+      return xlsx;
+    })().catch(error => {
+      sheetJsLibraryPromise = null;
+      throw error;
+    });
+  }
+  return sheetJsLibraryPromise;
+}
+
+async function extractLegacyXlsOnDevice(file) {
+  if (!file || file.size <= 0 || file.size > 8 * 1024 * 1024) {
+    throw new Error("حجم ملف XLS فارغ أو يتجاوز 8 ميجابايت.");
+  }
+  const XLSX = await loadWensSheetJs();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const workbook = XLSX.read(bytes, {
+    type: "array",
+    cellDates: true,
+    cellNF: true,
+    cellText: true,
+    dense: false,
+    WTF: false
+  });
+  const names = Array.isArray(workbook.SheetNames) ? workbook.SheetNames : [];
+  if (!names.length) throw new Error("ملف XLS لا يحتوي على أوراق عمل قابلة للقراءة.");
+  if (names.length > 30) throw new Error("ملف XLS يحتوي على أكثر من 30 ورقة. قسّمه إلى ملفات أصغر.");
+  const sections = [];
+  let totalRows = 0;
+  let totalCells = 0;
+  let totalCharacters = 0;
+  let truncated = false;
+  for (const name of names) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet || !sheet["!ref"]) continue;
+    const range = XLSX.utils.decode_range(sheet["!ref"]);
+    const rowCount = range.e.r - range.s.r + 1;
+    const columnCount = range.e.c - range.s.c + 1;
+    if (rowCount > 10000 || columnCount > 100) {
+      throw new Error("إحدى أوراق XLS تتجاوز 10 آلاف صف أو 100 عمود. قسّم الورقة قبل قراءتها.");
+    }
+    totalRows += rowCount;
+    if (totalRows > 20000) {
+      truncated = true;
+      break;
+    }
+    const rows = [];
+    for (let row = range.s.r; row <= range.e.r; row++) {
+      const values = [];
+      let rowHasValue = false;
+      for (let column = range.s.c; column <= range.e.c; column++) {
+        totalCells += 1;
+        if (totalCells > 250000) {
+          truncated = true;
+          break;
+        }
+        const address = XLSX.utils.encode_cell({ r: row, c: column });
+        const cell = sheet[address];
+        let display = "—";
+        if (cell && cell.t !== "z") {
+          if (typeof cell.w === "string" && cell.w !== "") display = cell.w;
+          else if (cell.t === "b") display = cell.v ? "TRUE" : "FALSE";
+          else if (cell.t === "e") display = String(cell.w || cell.v || "#ERROR");
+          else if (cell.v instanceof Date && Number.isFinite(cell.v.getTime())) {
+            display = cell.w || cell.v.toISOString().slice(0, 10);
+          } else if (cell.v !== undefined && cell.v !== null && cell.v !== "") {
+            display = String(cell.v);
+          }
+          if (cell.f) display += " [صيغة: " + String(cell.f).slice(0, 160) + "]";
+          if (cell.t === "e") display = "خطأ: " + display;
+        }
+        if (display !== "—") rowHasValue = true;
+        values.push(XLSX.utils.encode_col(column) + "=" + display);
+      }
+      if (totalCells > 250000) break;
+      if (rowHasValue) rows.push("صف " + (row + 1) + ": " + values.join(" | "));
+      if (totalCharacters + rows.join("\n").length > 90000) {
+        truncated = true;
+        break;
+      }
+    }
+    if (rows.length) {
+      const section = "ورقة: " + name + "\n" + rows.join("\n");
+      sections.push(section);
+      totalCharacters += section.length;
+    }
+    if (truncated || totalCharacters > 90000) break;
+  }
+  const combined = sections.join("\n\n").trim();
+  if (!combined) throw new Error("لم يتم العثور على بيانات قابلة للقراءة في أوراق XLS.");
+  return {
+    text: combined.slice(0, 90000) + (truncated ? "\n\n[تم اختصار ملف XLS عند حد القراءة. أرسل الأوراق على أجزاء لقراءة الباقي.]" : ""),
+    sheetCount: sections.length,
+    rowCount: Math.min(totalRows, 20000),
+    truncated
+  };
+}
+
 async function extractPdfTextOnDevice(file) {
   const pdfjs = await loadWensPdfJs();
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -1666,7 +1778,20 @@ async function addSelectedFile(file) {
   } else {
     const extension = String(file.name.split(".").pop() || "").toLowerCase();
     const textExtensions = ["txt","md","csv","json","xml","html","js","css","log"];
-    if (extension === "pdf") {
+    if (extension === "xls") {
+      try {
+        setAttachmentStatus("قراءة أوراق ملف Excel القديم على جهازك...");
+        const result = await extractLegacyXlsOnDevice(file);
+        pendingAttachments.push({
+          kind: "text", name: file.name, type: "application/vnd.ms-excel",
+          size: file.size, text: result.text, localExtracted: true,
+          sheetCount: result.sheetCount, rowCount: result.rowCount
+        });
+        setAttachmentStatus("تم استخراج " + result.rowCount + " صف من " + result.sheetCount + " ورقة Excel قديمة على جهازك." + (result.truncated ? " تم اختصار المحتوى عند الحد الآمن." : ""));
+      } catch (error) {
+        setAttachmentStatus(error.message || "تعذّرت قراءة ملف XLS القديم.", true);
+      }
+    } else if (extension === "pdf") {
       if (file.size > 8 * 1024 * 1024) {
         setAttachmentStatus("حجم PDF يتجاوز 8 ميجابايت. اختَر نسخة أصغر.", true);
         return;
