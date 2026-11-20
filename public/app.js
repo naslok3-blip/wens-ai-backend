@@ -1446,6 +1446,144 @@ function readAsDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
+
+let pdfJsLibraryPromise = null;
+let tesseractLibraryPromise = null;
+
+async function loadWensPdfJs() {
+  if (!pdfJsLibraryPromise) {
+    pdfJsLibraryPromise = import("https://cdn.jsdelivr.net/npm/pdfjs-dist@6.5.438/build/pdf.mjs")
+      .then(pdfjs => {
+        pdfjs.GlobalWorkerOptions.workerSrc =
+          "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.5.438/build/pdf.worker.mjs";
+        return pdfjs;
+      })
+      .catch(error => {
+        pdfJsLibraryPromise = null;
+        const wrapped = new Error("تعذّر تحميل قارئ PDF الآمن من الإنترنت. تحقق من الاتصال وحاول مرة أخرى.");
+        wrapped.code = "PDFJS_LOAD_FAILED";
+        wrapped.cause = error;
+        throw wrapped;
+      });
+  }
+  return pdfJsLibraryPromise;
+}
+
+function loadWensTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (!tesseractLibraryPromise) {
+    tesseractLibraryPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-wens-tesseract="true"]');
+      if (existing) {
+        existing.addEventListener("load", () => resolve(window.Tesseract), { once: true });
+        existing.addEventListener("error", () => reject(new Error("تعذّر تحميل محرك OCR.")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.dataset.wensTesseract = "true";
+      script.onload = () => window.Tesseract
+        ? resolve(window.Tesseract)
+        : reject(new Error("محرك OCR لم يبدأ بشكل صحيح."));
+      script.onerror = () => reject(new Error("تعذّر تحميل محرك OCR. تحقق من اتصال الإنترنت."));
+      document.head.appendChild(script);
+    }).catch(error => {
+      tesseractLibraryPromise = null;
+      throw error;
+    });
+  }
+  return tesseractLibraryPromise;
+}
+
+async function extractPdfTextOnDevice(file) {
+  const pdfjs = await loadWensPdfJs();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = pdfjs.getDocument({
+    data: bytes,
+    isEvalSupported: false,
+    useSystemFonts: true
+  });
+  let pdf;
+  let ocrWorker = null;
+  let ocrPages = 0;
+  const pageTexts = [];
+  try {
+    pdf = await loadingTask.promise;
+    if (!pdf.numPages || pdf.numPages > 100) {
+      throw new Error("ملف PDF يجب ألا يتجاوز 100 صفحة في عملية القراءة الواحدة.");
+    }
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      setAttachmentStatus("قراءة صفحة PDF " + pageNumber + " من " + pdf.numPages + "...");
+      const page = await pdf.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const selectableText = (textContent.items || [])
+        .map(item => String(item.str || "") + (item.hasEOL ? "\n" : " "))
+        .join("")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      if (selectableText.replace(/\s/g, "").length >= 25) {
+        pageTexts.push("صفحة " + pageNumber + ":\n" + selectableText);
+        page.cleanup?.();
+        continue;
+      }
+      if (ocrPages >= 8) {
+        page.cleanup?.();
+        throw new Error("الملف يحتوي على أكثر من 8 صفحات مصوّرة. قسّم PDF إلى ملفات أصغر حتى نحافظ على سرعة وأمان هاتفك.");
+      }
+      if (!ocrWorker) {
+        setAttachmentStatus("تحميل محرك OCR العربي والإنجليزي لأول مرة...");
+        const tesseract = await loadWensTesseract();
+        ocrWorker = await tesseract.createWorker("ara+eng", 1, {
+          workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
+          corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
+          langPath: "https://tessdata.projectnaptha.com/4.0.0",
+          logger: progress => {
+            if (progress?.status) {
+              const percent = Number.isFinite(progress.progress)
+                ? " " + Math.round(progress.progress * 100) + "%"
+                : "";
+              setAttachmentStatus("تجهيز OCR: " + progress.status + percent);
+            }
+          }
+        });
+      }
+      ocrPages += 1;
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = Math.max(1.2, Math.min(2, 1800 / Math.max(viewport.width, viewport.height)));
+      const renderViewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(renderViewport.width);
+      canvas.height = Math.ceil(renderViewport.height);
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("متصفح الهاتف لا يدعم تجهيز صورة الصفحة لعملية OCR.");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+      setAttachmentStatus("تحويل الصفحة المصوّرة إلى نص عربي — صفحة " + pageNumber + "...");
+      const recognized = await ocrWorker.recognize(canvas);
+      const ocrText = String(recognized?.data?.text || "").trim();
+      if (ocrText) pageTexts.push("صفحة " + pageNumber + " (OCR):\n" + ocrText);
+      else pageTexts.push("صفحة " + pageNumber + ": لم يتمكن OCR من قراءة نص واضح.");
+      canvas.width = 0;
+      canvas.height = 0;
+      page.cleanup?.();
+    }
+  } finally {
+    try { await ocrWorker?.terminate(); } catch {}
+    try { await pdf?.cleanup?.(); } catch {}
+    try { await loadingTask.destroy?.(); } catch {}
+  }
+  const combined = pageTexts.join("\n\n").trim();
+  if (!combined) throw new Error("لم يتم العثور على نص قابل للقراءة في صفحات PDF.");
+  const limit = 95000;
+  const text = combined.length > limit
+    ? combined.slice(0, limit) + "\n\n[تم اختصار النص المستخرج عند 95 ألف حرف. أرسل الملف على أجزاء لقراءة الباقي.]"
+    : combined;
+  return { text, ocrPages, pageCount: pdf?.numPages || pageTexts.length };
+}
 function renderAttachmentPreview() {
   const preview = $("attachmentsPreview");
   preview.replaceChildren();
@@ -1464,7 +1602,7 @@ function renderAttachmentPreview() {
       chip.appendChild(icon);
     }
     const label = document.createElement("span");
-    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : item.kind === "document" ? " (جاهز للقراءة)" : "");
+    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : item.kind === "document" ? " (جاهز للقراءة)" : item.localExtracted ? " (نص مستخرج على الجهاز)" : "");
     chip.appendChild(label);
     const remove = document.createElement("button");
     remove.type = "button";
@@ -1528,7 +1666,40 @@ async function addSelectedFile(file) {
   } else {
     const extension = String(file.name.split(".").pop() || "").toLowerCase();
     const textExtensions = ["txt","md","csv","json","xml","html","js","css","log"];
-    if (textExtensions.includes(extension)) {
+    if (extension === "pdf") {
+      if (file.size > 8 * 1024 * 1024) {
+        setAttachmentStatus("حجم PDF يتجاوز 8 ميجابايت. اختَر نسخة أصغر.", true);
+        return;
+      }
+      try {
+        const result = await extractPdfTextOnDevice(file);
+        pendingAttachments.push({
+          kind: "text", name: file.name, type: "application/pdf",
+          size: file.size, text: result.text, localExtracted: true,
+          ocrPages: result.ocrPages, pageCount: result.pageCount
+        });
+        setAttachmentStatus(
+          result.ocrPages
+            ? "تم استخراج نص PDF على جهازك، مع OCR لـ " + result.ocrPages + " صفحة مصوّرة."
+            : "تم استخراج النص من " + result.pageCount + " صفحة PDF على جهازك."
+        );
+      } catch (error) {
+        if (error?.code === "PDFJS_LOAD_FAILED") {
+          try {
+            const dataUrl = await readAsDataUrl(file);
+            pendingAttachments.push({
+              kind: "document", name: file.name, type: "application/pdf",
+              size: file.size, data: dataUrl.split(",")[1]
+            });
+            setAttachmentStatus("تعذّر تحميل قارئ PDF المحلي؛ أُرسل الملف للقارئ النصي المعتاد. صفحات المسح الضوئي قد لا تُقرأ بهذه الطريقة.", true);
+          } catch {
+            setAttachmentStatus("تعذّر تجهيز ملف PDF من الهاتف.", true);
+          }
+        } else {
+          setAttachmentStatus(error.message || "تعذّرت قراءة ملف PDF.", true);
+        }
+      }
+    } else if (textExtensions.includes(extension)) {
       if (file.size > 150 * 1024) {
         setAttachmentStatus("الملف النصي أكبر من 150 كيلوبايت.", true);
         return;
