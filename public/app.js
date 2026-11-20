@@ -68,6 +68,92 @@ async function api(path, body, method = "POST") {
   return data;
 }
 
+async function streamApi(path, body = {}, onDelta = () => {}) {
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "text/event-stream"
+    },
+    body: JSON.stringify({ ...body, stream: true })
+  });
+  if (!response.ok) {
+    let data = {};
+    try { data = await response.json(); } catch {}
+    throw new Error(data.error || "تعذّر الاتصال بالخادم.");
+  }
+  if (!response.headers.get("content-type")?.includes("text/event-stream")) {
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    if (typeof data.reply === "string" && data.reply) onDelta(data.reply);
+    return data;
+  }
+  if (!response.body) throw new Error("المتصفح لم يفتح قناة البث المباشر.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = null;
+  let streamError = null;
+  const processFrame = frame => {
+    let event = "message";
+    const dataLines = [];
+    for (const line of frame.split(/\\r?\\n/)) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+    if (!dataLines.length) return;
+    let payload;
+    try { payload = JSON.parse(dataLines.join("\\n")); } catch { return; }
+    if (event === "delta" && typeof payload.text === "string") onDelta(payload.text);
+    else if (event === "done") completed = payload;
+    else if (event === "error") streamError = new Error(payload.error || "تعذّر إكمال الرد المباشر.");
+  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.search(/\\r?\\n\\r?\\n/)) !== -1) {
+        const match = buffer.slice(boundary).match(/^\\r?\\n\\r?\\n/);
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + match[0].length);
+        processFrame(frame);
+        if (streamError) throw streamError;
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) processFrame(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  if (streamError) throw streamError;
+  if (!completed) throw new Error("انقطع الاتصال قبل وصول الرد النهائي. جرّب إعادة المحاولة.");
+  return completed;
+}
+
+async function requestStreamedReply(path, body, pendingRow = null) {
+  let streamedRow = null;
+  try {
+    const result = await streamApi(path, body, delta => {
+      if (!streamedRow) {
+        pendingRow?.remove();
+        streamedRow = addStreamingAssistantMessage();
+      }
+      streamedRow.content.textContent += delta;
+      const messages = $("messages");
+      messages.scrollTop = messages.scrollHeight;
+    });
+    streamedRow?.row.remove();
+    return result;
+  } catch (error) {
+    streamedRow?.row.remove();
+    pendingRow?.remove();
+    throw error;
+  }
+}
+
 let notificationItems = [];
 async function refreshNotifications() {
   const button = $("notificationsBtn");
@@ -436,7 +522,7 @@ async function openConversation(id) {
     if (currentConversationId !== requestedId) return;
     loading.remove();
     setCurrentConversationTitle(data.title || "محادثة");
-    for (const item of data.messages || []) addMessage(item.content, item.role);
+    for (const item of data.messages || []) addMessage(item.content, item.role, [], [], [], [], [], [], item.id);
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
     await loadConversations({ selectLatest: false });
     closeConversationSidebar();
@@ -803,6 +889,26 @@ function appendMarkdownText(container, value) {
 function appendMessageText(container, text) {
   appendMarkdownText(container, text);
 }
+
+function addStreamingAssistantMessage() {
+  const row = document.createElement("div");
+  row.className = "message assistant streaming-message";
+  const avatar = document.createElement("img");
+  avatar.className = "mini-avatar talking";
+  avatar.src = appSettings.avatarDataUrl || "/avatar.jpg";
+  avatar.alt = "ونس";
+  avatar.width = 30;
+  avatar.height = 30;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const content = document.createElement("div");
+  content.className = "bubble-text";
+  content.textContent = "";
+  bubble.appendChild(content);
+  row.append(avatar, bubble);
+  $("messages").appendChild(row);
+  return { row, content };
+}
 function hideExternalLinksFromDisplay(value) {
   let text = String(value ?? "");
   // Keep readable Markdown labels, but never expose external destinations.
@@ -815,7 +921,7 @@ function hideExternalLinksFromDisplay(value) {
   return text.trim();
 }
 
-function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = []) {
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = [], messageId = null) {
   const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
   const messageContainer = $("messages");
@@ -827,6 +933,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   }
   const row = document.createElement("div");
   row.className = "message " + who;
+  if (messageId) row.dataset.messageId = String(messageId);
   if (who === "assistant") {
     const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
@@ -952,7 +1059,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   }
   if (who === "assistant" && previousRow?.classList.contains("user") &&
       currentUser && currentUser.id !== "guest" && currentConversationId &&
-      !previousRow.querySelector(".message-attachments")) {
+      previousRow.dataset.messageId && !previousRow.querySelector(".message-attachments")) {
     const retryActions = document.createElement("div");
     retryActions.className = "message-retry-actions";
     const retry = document.createElement("button");
@@ -961,10 +1068,14 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     retry.addEventListener("click", async () => {
       retry.disabled = true;
       try {
-        const result = await api("/api/chat/retry", { conversationId: currentConversationId, deepThink: deepThinkEnabled });
-        row.remove();
-        addMessage(result.reply, "assistant", result.steps || [], [], result.generatedImages || [], result.generatedProjects || [], result.activity || [], result.sources || []);
+        const result = await requestStreamedReply("/api/chat/edit", {
+          conversationId: currentConversationId,
+          messageId: previousRow.dataset.messageId,
+          deepThink: deepThinkEnabled
+        });
+        currentConversationId = result.conversationId || currentConversationId;
         await loadConversations({ selectLatest: false });
+        await openConversation(currentConversationId);
         if (appSettings.autoSpeak) $("messages").lastElementChild?.querySelector(".voice-replay-btn")?.click();
       } catch (error) {
         setVoiceStatus("تعذّرت إعادة توليد الرد: " + error.message);
@@ -981,13 +1092,15 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       edit.disabled = true;
       retry.disabled = true;
       try {
-        const result = await api("/api/chat/retry", {
-          conversationId: currentConversationId, message: revised.trim(), deepThink: deepThinkEnabled
+        const result = await requestStreamedReply("/api/chat/edit", {
+          conversationId: currentConversationId,
+          messageId: previousRow.dataset.messageId,
+          message: revised.trim(),
+          deepThink: deepThinkEnabled
         });
-        previousRow.querySelector(".bubble-text").textContent = revised.trim();
-        row.remove();
-        addMessage(result.reply, "assistant", result.steps || [], [], result.generatedImages || [], result.generatedProjects || [], result.activity || [], result.sources || []);
+        currentConversationId = result.conversationId || currentConversationId;
         await loadConversations({ selectLatest: false });
+        await openConversation(currentConversationId);
       } catch (error) {
         setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
         edit.disabled = false;
@@ -1481,7 +1594,7 @@ $("chatForm").addEventListener("submit", async event => {
   const text = message || (selected.some(item => item.kind === "image")
     ? "افحص الصورة المرفقة واشرح لي ما يظهر فيها."
     : "ساعدني في قراءة المرفقات المرسلة.");
-  addMessage(text, "user", [], selected);
+  const userRow = addMessage(text, "user", [], selected);
   const payload = attachmentPayload();
   const deepThink = deepThinkEnabled;
   $("messageInput").value = "";
@@ -1496,9 +1609,10 @@ $("chatForm").addEventListener("submit", async event => {
       currentConversationId = created.conversation.id;
       setCurrentConversationTitle(created.conversation.title);
     }
-    const data = await api("/api/chat", {
+    const data = await requestStreamedReply("/api/chat", {
       message: text, attachments: payload, deepThink, conversationId: currentConversationId
-    });
+    }, progressRow);
+    if (data.userMessageId) userRow.dataset.messageId = data.userMessageId;
     if (data.conversationId) currentConversationId = data.conversationId;
     progressRow.remove();
     const assistantRow = addMessage(
