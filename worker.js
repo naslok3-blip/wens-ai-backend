@@ -3424,6 +3424,42 @@ async function handleChat(request, env, user) {
   }
 }
 
+async function saveVoiceTranscriptRoute(request, env, user) {
+  if (!env.DB || !user) return json({ error: "سجّل الدخول لحفظ نص المكالمة الصوتية." }, 401);
+  if (request.method !== "POST") return json({ error: "طريقة الطلب غير مدعومة." }, 405);
+  let body;
+  try { body = await request.json(); } catch { return json({ error: "بيانات نص المكالمة غير صالحة." }, 400); }
+  const conversationId = String(body.conversationId || "");
+  const role = body.role === "assistant" ? "assistant" : body.role === "user" ? "user" : "";
+  const content = typeof body.text === "string" ? body.text.trim() : "";
+  const clientMessageId = String(body.messageId || "");
+  if (!/^[0-9a-f-]{36}$/i.test(conversationId) || !/^[0-9a-f-]{36}$/i.test(clientMessageId)) {
+    return json({ error: "معرّف المحادثة أو الرسالة غير صالح." }, 400);
+  }
+  if (!role || !content || content.length > 6000) {
+    return json({ error: "نص المكالمة مطلوب وبحد أقصى 6000 حرف." }, 400);
+  }
+  await ensureChatSchema(env.DB);
+  const conversation = await env.DB.prepare(
+    "SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1"
+  ).bind(conversationId, user.id).first();
+  if (!conversation) return json({ error: "المحادثة غير موجودة أو لم تعد نشطة." }, 404);
+  const existing = await env.DB.prepare(
+    "SELECT id FROM messages WHERE id=? AND user_id=? AND conversation_id=? LIMIT 1"
+  ).bind(clientMessageId, user.id, conversationId).first();
+  const messageId = existing?.id || clientMessageId;
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.batch([
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+    ).bind(messageId, user.id, conversationId, role, content, now),
+    env.DB.prepare(
+      "UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?"
+    ).bind(now, conversationId, user.id)
+  ]);
+  return json({ ok: true, messageId, conversationId, role, saved: true });
+}
+
 async function handleRealtimeVoice(request, env) {
   if (!env.OPENAI_API_KEY) return json({ error: "المحادثة الصوتية المباشرة غير مفعّلة بدون OpenAI API. استخدم زر القراءة الصوتية على الجهاز." }, 503);
   let user = null;
@@ -3454,7 +3490,22 @@ async function handleRealtimeVoice(request, env) {
     model: env.WENS_REALTIME_MODEL || "gpt-realtime-2.1-mini",
     instructions: "You are the voice of Wens, a warm, natural, feminine-sounding Egyptian woman from Cairo. Speak in authentic everyday Cairo Egyptian Arabic (Masri, اللهجة المصرية القاهرية العامية) ONLY. Modern Standard Arabic (الفصحى), formal newsreader Arabic, and Gulf/Levantine dialects are not allowed. If the supplied Arabic text sounds formal or is in MSA, naturally rephrase it into spoken Egyptian before speaking, while preserving its exact meaning and all important facts. Prefer everyday Egyptian wording and contractions: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده، عشان. Avoid formal words and constructions such as كيف، ماذا، سوف، يرجى، هل ترغب، بناءً على ذلك. Use a relaxed conversational rhythm, Egyptian pronunciation (hard g for ج and glottal ق where natural), gentle feminine delivery, and normal pauses. Do not exaggerate slang, sound robotic, or read like a formal announcer. The spoken result must sound like a real Egyptian woman chatting naturally with a friend.",
     output_modalities: ["audio"],
-    audio: { output: { voice, speed } }
+    audio: {
+      input: body.mode === "conversation" ? {
+        transcription: {
+          model: "gpt-4o-mini-transcribe",
+          language: "ar",
+          prompt: "اللهجة المصرية العامية القاهرية. احتفظ بالكلمات المصرية والأسماء كما نطقها المتحدث، ولا تحوّل العامية إلى فصحى."
+        },
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 700
+        }
+      } : undefined,
+      output: { voice, speed }
+    }
   };
   const form = new FormData();
   form.set("sdp", sdp);
@@ -3557,6 +3608,11 @@ export default {
         return await replyFeedbackRoute(request, env, feedbackUser);
       }
       if (path === "/api/voice/connect" && request.method === "POST") return await handleRealtimeVoice(request, env);
+      if (path === "/api/voice/transcript" && request.method === "POST") {
+        const voiceUser = env.DB ? await currentUser(request, env) : null;
+        if (!voiceUser) return json({ error: "سجّل الدخول لحفظ نص المكالمة الصوتية." }, 401);
+        return await saveVoiceTranscriptRoute(request, env, voiceUser);
+      }
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
       if (path === "/api/chat/history" && request.method === "GET") {
