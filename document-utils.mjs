@@ -271,6 +271,136 @@ async function extractPdf(bytes) {
   return text;
 }
 
+
+function extractRtf(bytes) {
+  const source = latinDecoder.decode(bytes);
+  if (!/^\s*\{\\rtf\d/i.test(source)) {
+    throw new Error("ملف DOC الثنائي القديم غير مدعوم. لو الملف محفوظ بصيغة Rich Text (RTF) أو Word حديث (DOCX) فسيُقرأ محليًا.");
+  }
+  let output = "";
+  const stack = [];
+  let state = { skip: false, uc: 1, skipFallback: 0 };
+  const ignoredDestinations = new Set([
+    "fonttbl","colortbl","stylesheet","info","pict","object","header",
+    "headerl","headerr","footer","footerl","footerr","filetbl","listtable",
+    "listoverridetable","generator","xmlnstbl","datastore","themedata"
+  ]);
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (char === "{") {
+      stack.push({ ...state });
+      continue;
+    }
+    if (char === "}") {
+      state = stack.pop() || { skip: false, uc: 1, skipFallback: 0 };
+      continue;
+    }
+    if (char === "\\") {
+      const next = source[index + 1];
+      if (next === "\\" || next === "{" || next === "}") {
+        if (!state.skip && !state.skipFallback) output += next;
+        if (state.skipFallback) state.skipFallback--;
+        index++;
+        continue;
+      }
+      if (next === "'") {
+        const hex = source.slice(index + 2, index + 4);
+        if (/^[0-9a-f]{2}$/i.test(hex)) {
+          if (!state.skip && !state.skipFallback) output += latinDecoder.decode(Uint8Array.of(parseInt(hex,16)));
+          if (state.skipFallback) state.skipFallback--;
+          index += 3;
+          continue;
+        }
+      }
+      if (next === "*") {
+        state.skip = true;
+        index++;
+        continue;
+      }
+      if (next && !/[A-Za-z]/.test(next)) {
+        if (!state.skip && !state.skipFallback) {
+          if (next === "~") output += "\u00a0";
+          else if (next === "_") output += "\u2011";
+          else if (next === "-") {}
+        } else if (state.skipFallback) state.skipFallback--;
+        index++;
+        continue;
+      }
+      if (next && /[A-Za-z]/.test(next)) {
+        let end = index + 1;
+        while (end < source.length && /[A-Za-z]/.test(source[end])) end++;
+        const word = source.slice(index + 1, end).toLowerCase();
+        let number = "";
+        if (source[end] === "-") {
+          number += "-";
+          end++;
+        }
+        while (end < source.length && /[0-9]/.test(source[end])) {
+          number += source[end];
+          end++;
+        }
+        if (source[end] === " ") end++;
+        const value = number ? Number(number) : null;
+        if (ignoredDestinations.has(word)) state.skip = true;
+        if (word === "uc" && value !== null) state.uc = Math.max(0,Math.min(8,value));
+        if (word === "u" && value !== null && !state.skip) {
+          output += String.fromCharCode(value < 0 ? value + 65536 : value);
+          state.skipFallback = state.uc;
+        } else if (!state.skip) {
+          if (word === "par" || word === "line") output += "\n";
+          else if (word === "tab") output += "\t";
+          else if (word === "cell" || word === "row") output += "\t";
+          else if (word === "emdash") output += "—";
+          else if (word === "endash") output += "–";
+          else if (word === "bullet") output += "•";
+          else if (word === "lquote") output += "‘";
+          else if (word === "rquote") output += "’";
+          else if (word === "ldblquote") output += "“";
+          else if (word === "rdblquote") output += "”";
+        }
+        index = end - 1;
+        continue;
+      }
+    }
+    if (state.skip) continue;
+    if (state.skipFallback) {
+      state.skipFallback--;
+      continue;
+    }
+    if (char === "\r" || char === "\n") continue;
+    output += char;
+  }
+  return output
+    .replace(/[ \t]+\n/g,"\n")
+    .replace(/\n{3,}/g,"\n\n")
+    .trim();
+}
+
+function extractExcelXml(bytes) {
+  const xml = decoder.decode(bytes);
+  if (!/<(?:\w+:)?Workbook\b/i.test(xml) ||
+      !/urn:schemas-microsoft-com:office:spreadsheet/i.test(xml)) {
+    throw new Error("ملف XLS الثنائي القديم غير مدعوم. يمكن قراءة XLS بصيغة XML Spreadsheet 2003 أو تحويله إلى XLSX.");
+  }
+  const sections = [];
+  for (const sheet of xml.matchAll(/<(?:\w+:)?Worksheet\b([^>]*)>([\s\S]*?)<\/(?:\w+:)?Worksheet>/gi)) {
+    const name = (sheet[1].match(/(?:\w+:)?Name\s*=\s*["']([^"']+)["']/i)||[])[1] || "ورقة";
+    const rows = [];
+    for (const row of sheet[2].matchAll(/<(?:\w+:)?Row\b[^>]*>([\s\S]*?)<\/(?:\w+:)?Row>/gi)) {
+      const cells = [];
+      for (const cell of row[1].matchAll(/<(?:\w+:)?Cell\b[^>]*>([\s\S]*?)<\/(?:\w+:)?Cell>/gi)) {
+        const data = (cell[1].match(/<(?:\w+:)?Data\b[^>]*>([\s\S]*?)<\/(?:\w+:)?Data>/i)||[])[1];
+        cells.push(decodeEntities(String(data || "").replace(/<[^>]+>/g,"").trim()));
+      }
+      if (cells.some(Boolean)) rows.push(cells.join(" | "));
+    }
+    if (rows.length) sections.push("الورقة: " + decodeEntities(name) + "\n" + rows.join("\n"));
+  }
+  const result = sections.join("\n\n").trim();
+  if (!result) throw new Error("ملف XLS XML لا يحتوي على صفوف بيانات يمكن استخراجها.");
+  return result;
+}
+
 export async function extractDocumentText(file) {
   const extension = String(file?.name || "").split(".").pop().toLowerCase();
   const bytes = safeBase64Bytes(file?.data || "");
@@ -279,6 +409,8 @@ export async function extractDocumentText(file) {
   }
   let text = "";
   if (extension === "pdf") text = await extractPdf(bytes);
+  else if (extension === "doc") text = extractRtf(bytes);
+  else if (extension === "xls") text = extractExcelXml(bytes);
   else if (["docx", "xlsx", "pptx"].includes(extension)) {
     const wanted = extension === "docx"
       ? ["word/document.xml", "word/footnotes.xml", "word/endnotes.xml"]
@@ -288,7 +420,7 @@ export async function extractDocumentText(file) {
     const entries = await unzipEntries(bytes, wanted);
     text = extension === "docx" ? extractDocx(entries) : extension === "xlsx" ? extractXlsx(entries) : extractPptx(entries);
   } else {
-    throw new Error("الصيغ المجانية المدعومة هي PDF النصي وDOCX وXLSX وPPTX. ملفات DOC/XLS/PPT القديمة تحتاج تحويلًا إلى صيغة حديثة.");
+    throw new Error("الصيغ المدعومة محليًا: PDF النصي وRTF/DOC (إذا كان RTF) وXLS بصيغة XML Spreadsheet وDOCX وXLSX وPPTX. ملفات DOC/XLS/PPT الثنائية القديمة وPDF المصوّر تحتاج تحويلًا أو OCR خارجيًا.");
   }
   text = String(text || "").replace(/\u0000/g,"").trim().slice(0,50000);
   if (!text) throw new Error("لم يتم استخراج نص صالح من الملف.");
