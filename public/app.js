@@ -68,7 +68,7 @@ async function api(path, body, method = "POST") {
   return data;
 }
 
-async function streamApi(path, body = {}, onDelta = () => {}) {
+async function streamApi(path, body = {}, onDelta = () => {}, onMeta = () => {}) {
   const response = await fetch(path, {
     method: "POST",
     credentials: "same-origin",
@@ -95,6 +95,7 @@ async function streamApi(path, body = {}, onDelta = () => {}) {
   let buffer = "";
   let completed = null;
   let streamError = null;
+  let currentStreamMeta = null;
   const processFrame = frame => {
     let event = "message";
     const dataLines = [];
@@ -105,9 +106,13 @@ async function streamApi(path, body = {}, onDelta = () => {}) {
     if (!dataLines.length) return;
     let payload;
     try { payload = JSON.parse(dataLines.join("\n")); } catch { return; }
-    if (event === "delta" && typeof payload.text === "string") onDelta(payload.text);
+    if (event === "meta") { currentStreamMeta = payload; onMeta(payload); }
+    else if (event === "delta" && typeof payload.text === "string") onDelta(payload.text);
     else if (event === "done") completed = payload;
-    else if (event === "error") streamError = new Error(payload.error || "تعذّر إكمال الرد المباشر.");
+    else if (event === "error") {
+      streamError = new Error(payload.error || "تعذّر إكمال الرد المباشر.");
+      streamError.meta = currentStreamMeta;
+    }
   };
   try {
     while (true) {
@@ -133,7 +138,7 @@ async function streamApi(path, body = {}, onDelta = () => {}) {
   return completed;
 }
 
-async function requestStreamedReply(path, body, pendingRow = null) {
+async function requestStreamedReply(path, body, pendingRow = null, onMeta = () => {}) {
   let streamedRow = null;
   try {
     const result = await streamApi(path, body, delta => {
@@ -144,12 +149,21 @@ async function requestStreamedReply(path, body, pendingRow = null) {
       streamedRow.content.textContent += delta;
       const messages = $("messages");
       messages.scrollTop = messages.scrollHeight;
-    });
+    }, onMeta);
     streamedRow?.row.remove();
     return result;
   } catch (error) {
     streamedRow?.row.remove();
     pendingRow?.remove();
+    if (path === "/api/chat/edit" && error?.meta?.forked && error.meta.conversationId) {
+      currentConversationId = String(error.meta.conversationId);
+      try {
+        await loadConversations({ selectLatest: false });
+        await openConversation(currentConversationId);
+      } catch {
+        // Keep the original stream error as the user-facing diagnostic.
+      }
+    }
     throw error;
   }
 }
@@ -1004,6 +1018,8 @@ function attachChatMessageEditActions(assistantRow, userRow) {
         conversationId: currentConversationId,
         messageId: userRow.dataset.messageId,
         deepThink: deepThinkEnabled
+      }, null, meta => {
+        if (meta.conversationId) currentConversationId = meta.conversationId;
       });
       currentConversationId = result.conversationId || currentConversationId;
       await loadConversations({ selectLatest: false });
@@ -1029,6 +1045,8 @@ function attachChatMessageEditActions(assistantRow, userRow) {
         messageId: userRow.dataset.messageId,
         message: revised.trim(),
         deepThink: deepThinkEnabled
+      }, null, meta => {
+        if (meta.conversationId) currentConversationId = meta.conversationId;
       });
       currentConversationId = result.conversationId || currentConversationId;
       await loadConversations({ selectLatest: false });
@@ -2098,7 +2116,10 @@ $("chatForm").addEventListener("submit", async event => {
     }
     const data = await requestStreamedReply("/api/chat", {
       message: text, attachments: payload, deepThink, conversationId: currentConversationId
-    }, progressRow);
+    }, progressRow, meta => {
+      if (meta.conversationId) currentConversationId = meta.conversationId;
+      if (meta.userMessageId) userRow.dataset.messageId = meta.userMessageId;
+    });
     if (data.userMessageId) userRow.dataset.messageId = data.userMessageId;
     if (data.conversationId) currentConversationId = data.conversationId;
     progressRow.remove();
