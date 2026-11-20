@@ -3629,27 +3629,49 @@ export default {
         await env.DB.prepare(
           "INSERT INTO conversations (id,user_id,title,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,NULL)"
         ).bind(forkConversationId, editUser.id, forkTitle, now, now).run();
-        let cloned = 0;
-        let afterRowid = 0;
-        while (cloned < totalPriorMessages) {
-          const priorPage = await env.DB.prepare(
-            "SELECT rowid AS seq,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? AND rowid>? AND rowid<? ORDER BY rowid ASC LIMIT 100"
-          ).bind(editUser.id, sourceConversationId, afterRowid, Number(target.seq)).all();
-          const batchRows = priorPage.results || [];
-          if (!batchRows.length) break;
-          await env.DB.batch(batchRows.map(item =>
-            env.DB.prepare(
-              "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
-            ).bind(crypto.randomUUID(), editUser.id, forkConversationId, item.role, item.content, item.created_at)
-          ));
-          cloned += batchRows.length;
-          afterRowid = Number(batchRows[batchRows.length - 1].seq);
-        }
-        if (cloned !== totalPriorMessages) {
+        const discardIncompleteFork = async () => {
           await env.DB.batch([
             env.DB.prepare("DELETE FROM messages WHERE user_id=? AND conversation_id=?").bind(editUser.id, forkConversationId),
             env.DB.prepare("DELETE FROM conversations WHERE id=? AND user_id=?").bind(forkConversationId, editUser.id)
           ]);
+        };
+        let cloned = 0;
+        let afterRowid = 0;
+        try {
+          while (cloned < totalPriorMessages) {
+            const priorPage = await env.DB.prepare(
+              "SELECT rowid AS seq,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? AND rowid>? AND rowid<? ORDER BY rowid ASC LIMIT 100"
+            ).bind(editUser.id, sourceConversationId, afterRowid, Number(target.seq)).all();
+            const batchRows = priorPage.results || [];
+            if (!batchRows.length) break;
+            await env.DB.batch(batchRows.map(item =>
+              env.DB.prepare(
+                "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
+              ).bind(crypto.randomUUID(), editUser.id, forkConversationId, item.role, item.content, item.created_at)
+            ));
+            cloned += batchRows.length;
+            afterRowid = Number(batchRows[batchRows.length - 1].seq);
+          }
+        } catch (cloneError) {
+          try { await discardIncompleteFork(); } catch (cleanupError) {
+            console.error("[WENS_EDIT_FORK_CLEANUP_FAILED]", JSON.stringify({
+              conversationId: forkConversationId,
+              errorName: String(cleanupError?.name || "Error").slice(0, 80)
+            }));
+          }
+          console.error("[WENS_EDIT_FORK_CLONE_FAILED]", JSON.stringify({
+            conversationId: forkConversationId,
+            errorName: String(cloneError?.name || "Error").slice(0, 80)
+          }));
+          return json({ error: "تعذّر نسخ سياق المحادثة كاملًا. تم الحفاظ على المحادثة الأصلية بدون تعديل." }, 500);
+        }
+        if (cloned !== totalPriorMessages) {
+          try { await discardIncompleteFork(); } catch (cleanupError) {
+            console.error("[WENS_EDIT_FORK_CLEANUP_FAILED]", JSON.stringify({
+              conversationId: forkConversationId,
+              errorName: String(cleanupError?.name || "Error").slice(0, 80)
+            }));
+          }
           return json({ error: "تعذّر نسخ سياق المحادثة كاملًا. تم الحفاظ على المحادثة الأصلية بدون تعديل." }, 500);
         }
         const replayRequest = new Request(request.url.replace("/api/chat/edit", "/api/chat"), {
