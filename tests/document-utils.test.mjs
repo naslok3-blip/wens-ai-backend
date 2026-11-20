@@ -102,7 +102,7 @@ test("extracts slide text from PPTX", async () => {
 test("rejects legacy Office files rather than pretending they were read", async () => {
   await assert.rejects(
     extractDocumentText(asFile("old.doc", Buffer.from("not really a doc"))),
-    /DOC\/XLS\/PPT القديمة/
+    /RTF\)|DOCX/
   );
 });
 
@@ -114,5 +114,49 @@ test("rejects oversized and malformed files", async () => {
   await assert.rejects(
     extractDocumentText({ name: "large.docx", data: Buffer.alloc(8 * 1024 * 1024 + 1).toString("base64") }),
     /يتجاوز 8 ميجابايت/
+  );
+});
+
+
+test("extracts text from legacy Word documents saved as RTF", async () => {
+  const rtf = Buffer.from(
+    "{\\\\rtf1\\\\ansi\\\\deff0 {\\\\fonttbl {\\\\f0 Arial;}} " +
+    "\\\\b عنوان المستند\\\\b0\\\\par النص العربي\\\\par " +
+    "السطر الثاني\\\\par}",
+    "utf8"
+  );
+  const result = await extractDocumentText(asFile("legacy.doc", rtf));
+  assert.match(result.text, /عنوان المستند/);
+  assert.match(result.text, /النص العربي/);
+  assert.match(result.text, /السطر الثاني/);
+});
+
+test("extracts rows from legacy Excel XML Spreadsheet files", async () => {
+  const xml = Buffer.from(
+    '<?xml version="1.0"?>' +
+    '<ss:Workbook xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
+    '<ss:Worksheet ss:Name="المبيعات"><ss:Table>' +
+    '<ss:Row><ss:Cell><ss:Data ss:Type="String">الصنف</ss:Data></ss:Cell>' +
+    '<ss:Cell><ss:Data ss:Type="String">الكمية</ss:Data></ss:Cell></ss:Row>' +
+    '<ss:Row><ss:Cell><ss:Data ss:Type="String">فرشاة</ss:Data></ss:Cell>' +
+    '<ss:Cell><ss:Data ss:Type="Number">18</ss:Data></ss:Cell></ss:Row>' +
+    '</ss:Table></ss:Worksheet></ss:Workbook>',
+    "utf8"
+  );
+  const result = await extractDocumentText(asFile("sales.xls", xml));
+  assert.match(result.text, /المبيعات/);
+  assert.match(result.text, /الصنف/);
+  assert.match(result.text, /فرشاة/);
+  assert.match(result.text, /18/);
+});
+
+test("rejects binary legacy Office files rather than claiming they were read", async () => {
+  await assert.rejects(
+    extractDocumentText(asFile("old.doc", Buffer.from("not an RTF or DOCX document"))),
+    /RTF/
+  );
+  await assert.rejects(
+    extractDocumentText(asFile("old.xls", Buffer.from("not an XML Spreadsheet"))),
+    /XML Spreadsheet 2003/
   );
 });
