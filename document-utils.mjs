@@ -199,8 +199,8 @@ function excelDateFormatStyles(stylesXml) {
     const code = customFormats.get(id) || "";
     const cleaned = code
       .replace(/"[^"]*"/g, "")
-      .replace(/\\[[^\]]*\\]/g, "")
-      .replace(/\\\\./g, "")
+      .replace(/\[[^\]]*\]/g, "")
+      .replace(/\\./g, "")
       .replace(/_.|\*.?/g, "");
     const isDate = [14,15,16,17,18,19,20,21,22,45,46,47].includes(id) ||
       (id >= 164 && /[yd]/i.test(cleaned)) ||
