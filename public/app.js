@@ -233,6 +233,10 @@ function stopPresenceHeartbeat() {
   if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer);
   presenceHeartbeatTimer = null;
 }
+
+window.addEventListener("pagehide", () => {
+  try { stopRealtimeVoice(); } catch {}
+});
 function startPresenceHeartbeat() {
   stopPresenceHeartbeat();
   if (!currentUser || currentUser.id === "guest") return;
@@ -270,6 +274,7 @@ function showApp(user) {
     : "مسجّل الدخول: " + user.name;
   updateAdminShortcut();
   $("notificationsBtn").hidden = user.id === "guest";
+  $("voiceCallBtn").hidden = user.id === "guest";
   $("notificationsPanel").hidden = true;
   startPresenceHeartbeat();
   if (user.id !== "guest") loadConversations().catch(error => setVoiceStatus("تعذّر تحميل المحادثات: " + error.message));
@@ -372,6 +377,7 @@ $("authForm").addEventListener("submit", async event => {
   }
 });
 $("logoutBtn").addEventListener("click", async () => {
+  stopRealtimeVoice();
   try { await api("/api/auth/logout", {}); } catch {}
   currentUser = null;
   $("messages").replaceChildren();
@@ -2162,7 +2168,11 @@ $("markNotificationsReadBtn").addEventListener("click", async () => {
 let activeVoicePeer = null;
 let activeVoiceDataChannel = null;
 let activeVoiceAudio = null;
+let activeVoiceMicStream = null;
+let activeVoiceCallConversationId = null;
 let voiceFinishTimer = null;
+const voiceCallInputItems = new Map();
+const voiceCallOutputItems = new Map();
 
 function setAvatarSpeaking(active) {
   document.querySelectorAll(".mini-avatar").forEach(image => image.classList.toggle("talking", active));
@@ -2174,6 +2184,7 @@ function stopRealtimeVoice() {
   try { activeVoiceDataChannel?.close(); } catch {}
   try { activeVoicePeer?.close(); } catch {}
   try { activeVoiceAudio?.pause(); } catch {}
+  try { activeVoiceMicStream?.getTracks?.().forEach(track => track.stop()); } catch {}
   if (activeVoiceAudio) {
     activeVoiceAudio.srcObject = null;
     activeVoiceAudio.closest(".voice-player-shell")?.remove();
@@ -2181,7 +2192,17 @@ function stopRealtimeVoice() {
   activeVoicePeer = null;
   activeVoiceDataChannel = null;
   activeVoiceAudio = null;
+  activeVoiceMicStream = null;
+  activeVoiceCallConversationId = null;
+  voiceCallInputItems.clear();
+  voiceCallOutputItems.clear();
   setAvatarSpeaking(false);
+  const callButton = $("voiceCallBtn");
+  if (callButton) {
+    callButton.textContent = "🎧 مكالمة صوتية";
+    callButton.setAttribute("aria-pressed", "false");
+    callButton.disabled = false;
+  }
 }
 
 function waitForIce(peer) {
@@ -2197,6 +2218,266 @@ function waitForIce(peer) {
     };
     peer.addEventListener("icegatheringstatechange", onChange);
   });
+}
+
+function voiceCallRowText(row, text) {
+  if (!row) return;
+  let target = row.querySelector(".bubble-text");
+  if (!target) {
+    target = row.querySelector(".bubble");
+  }
+  if (target) target.textContent = String(text || "");
+  const messages = $("messages");
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function ensureVoiceCallTranscriptRow(map, itemId, role, placeholder) {
+  const key = String(itemId || crypto.randomUUID());
+  let record = map.get(key);
+  if (record) return record;
+  const row = addMessage(placeholder, role);
+  row.classList.add("voice-call-transcript");
+  row.dataset.voiceItemId = key;
+  row.dataset.voiceConversationId = String(activeVoiceCallConversationId || "");
+  record = {
+    row,
+    messageId: crypto.randomUUID(),
+    text: "",
+    saved: false,
+    saving: null
+  };
+  map.set(key, record);
+  return record;
+}
+
+async function saveVoiceCallTranscript(record, role) {
+  if (!record || record.saved || record.saving || !record.text.trim()) return record?.saving || null;
+  const conversationId = String(record.row.dataset.voiceConversationId || activeVoiceCallConversationId || "");
+  if (!conversationId) return null;
+  record.saving = api("/api/voice/transcript", {
+    conversationId,
+    role,
+    text: record.text.trim().slice(0, 6000),
+    messageId: record.messageId
+  }).then(result => {
+    record.saved = true;
+    record.row.dataset.messageId = result.messageId;
+    rebuildChatMessageEditActions();
+    return result;
+  }).catch(error => {
+    setVoiceStatus("المكالمة شغالة، لكن تعذّر حفظ نص أحد الأدوار في سجل المحادثة: " + error.message);
+    return null;
+  }).finally(() => { record.saving = null; });
+  return record.saving;
+}
+
+function receiveWensVoiceCallEvent(data) {
+  if (!data || typeof data.type !== "string") return;
+  const itemId = String(data.item_id || data.item?.id || data.response_id || "");
+  if (data.type === "input_audio_buffer.speech_started") {
+    ensureVoiceCallTranscriptRow(
+      voiceCallInputItems,
+      itemId,
+      "user",
+      "🎙️ جاري التقاط كلامك..."
+    );
+    setVoiceStatus("سامعاك… كمّل كلامك 💜");
+    return;
+  }
+  if (data.type === "conversation.item.input_audio_transcription.delta") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallInputItems, itemId, "user", "🎙️ جاري كتابة كلامك..."
+    );
+    record.text += String(data.delta || "");
+    voiceCallRowText(record.row, record.text);
+    return;
+  }
+  if (data.type === "conversation.item.input_audio_transcription.completed") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallInputItems, itemId, "user", ""
+    );
+    record.text = String(data.transcript || "").trim();
+    if (record.text) {
+      voiceCallRowText(record.row, record.text);
+      saveVoiceCallTranscript(record, "user");
+    } else {
+      record.row.remove();
+      voiceCallInputItems.delete(itemId);
+    }
+    setVoiceStatus("وصل كلامك لونس…");
+    return;
+  }
+  if (data.type === "response.output_audio_transcript.delta") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallOutputItems, itemId, "assistant", ""
+    );
+    record.text += String(data.delta || "");
+    voiceCallRowText(record.row, record.text);
+    setAvatarSpeaking(true);
+    return;
+  }
+  if (data.type === "response.output_audio_transcript.done") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallOutputItems, itemId, "assistant", ""
+    );
+    const finalText = String(data.transcript || "").trim();
+    if (finalText) record.text = finalText;
+    if (record.text.trim()) {
+      voiceCallRowText(record.row, record.text);
+      saveVoiceCallTranscript(record, "assistant");
+    } else {
+      record.row.remove();
+      voiceCallOutputItems.delete(itemId);
+    }
+    setAvatarSpeaking(false);
+    setVoiceStatus("ونس ردّت عليك. اتكلم تاني وقت ما تحب 💜");
+    return;
+  }
+  if (data.type === "input_audio_buffer.speech_stopped") {
+    setVoiceStatus("براجع كلامك وبجهّز الرد…");
+    return;
+  }
+  if (data.type === "response.done") {
+    const failed = data.response?.status && data.response.status !== "completed";
+    if (failed) {
+      const detail = data.response?.status_details?.error?.message || "ونس ماقدرتش تكمل الرد الصوتي.";
+      setVoiceStatus(String(detail).slice(0, 200));
+    }
+    setAvatarSpeaking(false);
+    return;
+  }
+  if (data.type === "error") {
+    const detail = data.error?.message || data.message || "حصل خطأ في المكالمة الصوتية.";
+    setVoiceStatus(String(detail).slice(0, 200));
+  }
+}
+
+async function startWensVoiceCall() {
+  if (!currentUser || currentUser.id === "guest") {
+    setVoiceStatus("سجّل الدخول الأول علشان تحفظ محادثة المكالمة.");
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || !("RTCPeerConnection" in window)) {
+    setVoiceStatus("المتصفح ده مش بيدعم المكالمات الصوتية المباشرة. افتح ونس من Chrome أو متصفح حديث على HTTPS.");
+    return;
+  }
+  if (!window.confirm(
+    "هتبدأ مكالمة صوتية مباشرة مع ونس. هنستخدم الميكروفون ونحفظ نص كلامك وردود ونس في المحادثة. خدمة الصوت المباشر ممكن تستهلك رصيد API مدفوع حسب إعداد حساب الخدمة. هل توافق وتبدأ المكالمة؟"
+  )) return;
+
+  const button = $("voiceCallBtn");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "جاري الاتصال…";
+  }
+  stopRealtimeVoice();
+  try {
+    if (!currentConversationId) {
+      const created = await api("/api/conversations", { title: "مكالمة صوتية مع ونس" });
+      currentConversationId = created.conversation.id;
+      setCurrentConversationTitle(created.conversation.title);
+      await loadConversations({ selectLatest: false });
+    }
+    activeVoiceCallConversationId = String(currentConversationId);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+    activeVoiceMicStream = stream;
+
+    const host = $("voicePlayerDock");
+    const shell = document.createElement("div");
+    shell.className = "voice-player-shell voice-call-player-shell";
+    const label = document.createElement("span");
+    label.className = "voice-player-label";
+    label.textContent = "مكالمة صوتية مباشرة مع ونس — الميكروفون شغال";
+    const player = document.createElement("audio");
+    player.className = "voice-audio-player";
+    player.controls = true;
+    player.autoplay = true;
+    player.playsInline = true;
+    player.setAttribute("aria-label", "صوت المكالمة المباشرة مع ونس");
+    shell.append(label, player);
+    host.querySelector(".voice-player-shell")?.remove();
+    host.appendChild(shell);
+    activeVoiceAudio = player;
+
+    const peer = new RTCPeerConnection();
+    activeVoicePeer = peer;
+    for (const track of stream.getAudioTracks()) peer.addTrack(track, stream);
+    const channel = peer.createDataChannel("oai-events");
+    activeVoiceDataChannel = channel;
+
+    peer.ontrack = event => {
+      const remoteStream = event.streams?.[0] || new MediaStream([event.track]);
+      player.srcObject = remoteStream;
+      player.play().then(() => {
+        setVoiceStatus("المكالمة شغالة، اتكلم مع ونس بصوتك 💜");
+      }).catch(() => {
+        setVoiceStatus("الصوت وصل. اضغط ▶ في مشغل المكالمة لو التشغيل التلقائي مرفوض.");
+      });
+    };
+    peer.addEventListener("connectionstatechange", () => {
+      if (activeVoicePeer !== peer) return;
+      if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
+        setVoiceStatus("اتصال المكالمة اتقطع. اضغط إنهاء ثم ابدأ مكالمة جديدة.");
+      }
+    });
+    channel.addEventListener("message", event => {
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
+      receiveWensVoiceCallEvent(data);
+    });
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    await waitForIce(peer);
+    const response = await fetch("/api/voice/connect", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sdp: peer.localDescription.sdp,
+        voice: "coral",
+        mode: "conversation"
+      })
+    });
+    if (!response.ok) {
+      let data = {};
+      try { data = await response.json(); } catch {}
+      throw new Error(data.error || "تعذّر بدء المكالمة الصوتية.");
+    }
+    const answer = await response.text();
+    if (!answer.startsWith("v=0")) throw new Error("رد اتصال المكالمة غير صالح.");
+    await peer.setRemoteDescription({ type: "answer", sdp: answer });
+
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("انتهت مهلة فتح قناة المكالمة.")), 15000);
+      channel.addEventListener("open", () => {
+        clearTimeout(timer);
+        setVoiceStatus("المكالمة جاهزة. اتكلم بالمصري وونس هتسمعك وترد عليك 💜");
+        resolve();
+      }, { once: true });
+      channel.addEventListener("error", () => {
+        clearTimeout(timer);
+        reject(new Error("تعذّر فتح قناة أحداث المكالمة."));
+      }, { once: true });
+    });
+    if (button) {
+      button.disabled = false;
+      button.textContent = "⏹ إنهاء المكالمة";
+      button.setAttribute("aria-pressed", "true");
+    }
+  } catch (error) {
+    stopRealtimeVoice();
+    setVoiceStatus(String(error?.message || error).slice(0, 220));
+  } finally {
+    if (button && activeVoicePeer === null) {
+      button.disabled = false;
+      button.textContent = "🎧 مكالمة صوتية";
+      button.setAttribute("aria-pressed", "false");
+    }
+  }
 }
 
 async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = false) {
@@ -2593,6 +2874,15 @@ function getAdminVoicePreviewDock() {
 }
 window.WensPlayVoicePreview = text =>
   speak(text, null, getAdminVoicePreviewDock(), true);
+$("voiceCallBtn").addEventListener("click", () => {
+  if (activeVoicePeer) {
+    stopRealtimeVoice();
+    setVoiceStatus("تم إنهاء المكالمة الصوتية.");
+  } else {
+    startWensVoiceCall();
+  }
+});
+
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
