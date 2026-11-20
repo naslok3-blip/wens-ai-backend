@@ -3569,14 +3569,27 @@ export default {
           ? await env.DB.prepare("SELECT id,title FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1").bind(requestedId, user.id).first()
           : await env.DB.prepare("SELECT id,title FROM conversations WHERE user_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1").bind(user.id).first();
         if (!conversation) return json({ messages: [], persistence: true, conversationId: null });
-        const rows = await env.DB.prepare(
-          "SELECT id,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 100"
-        ).bind(user.id, conversation.id).all();
+        const beforeRaw = url.searchParams.get("before") || "";
+        const before = /^\d+$/.test(beforeRaw) ? Number(beforeRaw) : null;
+        if (beforeRaw && (!Number.isSafeInteger(before) || before <= 0)) {
+          return json({ error: "مؤشر صفحة المحادثة غير صالح." }, 400);
+        }
+        const pageQuery = before
+          ? "SELECT id,rowid AS seq,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT 101"
+          : "SELECT id,rowid AS seq,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 101";
+        const rows = before
+          ? await env.DB.prepare(pageQuery).bind(user.id, conversation.id, before).all()
+          : await env.DB.prepare(pageQuery).bind(user.id, conversation.id).all();
+        const desc = rows.results || [];
+        const hasMore = desc.length > 100;
+        const page = desc.slice(0, 100);
         return json({
-          messages: (rows.results || []).reverse(),
+          messages: page.reverse(),
           persistence: true,
           conversationId: conversation.id,
-          title: conversation.title
+          title: conversation.title,
+          hasMore,
+          nextBefore: hasMore ? Number(page[page.length - 1]?.seq) : null
         });
       }
       if (path === "/api/chat/edit" && request.method === "POST") {
@@ -3602,22 +3615,41 @@ export default {
         }
         const nextMessage = revisedMessage || originalText;
         if (!nextMessage || nextMessage.length > 4000) return json({ error: "الرسالة المعدلة مطلوبة وبحد أقصى 4000 حرف." }, 400);
-        const priorRows = await env.DB.prepare(
-          "SELECT role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY rowid DESC LIMIT 100"
-        ).bind(editUser.id, sourceConversationId, Number(target.seq)).all();
+        const priorCount = await env.DB.prepare(
+          "SELECT COUNT(*) AS total FROM messages WHERE user_id=? AND conversation_id=? AND rowid<?"
+        ).bind(editUser.id, sourceConversationId, Number(target.seq)).first();
+        const totalPriorMessages = Number(priorCount?.total || 0);
+        if (totalPriorMessages > 10000) {
+          return json({ error: "المحادثة طويلة جدًا لعمل نسخة تعديل آمنة دفعة واحدة. لم يتم تغيير المحادثة الأصلية." }, 413);
+        }
         const forkConversationId = crypto.randomUUID();
         const now = Math.floor(Date.now() / 1000);
         const forkTitle = buildConversationTitle("نسخة معدلة: " + String(sourceConversation.title || "محادثة"));
         await env.DB.prepare(
           "INSERT INTO conversations (id,user_id,title,created_at,updated_at,archived_at) VALUES (?,?,?,?,?,NULL)"
         ).bind(forkConversationId, editUser.id, forkTitle, now, now).run();
-        const priorMessages = (priorRows.results || []).reverse();
-        if (priorMessages.length) {
-          await env.DB.batch(priorMessages.map(item =>
+        let cloned = 0;
+        let afterRowid = 0;
+        while (cloned < totalPriorMessages) {
+          const priorPage = await env.DB.prepare(
+            "SELECT rowid AS seq,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? AND rowid>? AND rowid<? ORDER BY rowid ASC LIMIT 100"
+          ).bind(editUser.id, sourceConversationId, afterRowid, Number(target.seq)).all();
+          const batchRows = priorPage.results || [];
+          if (!batchRows.length) break;
+          await env.DB.batch(batchRows.map(item =>
             env.DB.prepare(
               "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
             ).bind(crypto.randomUUID(), editUser.id, forkConversationId, item.role, item.content, item.created_at)
           ));
+          cloned += batchRows.length;
+          afterRowid = Number(batchRows[batchRows.length - 1].seq);
+        }
+        if (cloned !== totalPriorMessages) {
+          await env.DB.batch([
+            env.DB.prepare("DELETE FROM messages WHERE user_id=? AND conversation_id=?").bind(editUser.id, forkConversationId),
+            env.DB.prepare("DELETE FROM conversations WHERE id=? AND user_id=?").bind(forkConversationId, editUser.id)
+          ]);
+          return json({ error: "تعذّر نسخ سياق المحادثة كاملًا. تم الحفاظ على المحادثة الأصلية بدون تعديل." }, 500);
         }
         const replayRequest = new Request(request.url.replace("/api/chat/edit", "/api/chat"), {
           method: "POST",
