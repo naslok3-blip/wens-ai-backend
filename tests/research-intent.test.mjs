@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const worker = await readFile(new URL("../worker.js", import.meta.url), "utf8");
+const client = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
 
 function extractFunction(name, nextName) {
   const start = worker.indexOf(`function ${name}(`);
@@ -347,4 +348,26 @@ test("conversation APIs exist and are protected by the owning account", () => {
   assert.match(worker, /path\.startsWith\("\/api\/conversations\/"\)/);
   assert.match(worker, /DELETE FROM messages WHERE user_id=\? AND conversation_id=\?/);
   assert.match(worker, /DELETE FROM conversations WHERE id=\? AND user_id=\?/);
+});
+
+
+test("chat retry is owner-scoped, context-safe, and only replaces a successful latest turn", () => {
+  const routeStart = worker.indexOf('path === "/api/chat/retry"');
+  const routeEnd = worker.indexOf('path === "/api/chat" && request.method === "POST"', routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const route = worker.slice(routeStart, routeEnd);
+  assert.match(route, /currentUser\(request, env\)/);
+  assert.match(route, /WHERE id=\? AND user_id=\? AND archived_at IS NULL/);
+  assert.match(route, /rows\[0\]\.role !== "assistant" \|\| rows\[1\]\.role !== "user"/);
+  assert.match(route, /historyBeforeRowid: Number\(originalUser\.seq\)/);
+  assert.match(route, /if \(!response\.ok\) return response/);
+  assert.ok(route.indexOf("if (!response.ok) return response") < route.indexOf("DELETE FROM messages"));
+  assert.match(route, /أسماء المرفقات/);
+});
+
+test("chat UI exposes edit and regenerate controls for the latest text-only turn", () => {
+  assert.match(client, /api\("\\/api\\/chat\\/retry"/);
+  assert.match(client, /إعادة توليد الرد/);
+  assert.match(client, /تعديل سؤالي/);
+  assert.match(client, /!previousRow\.querySelector\("\\.message-attachments"\\)/);
 });
