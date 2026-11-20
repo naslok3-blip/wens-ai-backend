@@ -440,3 +440,37 @@ test("legacy DOC parsing runs locally and preserves Word tables without renderin
   assert.match(client, /extension === "doc"/);
   assert.ok(client.includes('kind: "text", name: file.name, type: "application/msword"'));
 });
+
+
+test("live voice calls use browser microphone tracks and receive spoken assistant audio", () => {
+  assert.ok(client.includes("navigator.mediaDevices.getUserMedia"));
+  assert.ok(client.includes("peer.addTrack(track, stream)"));
+  assert.ok(client.includes('mode: "conversation"'));
+  assert.ok(client.includes('id === "guest"'));
+  assert.ok(client.includes('data.type === "input_audio_buffer.speech_started"'));
+  assert.ok(client.includes('data.type === "conversation.item.input_audio_transcription.completed"'));
+  assert.ok(client.includes('data.type === "response.output_audio_transcript.delta"'));
+  assert.ok(client.includes("activeVoiceMicStream?.getTracks?.().forEach(track => track.stop())"));
+  assert.ok(client.includes('window.addEventListener("pagehide"'));
+});
+
+test("live voice session enables Egyptian Arabic transcription and server VAD", () => {
+  const start = worker.indexOf("async function handleRealtimeVoice(");
+  const end = worker.indexOf("async function ", start + 20);
+  const route = worker.slice(start, end);
+  assert.ok(route.includes('body.mode === "conversation"'));
+  assert.ok(route.includes('model: "gpt-4o-mini-transcribe"'));
+  assert.ok(route.includes('language: "ar"'));
+  assert.ok(route.includes('type: "server_vad"'));
+  assert.ok(route.includes("create_response: true"));
+  assert.ok(route.includes("interrupt_response: true"));
+});
+
+test("voice transcripts are saved only to the authenticated owner's active conversation", () => {
+  assert.ok(worker.includes('path === "/api/voice/transcript"'));
+  assert.ok(worker.includes("const voiceUser = env.DB ? await currentUser(request, env) : null"));
+  assert.ok(worker.includes("saveVoiceTranscriptRoute(request, env, voiceUser)"));
+  assert.ok(worker.includes('SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1'));
+  assert.ok(worker.includes("INSERT OR IGNORE INTO messages"));
+  assert.ok(worker.includes('body.role === "assistant" ? "assistant" : body.role === "user" ? "user" : ""'));
+});
