@@ -3552,6 +3552,9 @@ export default {
           return json({ error: "لا يوجد رد أخير قابل لإعادة التوليد في هذه المحادثة." }, 409);
         }
         const originalUser = rows[1];
+        if (/\[أسماء المرفقات:|\[تم إرفاق صورة باسم/.test(String(originalUser.content || ""))) {
+          return json({ error: "إعادة توليد الرسائل التي تحتوي على ملفات أو صور غير متاحة حاليًا؛ أعد إرفاق الملف في رسالة جديدة." }, 409);
+        }
         const message = typeof body.message === "string" ? body.message.trim() : String(originalUser.content || "");
         if (!message || message.length > 4000) return json({ error: "الرسالة المعدلة مطلوبة وبحد أقصى 4000 حرف." }, 400);
         const replayRequest = new Request(request.url.replace("/api/chat/retry", "/api/chat"), {
