@@ -3787,7 +3787,7 @@ export default {
           : await env.DB.prepare("SELECT id,title FROM conversations WHERE user_id=? AND archived_at IS NULL ORDER BY updated_at DESC LIMIT 1").bind(user.id).first();
         if (!conversation) return json({ messages: [], persistence: true, conversationId: null });
         const rows = await env.DB.prepare(
-          "SELECT role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100"
+          "SELECT id,role,content,created_at FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100"
         ).bind(user.id, conversation.id).all();
         return json({
           messages: (rows.results || []).reverse(),
@@ -3812,6 +3812,16 @@ export default {
       if (path === "/api/agent/tasks" && (request.method === "GET" || request.method === "PATCH")) {
         const user = env.DB ? await currentUser(request, env) : null;
         return await agentTasksRoute(request, env, user);
+      }
+      if (path === "/api/chat/stream" && request.method === "POST") {
+        const streamUser = env.DB ? await currentUser(request, env) : null;
+        if (!streamUser) return json({ error: "سجّل الدخول الأول لاستخدام المحادثة المباشرة." }, 401);
+        return await simpleChatStreamRoute(request, env, streamUser);
+      }
+      if ((path === "/api/chat/edit" || path === "/api/chat/regenerate") && request.method === "POST") {
+        const mutationUser = env.DB ? await currentUser(request, env) : null;
+        if (!mutationUser) return json({ error: "سجّل الدخول أولًا لتعديل رسائلك." }, 401);
+        return await chatMessageMutationRoute(request, env, mutationUser, path.endsWith("/edit") ? "edit" : "regenerate");
       }
       if (path === "/api/chat" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
@@ -3843,9 +3853,7 @@ export default {
         await env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
           .bind(now, conversationId, user.id).run();
         const response = await handleAgent(request, env, user, { persist: true, conversationId });
-        let payload = {};
-        try { payload = await response.json(); } catch {}
-        return json({ ...payload, conversationId }, response.status);
+        return await enrichChatResponse(response, env, user, conversationId);
       }
       if (request.method === "GET") {
         const asset = INLINE_ASSETS.get(path);
