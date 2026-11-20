@@ -452,6 +452,12 @@ test("live voice calls use browser microphone tracks and receive spoken assistan
   assert.ok(client.includes('data.type === "response.output_audio_transcript.delta"'));
   assert.ok(client.includes("activeVoiceMicStream?.getTracks?.().forEach(track => track.stop())"));
   assert.ok(client.includes('window.addEventListener("pagehide"'));
+  assert.ok(client.includes('record.text = "جاري تحويل كلامك إلى نص..."'));
+  assert.ok(client.includes('Promise.all(Array.from(voiceCallInputItems.values())'));
+  assert.ok(client.includes("تفريغ جزئي: "));
+  assert.ok(client.includes("record.completed = true"));
+  assert.ok(worker.includes("UPDATE messages SET role=?,content=?"));
+  assert.ok(client.includes('button.disabled = true;\n    button.textContent = "جاري الاتصال…";'));
 });
 
 test("live voice session enables Egyptian Arabic transcription and server VAD", () => {
