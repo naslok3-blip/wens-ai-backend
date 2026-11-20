@@ -950,6 +950,53 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       bubble.appendChild(sourceTrace);
     }
   }
+  if (who === "assistant" && previousRow?.classList.contains("user") &&
+      currentUser && currentUser.id !== "guest" && currentConversationId &&
+      !previousRow.querySelector(".message-attachments")) {
+    const retryActions = document.createElement("div");
+    retryActions.className = "message-retry-actions";
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = "إعادة توليد الرد";
+    retry.addEventListener("click", async () => {
+      retry.disabled = true;
+      try {
+        const result = await api("/api/chat/retry", { conversationId: currentConversationId, deepThink: deepThinkEnabled });
+        row.remove();
+        addMessage(result.reply, "assistant", result.steps || [], [], result.generatedImages || [], result.generatedProjects || [], result.activity || [], result.sources || []);
+        await loadConversations({ selectLatest: false });
+        if (appSettings.autoSpeak) $("messages").lastElementChild?.querySelector(".voice-replay-btn")?.click();
+      } catch (error) {
+        setVoiceStatus("تعذّرت إعادة توليد الرد: " + error.message);
+        retry.disabled = false;
+      }
+    });
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "تعديل سؤالي";
+    edit.addEventListener("click", async () => {
+      const original = previousRow.querySelector(".bubble-text")?.textContent || "";
+      const revised = window.prompt("عدّل سؤالك ثم اضغط موافق لإعادة توليد الرد", original);
+      if (revised === null || !revised.trim() || revised.trim() === original.trim()) return;
+      edit.disabled = true;
+      retry.disabled = true;
+      try {
+        const result = await api("/api/chat/retry", {
+          conversationId: currentConversationId, message: revised.trim(), deepThink: deepThinkEnabled
+        });
+        previousRow.querySelector(".bubble-text").textContent = revised.trim();
+        row.remove();
+        addMessage(result.reply, "assistant", result.steps || [], [], result.generatedImages || [], result.generatedProjects || [], result.activity || [], result.sources || []);
+        await loadConversations({ selectLatest: false });
+      } catch (error) {
+        setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
+        edit.disabled = false;
+        retry.disabled = false;
+      }
+    });
+    retryActions.append(retry, edit);
+    bubble.appendChild(retryActions);
+  }
   if (who === "assistant" && currentUser && currentUser.id !== "guest" && displayText.trim().length > 1) {
     const feedback = document.createElement("div");
     feedback.className = "reply-feedback";
