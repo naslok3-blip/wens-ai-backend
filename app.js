@@ -482,7 +482,7 @@ async function loadChatHistory(conversationId) {
   }
   try {
     const data = await api("/api/chat/history?conversationId=" + encodeURIComponent(conversationId), undefined, "GET");
-    for (const item of data.messages || []) addMessage(item.content, item.role);
+    for (const item of data.messages || []) addMessage(item.content, item.role, [], [], [], [], [], [], item.id || "");
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
   } catch (error) {
     addMessage("تعذّر تحميل المحادثة: " + error.message);
@@ -950,9 +950,10 @@ async function tryStreamChat(message, userRow, progressRow) {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let boundary;
-      while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+      while ((boundary = buffer.search(/\r?\n\r?\n/)) >= 0) {
+        const separator = buffer.match(/\r?\n\r?\n/)[0];
         processEvent(buffer.slice(0, boundary));
-        buffer = buffer.slice(boundary + 2);
+        buffer = buffer.slice(boundary + separator.length);
       }
     }
     buffer += decoder.decode();
