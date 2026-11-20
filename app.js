@@ -3,6 +3,7 @@ const setVoiceStatus = message => { const status = $("voiceStatus"); if (status)
 // إدارة ونس تفتح من الصورة الشخصية فقط، داخل الصفحة نفسها.
 let authMode = "login";
 let currentUser = null;
+let naturalVoiceConfigured = false;
 let recognition = null;
 let pendingAttachments = [];
 let deepThinkEnabled = false;
@@ -274,7 +275,10 @@ function showApp(user) {
     : "مسجّل الدخول: " + user.name;
   updateAdminShortcut();
   $("notificationsBtn").hidden = user.id === "guest";
-  $("voiceCallBtn").hidden = user.id === "guest";
+  $("voiceCallBtn").hidden = user.id === "guest" || !naturalVoiceConfigured;
+  if (user.id !== "guest" && !naturalVoiceConfigured) {
+    setVoiceStatus("المكالمة الصوتية المباشرة غير مفعّلة على الخادم حاليًا؛ تقدر تستخدم الإملاء وصوت الجهاز.");
+  }
   $("notificationsPanel").hidden = true;
   startPresenceHeartbeat();
   if (user.id !== "guest") loadConversations().catch(error => setVoiceStatus("تعذّر تحميل المحادثات: " + error.message));
@@ -2905,9 +2909,13 @@ async function loadSystemStatus() {
     const response = await fetch("/api/health", { cache: "no-store" });
     const data = await response.json();
     const f = data.features || {};
+    naturalVoiceConfigured = Boolean(f.naturalVoiceConfigured);
+    const callButton = $("voiceCallBtn");
+    if (callButton) callButton.hidden = !naturalVoiceConfigured || !currentUser || currentUser.id === "guest";
     const labels = [
       "محرك الدردشة " + (f.openAI ? "OpenAI جاهز" : f.workersAI ? "Workers AI جاهز" : "غير مربوط"),
-      "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة")
+      "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة"),
+      "المكالمة المباشرة " + (naturalVoiceConfigured ? "متاحة" : "غير مفعّلة")
     ];
     $("systemStatus").textContent = labels.concat(f.workersAI ? "توليد الصور عبر Cloudflare جاهز" : "توليد الصور غير مربوط", f.browser ? "متصفح المواقع جاهز" : "متصفح المواقع غير مربوط").join(" · ");
     $("systemStatus").classList.toggle("all-ready", !!((f.openAI || f.workersAI) && f.database));
