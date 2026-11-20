@@ -365,9 +365,11 @@ test("chat retry is owner-scoped, context-safe, and only replaces a successful l
   assert.match(route, /أسماء المرفقات/);
 });
 
-test("chat UI exposes edit and regenerate controls for the latest text-only turn", () => {
-  assert.match(client, /api\("\\/api\\/chat\\/retry"/);
+test("chat UI streams edits and regenerates any identified text-only turn in a preserved fork", () => {
+  assert.match(client, /requestStreamedReply\("\\/api\\/chat\\/edit"/);
+  assert.match(client, /messageId:\s*previousRow\.dataset\.messageId/);
   assert.match(client, /إعادة توليد الرد/);
   assert.match(client, /تعديل سؤالي/);
-  assert.match(client, /!previousRow\.querySelector\("\\.message-attachments"\\)/);
+  assert.match(client, /previousRow\.dataset\.messageId && !previousRow\.querySelector\("\\.message-attachments"\\)/);
+  assert.match(client, /await openConversation\(currentConversationId\)/);
 });
