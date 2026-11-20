@@ -19,6 +19,7 @@ function extractFunction(name, nextName) {
 const helpers = [
   extractFunction("normalizeLiveDataText", "isEgyptGoldPriceRequest"),
   extractFunction("buildConversationTitle", "ensureChatSchema"),
+  extractFunction("extractWorkersAiStreamDelta", "streamSseEvent"),
   extractFunction("isEgyptGoldPriceRequest", "isLiveDataRequest"),
   extractFunction("isLiveDataRequest", "isEgyptNationalTeamRequest"),
   extractFunction("isEgyptNationalTeamRequest", "isSportsScheduleRequest"),
@@ -37,10 +38,10 @@ const helpers = [
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle };",
+  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle, extractWorkersAiStreamDelta };",
   sandbox
 );
-const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle } = sandbox.module.exports;
+const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle, extractWorkersAiStreamDelta } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -347,4 +348,43 @@ test("conversation APIs exist and are protected by the owning account", () => {
   assert.match(worker, /path\.startsWith\("\/api\/conversations\/"\)/);
   assert.match(worker, /DELETE FROM messages WHERE user_id=\? AND conversation_id=\?/);
   assert.match(worker, /DELETE FROM conversations WHERE id=\? AND user_id=\?/);
+});
+
+
+test("normalizes common Workers AI streaming chunk envelopes", () => {
+  assert.equal(extractWorkersAiStreamDelta({ choices: [{ delta: { content: "أهلًا" } }] }), "أهلًا");
+  assert.equal(extractWorkersAiStreamDelta({ choices: [{ text: " بيك" }] }), " بيك");
+  assert.equal(extractWorkersAiStreamDelta({ response: " يا ونس" }), " يا ونس");
+  assert.equal(extractWorkersAiStreamDelta({ result: { response: "!" } }), "!");
+  assert.equal(extractWorkersAiStreamDelta({ choices: [{ finish_reason: "stop" }] }), "");
+  assert.equal(extractWorkersAiStreamDelta(null), "");
+});
+
+test("stream and mutation routes are authenticated, conversation-scoped, and keep full-agent fallbacks", () => {
+  assert.match(worker, /async function simpleChatStreamRoute\(request, env, user\)/);
+  assert.match(worker, /stream: true/);
+  assert.match(worker, /Content-Type": "text\/event-stream; charset=utf-8"/);
+  assert.match(worker, /path === "\\/api\\/chat\\/stream"/);
+  assert.match(worker, /async function chatMessageMutationRoute\(request, env, user, mode\)/);
+  assert.match(worker, /path === "\\/api\\/chat\\/edit"/);
+  assert.match(worker, /path === "\\/api\\/chat\\/regenerate"/);
+  assert.match(worker, /DELETE FROM messages WHERE user_id=\\? AND conversation_id=\\? AND rowid>=\\?/);
+  assert.match(worker, /skipUserPersist: mode === "regenerate"/);
+  assert.match(worker, /AND id<>\\?/);
+  assert.match(worker, /SELECT id,role,content,created_at FROM messages/);
+});
+
+test("streaming is bypassed for requests requiring research, tools, files, or deep reasoning", () => {
+  assert.match(worker, /body\\.deepThink === true \\|\\| \\(Array\\.isArray\\(body\\.attachments\\) && body\\.attachments\\.length\\)/);
+  assert.match(worker, /isExternalResearchIntent\\(message\\)/);
+  assert.match(worker, /isProjectCreationIntent\\(message\\)/);
+  assert.match(worker, /getEgyptDateTimeIntent\\(message\\)\\.matched/);
+  assert.match(worker, /return json\\(\\{ fallback: true \\}, 409\\)/);
+});
+
+test("Realtime voice is opt-in and the free device voice remains the default", () => {
+  assert.match(worker, /voiceEngine: "device"/);
+  assert.match(worker, /\\["device", "realtime"\\]\\.includes\\(input\\.voiceEngine\\)/);
+  assert.match(worker, /WENS_REALTIME_MODEL/);
+  assert.match(worker, /function handleRealtimeVoice/);
 });
