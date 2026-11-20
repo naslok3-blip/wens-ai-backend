@@ -2876,8 +2876,8 @@ async function handleAgent(request, env, user, options = {}) {
   let conversationHistory = [];
   if (options.persist && env.DB && user) {
     const prior = await env.DB.prepare(
-      "SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? ORDER BY created_at DESC, rowid DESC LIMIT 20"
-    ).bind(user.id, conversationId).all();
+      "SELECT role,content FROM messages WHERE user_id=? AND conversation_id=? AND rowid<? ORDER BY created_at DESC, rowid DESC LIMIT 20"
+    ).bind(user.id, conversationId, Number(options.historyBeforeRowid || 9223372036854775807)).all();
     conversationHistory = (prior.results || []).reverse().map(item => ({
       role: item.role,
       content: item.content
@@ -3532,6 +3532,43 @@ export default {
       if (path === "/api/agent/tasks" && (request.method === "GET" || request.method === "PATCH")) {
         const user = env.DB ? await currentUser(request, env) : null;
         return await agentTasksRoute(request, env, user);
+      }
+      if (path === "/api/chat/retry" && request.method === "POST") {
+        const user = env.DB ? await currentUser(request, env) : null;
+        if (!user) return json({ error: "سجّل الدخول الأول لإعادة توليد الرد." }, 401);
+        await ensureChatSchema(env.DB);
+        let body;
+        try { body = await request.json(); } catch { return json({ error: "بيانات الطلب غير صالحة." }, 400); }
+        const conversationId = String(body.conversationId || "");
+        const conversation = await env.DB.prepare(
+          "SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1"
+        ).bind(conversationId, user.id).first();
+        if (!conversation) return json({ error: "المحادثة غير موجودة أو مؤرشفة." }, 404);
+        const latest = await env.DB.prepare(
+          "SELECT id,rowid AS seq,role,content FROM messages WHERE user_id=? AND conversation_id=? ORDER BY rowid DESC LIMIT 2"
+        ).bind(user.id, conversationId).all();
+        const rows = latest.results || [];
+        if (rows.length < 2 || rows[0].role !== "assistant" || rows[1].role !== "user") {
+          return json({ error: "لا يوجد رد أخير قابل لإعادة التوليد في هذه المحادثة." }, 409);
+        }
+        const originalUser = rows[1];
+        const message = typeof body.message === "string" ? body.message.trim() : String(originalUser.content || "");
+        if (!message || message.length > 4000) return json({ error: "الرسالة المعدلة مطلوبة وبحد أقصى 4000 حرف." }, 400);
+        const replayRequest = new Request(request.url.replace("/api/chat/retry", "/api/chat"), {
+          method: "POST",
+          headers: request.headers,
+          body: JSON.stringify({ message, conversationId, deepThink: body.deepThink === true })
+        });
+        const response = await handleAgent(replayRequest, env, user, {
+          persist: true, conversationId, historyBeforeRowid: Number(originalUser.seq)
+        });
+        if (!response.ok) return response;
+        const payload = await response.json();
+        await env.DB.batch([
+          env.DB.prepare("DELETE FROM messages WHERE id=? AND user_id=? AND conversation_id=?").bind(rows[0].id, user.id, conversationId),
+          env.DB.prepare("DELETE FROM messages WHERE id=? AND user_id=? AND conversation_id=?").bind(originalUser.id, user.id, conversationId)
+        ]);
+        return json({ ...payload, conversationId, regenerated: true });
       }
       if (path === "/api/chat" && request.method === "POST") {
         const user = env.DB ? await currentUser(request, env) : null;
