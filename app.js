@@ -2398,11 +2398,11 @@ async function startWensVoiceCall() {
   )) return;
 
   const button = $("voiceCallBtn");
+  stopRealtimeVoice();
   if (button) {
     button.disabled = true;
     button.textContent = "جاري الاتصال…";
   }
-  stopRealtimeVoice();
   try {
     if (!currentConversationId) {
       const created = await api("/api/conversations", { title: "مكالمة صوتية مع ونس" });
