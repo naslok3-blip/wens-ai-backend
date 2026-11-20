@@ -58,21 +58,37 @@ test("extracts paragraphs from DOCX without a paid API", async () => {
   assert.equal(result.source, "local-free");
 });
 
-test("extracts rows, shared strings, and sheet names from XLSX", async () => {
+test("preserves Word table rows, columns, and blank cells", async () => {
+  const zip = makeStoredZip({
+    "word/document.xml":
+      '<w:document xmlns:w="x"><w:body><w:p><w:r><w:t>قبل الجدول</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>الصنف</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>الكمية</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:p><w:r><w:t>فرشاة</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc></w:tr></w:tbl><w:p><w:r><w:t>بعد الجدول</w:t></w:r></w:p></w:body></w:document>'
+  });
+  const result = await extractDocumentText(asFile("table.docx", zip));
+  assert.ok(result.text.indexOf("قبل الجدول") < result.text.indexOf("جدول:"));
+  assert.match(result.text, /الصنف \| الكمية/);
+  assert.match(result.text, /فرشاة \| —/);
+  assert.ok(result.text.indexOf("بعد الجدول") > result.text.indexOf("جدول:"));
+});
+
+test("preserves Excel blank cells, formulas, and date-formatted serials", async () => {
   const zip = makeStoredZip({
     "xl/workbook.xml":
-      '<workbook xmlns:r="r"><sheets><sheet name="المخزون" sheetId="1" r:id="rId1"/></sheets></workbook>',
+      '<workbook xmlns:r="r"><workbookPr date1904="0"/><sheets><sheet name="المخزون" sheetId="1" r:id="rId1"/></sheets></workbook>',
     "xl/_rels/workbook.xml.rels":
       '<Relationships><Relationship Id="rId1" Type="worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
     "xl/sharedStrings.xml":
       '<sst><si><t>الصنف</t></si><si><t>الكمية</t></si><si><t>فرشاة</t></si></sst>',
+    "xl/styles.xml":
+      '<styleSheet><numFmts numFmtCount="1"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="164"/></cellXfs></styleSheet>',
     "xl/worksheets/sheet1.xml":
-      '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row><row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2"><v>12</v></c></row></sheetData></worksheet>'
+      '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1"/></row><row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2"><v>12</v></c><c r="C2" s="1"><f>DATE(2024,1,1)</f><v>45292</v></c></row></sheetData></worksheet>'
   });
   const result = await extractDocumentText(asFile("stock.xlsx", zip));
   assert.match(result.text, /المخزون/);
   assert.match(result.text, /A1=الصنف/);
   assert.match(result.text, /B2=12/);
+  assert.match(result.text, /C1=—/);
+  assert.match(result.text, /C2=45292 \(تاريخ Excel: 2024-01-01\) \[صيغة: DATE\(2024,1,1\)\]/);
 });
 
 test("extracts text from uncompressed text-layer PDFs", async () => {

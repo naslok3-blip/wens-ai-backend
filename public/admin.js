@@ -88,7 +88,7 @@ async function refreshStatus() {
     const f = data.features || {};
     setState("workersAiState", f.openAI ? "OpenAI متصل" : f.workersAI ? "Workers AI متصل" : "غير مربوط", !!(f.openAI || f.workersAI));
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
-    setState("voiceState", "صوت الجهاز المجاني — يحتاج صوت ar-EG مثبت", false);
+    setState("voiceState", f.naturalVoiceConfigured ? "مفتاح OpenAI Realtime موجود — يلزم اختبار جلسة الصوت" : "صوت الجهاز المجاني — Realtime غير مفعّل", !!f.naturalVoiceConfigured);
     setState("browserState", f.browserConfigured ? "الربط موجود" : "غير مربوط", !!f.browserConfigured);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
     $("databaseDetail").textContent = !f.databaseConfigured ? "لم يتم ربط D1 بعد" : !f.databaseConnected ? "تعذّر الاتصال بقاعدة البيانات" : f.settingsStorageReady ? "الجداول وحفظ الإعدادات جاهزة" : "تخزين الإعدادات يحتاج مراجعة";

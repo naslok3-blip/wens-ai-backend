@@ -365,9 +365,126 @@ test("chat retry is owner-scoped, context-safe, and only replaces a successful l
   assert.match(route, /أسماء المرفقات/);
 });
 
-test("chat UI exposes edit and regenerate controls for the latest text-only turn", () => {
-  assert.match(client, /api\("\\/api\\/chat\\/retry"/);
-  assert.match(client, /إعادة توليد الرد/);
-  assert.match(client, /تعديل سؤالي/);
-  assert.match(client, /!previousRow\.querySelector\("\\.message-attachments"\\)/);
+test("chat UI streams edits and regenerates any identified text-only turn in a preserved fork", () => {
+  assert.ok(client.includes('requestStreamedReply("/api/chat/edit"'));
+  assert.ok(client.includes("messageId: userRow.dataset.messageId"));
+  assert.ok(client.includes("function rebuildChatMessageEditActions"));
+  assert.ok(client.includes('userRow.dataset.hasAttachments === "true"'));
+  assert.ok(client.includes("إعادة توليد الرد"));
+  assert.ok(client.includes("تعديل سؤالي"));
+  assert.ok(client.includes("attachChatMessageEditActions(assistantRow, userRow)"));
+  assert.ok(client.includes("await openConversation(currentConversationId)"));
+});
+
+
+test("stream metadata preserves saved message IDs and recovers an edited fork after a stream error", () => {
+  assert.ok(client.includes('event === "meta"'));
+  assert.ok(client.includes("streamError.meta = currentStreamMeta"));
+  assert.ok(client.includes("meta => {"));
+  assert.ok(client.includes("meta.userMessageId"));
+  assert.ok(client.includes('path === "/api/chat/edit" && error?.meta?.forked'));
+  assert.ok(client.includes("await openConversation(currentConversationId)"));
+});
+
+test("historical edit removes an incomplete fork when context cloning fails", () => {
+  const routeStart = worker.indexOf('path === "/api/chat/edit"');
+  const routeEnd = worker.indexOf('const projectRouteMatch', routeStart);
+  const route = worker.slice(routeStart, routeEnd);
+  assert.ok(route.includes("const discardIncompleteFork = async () =>"));
+  assert.ok(route.includes("catch (cloneError)"));
+  assert.ok(route.includes("await discardIncompleteFork()"));
+  assert.ok(route.includes("if (cloned !== totalPriorMessages)"));
+  assert.ok(route.indexOf("if (cloned !== totalPriorMessages)") < route.indexOf("const response = await handleAgent"));
+});
+
+test("chat history uses stable rowid cursor pagination beyond the initial 100 messages", () => {
+  assert.match(worker, /url\.searchParams\.get\("before"\)/);
+  assert.match(worker, /rowid AS seq/);
+  assert.match(worker, /ORDER BY rowid DESC LIMIT 101/);
+  assert.match(worker, /nextBefore/);
+  assert.match(client, /renderOlderMessagesControl/);
+  assert.match(client, /loadOlderMessages/);
+  assert.match(client, /&before=/);
+  assert.match(client, /messages\.scrollTop = previousTop \+ \(messages\.scrollHeight - previousHeight\)/);
+});
+
+test("scanned PDF extraction uses on-device Arabic OCR with bounded workload", () => {
+  assert.match(client, /pdfjs-dist@6\.5\.438/);
+  assert.match(client, /tesseract\.js@5\.1\.1/);
+  assert.match(client, /createWorker\("ara\+eng"/);
+  assert.match(client, /pdf\.numPages > 100/);
+  assert.match(client, /ocrPages >= 8/);
+  assert.match(client, /ocrWorker\.recognize\(canvas\)/);
+  assert.match(client, /kind: "text", name: file\.name, type: "application\/pdf"/);
+});
+
+test("legacy XLS extraction runs locally and preserves worksheet structure and formulas", () => {
+  assert.match(client, /xlsx-0\.20\.3\/package\/xlsx\.mjs/);
+  assert.match(client, /cpexcel\.full\.mjs/);
+  assert.match(client, /extractLegacyXlsOnDevice/);
+  assert.match(client, /XLSX\.utils\.decode_range/);
+  assert.match(client, /XLSX\.utils\.encode_cell/);
+  assert.ok(client.includes("[صيغة:"));
+  assert.match(client, /totalCells > 250000/);
+  assert.match(client, /extension === "xls"/);
+});
+
+
+test("legacy DOC parsing runs locally and preserves Word tables without rendering embedded HTML", () => {
+  assert.match(client, /@file-viewer\/doc@3\.3\.0/);
+  assert.match(client, /parser\.parseMsDoc\(bytes, \{ maxPictureBytes: 0 \}\)/);
+  assert.match(client, /legacyDocInlineText/);
+  assert.match(client, /block\?\.type === "table"/);
+  assert.match(client, /cellsCount > 100000/);
+  assert.match(client, /rowsCount > 10000/);
+  assert.match(client, /extension === "doc"/);
+  assert.ok(client.includes('kind: "text", name: file.name, type: "application/msword"'));
+});
+
+
+test("live voice calls use browser microphone tracks and receive spoken assistant audio", () => {
+  assert.ok(client.includes("navigator.mediaDevices.getUserMedia"));
+  assert.ok(client.includes("peer.addTrack(track, stream)"));
+  assert.ok(client.includes('mode: "conversation"'));
+  assert.ok(client.includes('id === "guest"'));
+  assert.ok(client.includes('data.type === "input_audio_buffer.speech_started"'));
+  assert.ok(client.includes('data.type === "conversation.item.input_audio_transcription.completed"'));
+  assert.ok(client.includes('data.type === "response.output_audio_transcript.delta"'));
+  assert.ok(client.includes("activeVoiceMicStream?.getTracks?.().forEach(track => track.stop())"));
+  assert.ok(client.includes('window.addEventListener("pagehide"'));
+  assert.ok(client.includes('record.text = "جاري تحويل كلامك إلى نص..."'));
+  assert.ok(client.includes('Promise.all(Array.from(voiceCallInputItems.values())'));
+  assert.ok(client.includes("تفريغ جزئي: "));
+  assert.ok(client.includes("record.completed = true"));
+  assert.ok(worker.includes("UPDATE messages SET role=?,content=?"));
+  assert.ok(client.includes('button.disabled = true;\n    button.textContent = "جاري الاتصال…";'));
+});
+
+test("live voice session enables Egyptian Arabic transcription and server VAD", () => {
+  const start = worker.indexOf("async function handleRealtimeVoice(");
+  const end = worker.indexOf("async function ", start + 20);
+  const route = worker.slice(start, end);
+  assert.ok(route.includes('body.mode === "conversation"'));
+  assert.ok(route.includes('model: "gpt-4o-mini-transcribe"'));
+  assert.ok(route.includes('language: "ar"'));
+  assert.ok(route.includes('type: "server_vad"'));
+  assert.ok(route.includes("create_response: true"));
+  assert.ok(route.includes("interrupt_response: true"));
+});
+
+test("voice transcripts are saved only to the authenticated owner's active conversation", () => {
+  assert.ok(worker.includes('path === "/api/voice/transcript"'));
+  assert.ok(worker.includes("const voiceUser = env.DB ? await currentUser(request, env) : null"));
+  assert.ok(worker.includes("saveVoiceTranscriptRoute(request, env, voiceUser)"));
+  assert.ok(worker.includes('SELECT id FROM conversations WHERE id=? AND user_id=? AND archived_at IS NULL LIMIT 1'));
+  assert.ok(worker.includes("INSERT OR IGNORE INTO messages"));
+  assert.ok(worker.includes('body.role === "assistant" ? "assistant" : body.role === "user" ? "user" : ""'));
+});
+
+
+test("live call control is hidden unless the Realtime API key is configured", () => {
+  assert.ok(client.includes("naturalVoiceConfigured = Boolean(f.naturalVoiceConfigured)"));
+  assert.ok(client.includes('user.id === "guest" || !naturalVoiceConfigured'));
+  assert.ok(worker.includes("naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY)"));
+  assert.ok(worker.includes('المحادثة الصوتية المباشرة غير مفعّلة بدون OpenAI API.'));
 });

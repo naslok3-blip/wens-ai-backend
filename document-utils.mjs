@@ -115,6 +115,18 @@ async function unzipEntries(bytes, wantedPaths) {
   return found;
 }
 
+function wordInlineText(xml) {
+  const output = [];
+  for (const match of String(xml || "").matchAll(
+    /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\b[^>]*\/>|<w:br\b[^>]*\/>|<w:cr\b[^>]*\/>/gi
+  )) {
+    if (match[1] !== undefined) output.push(decodeEntities(match[1]));
+    else if (/<w:tab\b/i.test(match[0])) output.push("\t");
+    else output.push("\n");
+  }
+  return output.join("").replace(/\u0000/g, "");
+}
+
 function extractDocx(entries) {
   const main = entries.get("word/document.xml");
   if (!main) throw new Error("ملف Word لا يحتوي على مستند نصي قابل للقراءة.");
@@ -122,19 +134,89 @@ function extractDocx(entries) {
     .filter(([name]) => /^word\/(?:document|header\d*|footer\d*|footnotes|endnotes)\.xml$/i.test(name));
   const sections = [];
   for (const [name, xml] of xmlFiles) {
-    const paragraphs = [];
-    for (const paragraph of xml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/gi)) {
-      const text = xmlText(paragraph[0], /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/gi)
-        .replace(/<w:tab\b[^>]*\/>/gi, "\t")
-        .replace(/<w:br\b[^>]*\/>/gi, "\n")
-        .trim();
-      if (text) paragraphs.push(text);
+    const blocks = [];
+    for (const block of String(xml).matchAll(/<w:p\b[\s\S]*?<\/w:p>|<w:tbl\b[\s\S]*?<\/w:tbl>/gi)) {
+      const raw = block[0];
+      if (/^<w:tbl\b/i.test(raw)) {
+        const rows = [];
+        for (const row of raw.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/gi)) {
+          const cells = [];
+          for (const cell of row[0].matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/gi)) {
+            const paragraphs = [...cell[0].matchAll(/<w:p\b[\s\S]*?<\/w:p>/gi)]
+              .map(item => wordInlineText(item[0]).trim())
+              .filter(Boolean);
+            cells.push(paragraphs.join(" / ") || "—");
+          }
+          if (cells.length) rows.push(cells.join(" | "));
+        }
+        if (rows.length) blocks.push("جدول:\n" + rows.join("\n"));
+      } else {
+        const text = wordInlineText(raw).trim();
+        if (text) blocks.push(text);
+      }
     }
-    if (paragraphs.length) sections.push((name === "word/document.xml" ? "المستند" : name) + ":\n" + paragraphs.join("\n"));
+    if (blocks.length) {
+      const title = name === "word/document.xml" ? "المستند" : name;
+      sections.push(title + ":\n" + blocks.join("\n"));
+    }
   }
   const text = sections.join("\n\n").trim();
   if (!text) throw new Error("ملف Word لا يحتوي على نص مستخرج. قد يكون صورًا فقط.");
   return text;
+}
+
+function excelColumnNumber(reference) {
+  const letters = String(reference || "").match(/^([A-Z]+)/i)?.[1]?.toUpperCase() || "";
+  let value = 0;
+  for (const letter of letters) value = value * 26 + letter.charCodeAt(0) - 64;
+  return value;
+}
+
+function excelColumnName(number) {
+  let value = Math.max(1, Number(number) || 1);
+  let name = "";
+  while (value > 0) {
+    value -= 1;
+    name = String.fromCharCode(65 + (value % 26)) + name;
+    value = Math.floor(value / 26);
+  }
+  return name;
+}
+
+function excelDateFormatStyles(stylesXml) {
+  const customFormats = new Map();
+  const source = String(stylesXml || "");
+  const customBlock = source.match(/<numFmts\b[^>]*>([\s\S]*?)<\/numFmts>/i)?.[1] || "";
+  for (const item of customBlock.matchAll(/<numFmt\b([^>]*)\/?>/gi)) {
+    const attrs = Object.fromEntries([...item[1].matchAll(/([A-Za-z:]+)="([^"]*)"/g)].map(x => [x[1], x[2]]));
+    if (attrs.numFmtId) customFormats.set(Number(attrs.numFmtId), attrs.formatCode || "");
+  }
+  const xfs = source.match(/<cellXfs\b[^>]*>([\s\S]*?)<\/cellXfs>/i)?.[1] || "";
+  const result = [];
+  for (const item of xfs.matchAll(/<xf\b([^>]*)\/?>/gi)) {
+    const attrs = Object.fromEntries([...item[1].matchAll(/([A-Za-z:]+)="([^"]*)"/g)].map(x => [x[1], x[2]]));
+    const id = Number(attrs.numFmtId || 0);
+    const code = customFormats.get(id) || "";
+    const cleaned = code
+      .replace(/"[^"]*"/g, "")
+      .replace(/\[[^\]]*\]/g, "")
+      .replace(/\\./g, "")
+      .replace(/_.|\*.?/g, "");
+    const isDate = [14,15,16,17,18,19,20,21,22,45,46,47].includes(id) ||
+      (id >= 164 && /[yd]/i.test(cleaned)) ||
+      (id >= 164 && /m/i.test(cleaned) && /h|s/i.test(cleaned));
+    result.push(isDate);
+  }
+  return result;
+}
+
+function formatExcelDate(serialValue, date1904) {
+  const serial = Number(serialValue);
+  if (!Number.isFinite(serial) || Math.abs(serial) > 3000000) return "";
+  const epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
+  const date = new Date(epoch + serial * 86400000);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
 }
 
 function extractXlsx(entries) {
@@ -144,35 +226,68 @@ function extractXlsx(entries) {
   const sharedXml = entries.get("xl/sharedStrings.xml") || "";
   const sharedStrings = [...sharedXml.matchAll(/<si\b[\s\S]*?<\/si>/gi)]
     .map(match => xmlText(match[0], /<t\b[^>]*>([\s\S]*?)<\/t>/gi));
+  const dateStyles = excelDateFormatStyles(entries.get("xl/styles.xml") || "");
+  const date1904 = /<workbookPr\b[^>]*\bdate1904="(?:1|true)"/i.test(workbook);
   const targets = new Map();
   for (const match of relationships.matchAll(/<Relationship\b([^>]*)\/?>/gi)) {
     const attrs = Object.fromEntries([...match[1].matchAll(/([A-Za-z:]+)="([^"]*)"/g)].map(item => [item[1], item[2]]));
-    if (attrs.Id && attrs.Target && !String(attrs.Type || "").includes("external")) {
-      const target = attrs.Target.startsWith("/") ? attrs.Target.slice(1) : "xl/" + attrs.Target.replace(/^(\.\.\/)+/, "");
-      targets.set(attrs.Id, target.replace(/\\/g, "/"));
+    if (attrs.Id && attrs.Target && !String(attrs.TargetMode || "").toLowerCase().includes("external")) {
+      let target = attrs.Target.replace(/\\/g, "/");
+      if (target.startsWith("/")) target = target.slice(1);
+      else if (!target.startsWith("xl/")) target = "xl/" + target.replace(/^(\.\.\/)+/, "");
+      targets.set(attrs.Id, target);
     }
   }
   const sheets = [];
   for (const match of workbook.matchAll(/<sheet\b([^>]*)\/?>/gi)) {
     const attrs = Object.fromEntries([...match[1].matchAll(/([A-Za-z:]+)="([^"]*)"/g)].map(item => [item[1], item[2]]));
-    const relationId = attrs["r:id"];
-    const target = targets.get(relationId);
+    const target = targets.get(attrs["r:id"]);
     if (!target || !entries.has(target)) continue;
     const xml = entries.get(target);
     const rows = [];
-    for (const row of xml.matchAll(/<row\b[\s\S]*?<\/row>/gi)) {
+    for (const row of xml.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/gi)) {
+      const rowAttrs = Object.fromEntries([...row[1].matchAll(/([A-Za-z:]+)="([^"]*)"/g)].map(item => [item[1], item[2]]));
       const cells = [];
-      for (const cell of row[0].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)) {
-        const attrs = Object.fromEntries([...cell[1].matchAll(/([A-Za-z:]+)="([^"]*)"/g)].map(item => [item[1], item[2]]));
-        const value = cell[2].match(/<v>([\s\S]*?)<\/v>/i)?.[1] ?? "";
+      let fallbackColumn = 1;
+      for (const cell of row[2].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/gi)) {
+        const cellAttrs = Object.fromEntries([...cell[1].matchAll(/([A-Za-z:]+)="([^"]*)"/g)].map(item => [item[1], item[2]]));
+        const reference = cellAttrs.r || (excelColumnName(fallbackColumn) + String(rowAttrs.r || ""));
+        const column = excelColumnNumber(reference) || fallbackColumn;
+        fallbackColumn = column + 1;
+        const content = cell[2] || "";
+        const value = content.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i)?.[1] ?? "";
+        const formula = content.match(/<f\b[^>]*>([\s\S]*?)<\/f>/i)?.[1] ?? "";
         let display = "";
-        if (attrs.t === "s") display = sharedStrings[Number(value)] ?? "";
-        else if (attrs.t === "inlineStr") display = xmlText(cell[2], /<t\b[^>]*>([\s\S]*?)<\/t>/gi);
-        else if (attrs.t === "b") display = value === "1" ? "TRUE" : "FALSE";
-        else display = decodeEntities(value);
-        if (display !== "") cells.push((attrs.r || "") + "=" + display);
+        if (cellAttrs.t === "s") display = sharedStrings[Number(value)] ?? "";
+        else if (cellAttrs.t === "inlineStr") display = xmlText(content, /<t\b[^>]*>([\s\S]*?)<\/t>/gi);
+        else if (cellAttrs.t === "b") display = value === "1" ? "TRUE" : value === "0" ? "FALSE" : value;
+        else if (cellAttrs.t === "e") display = value || "#ERROR";
+        else if (cellAttrs.t === "str" || cellAttrs.t === "d") display = decodeEntities(value);
+        else {
+          display = decodeEntities(value);
+          const styleIndex = Number(cellAttrs.s || 0);
+          if (display !== "" && dateStyles[styleIndex]) {
+            const formattedDate = formatExcelDate(display, date1904);
+            if (formattedDate) display += " (تاريخ Excel: " + formattedDate + ")";
+          }
+        }
+        if (formula) display = (display || "—") + " [صيغة: " + decodeEntities(formula).slice(0, 240) + "]";
+        if (!display) display = "—";
+        cells.push({ column, reference, display });
       }
-      if (cells.length) rows.push(cells.join(" | "));
+      if (cells.length) {
+        cells.sort((a, b) => a.column - b.column);
+        const first = cells[0].column;
+        const last = cells[cells.length - 1].column;
+        const byColumn = new Map(cells.map(cell => [cell.column, cell]));
+        const rendered = [];
+        for (let column = first; column <= last; column++) {
+          const cell = byColumn.get(column);
+          const ref = cell?.reference || (excelColumnName(column) + String(rowAttrs.r || ""));
+          rendered.push(ref + "=" + (cell?.display || "—"));
+        }
+        rows.push(rendered.join(" | "));
+      }
     }
     if (rows.length) sheets.push("ورقة: " + decodeEntities(attrs.name || target) + "\n" + rows.join("\n"));
   }
@@ -283,7 +398,7 @@ export async function extractDocumentText(file) {
     const wanted = extension === "docx"
       ? ["word/document.xml", "word/footnotes.xml", "word/endnotes.xml"]
       : extension === "xlsx"
-        ? ["xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/sharedStrings.xml", ...Array.from({length:40},(_,i)=>"xl/worksheets/sheet"+(i+1)+".xml")]
+        ? ["xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/sharedStrings.xml", "xl/styles.xml", ...Array.from({length:40},(_,i)=>"xl/worksheets/sheet"+(i+1)+".xml")]
         : Array.from({length:80},(_,i)=>"ppt/slides/slide"+(i+1)+".xml");
     const entries = await unzipEntries(bytes, wanted);
     text = extension === "docx" ? extractDocx(entries) : extension === "xlsx" ? extractXlsx(entries) : extractPptx(entries);

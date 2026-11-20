@@ -3,6 +3,7 @@ const setVoiceStatus = message => { const status = $("voiceStatus"); if (status)
 // إدارة ونس تفتح من الصورة الشخصية فقط، داخل الصفحة نفسها.
 let authMode = "login";
 let currentUser = null;
+let naturalVoiceConfigured = false;
 let recognition = null;
 let pendingAttachments = [];
 let deepThinkEnabled = false;
@@ -66,6 +67,106 @@ async function api(path, body, method = "POST") {
   try { data = await response.json(); } catch {}
   if (!response.ok) throw new Error(data.error || "حصل خطأ في الاتصال بالخادم.");
   return data;
+}
+
+async function streamApi(path, body = {}, onDelta = () => {}, onMeta = () => {}) {
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/json",
+      "Accept": "text/event-stream"
+    },
+    body: JSON.stringify({ ...body, stream: true })
+  });
+  if (!response.ok) {
+    let data = {};
+    try { data = await response.json(); } catch {}
+    throw new Error(data.error || "تعذّر الاتصال بالخادم.");
+  }
+  if (!response.headers.get("content-type")?.includes("text/event-stream")) {
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    if (typeof data.reply === "string" && data.reply) onDelta(data.reply);
+    return data;
+  }
+  if (!response.body) throw new Error("المتصفح لم يفتح قناة البث المباشر.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = null;
+  let streamError = null;
+  let currentStreamMeta = null;
+  const processFrame = frame => {
+    let event = "message";
+    const dataLines = [];
+    for (const line of frame.split(/\r?\n/)) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    }
+    if (!dataLines.length) return;
+    let payload;
+    try { payload = JSON.parse(dataLines.join("\n")); } catch { return; }
+    if (event === "meta") { currentStreamMeta = payload; onMeta(payload); }
+    else if (event === "delta" && typeof payload.text === "string") onDelta(payload.text);
+    else if (event === "done") completed = payload;
+    else if (event === "error") {
+      streamError = new Error(payload.error || "تعذّر إكمال الرد المباشر.");
+      streamError.meta = currentStreamMeta;
+    }
+  };
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let boundary;
+      while ((boundary = buffer.search(/\r?\n\r?\n/)) !== -1) {
+        const match = buffer.slice(boundary).match(/^\r?\n\r?\n/);
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + match[0].length);
+        processFrame(frame);
+        if (streamError) throw streamError;
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) processFrame(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  if (streamError) throw streamError;
+  if (!completed) throw new Error("انقطع الاتصال قبل وصول الرد النهائي. جرّب إعادة المحاولة.");
+  return completed;
+}
+
+async function requestStreamedReply(path, body, pendingRow = null, onMeta = () => {}) {
+  let streamedRow = null;
+  try {
+    const result = await streamApi(path, body, delta => {
+      if (!streamedRow) {
+        pendingRow?.remove();
+        streamedRow = addStreamingAssistantMessage();
+      }
+      streamedRow.content.textContent += delta;
+      const messages = $("messages");
+      messages.scrollTop = messages.scrollHeight;
+    }, onMeta);
+    streamedRow?.row.remove();
+    return result;
+  } catch (error) {
+    streamedRow?.row.remove();
+    pendingRow?.remove();
+    if (path === "/api/chat/edit" && error?.meta?.forked && error.meta.conversationId) {
+      currentConversationId = String(error.meta.conversationId);
+      try {
+        await loadConversations({ selectLatest: false });
+        await openConversation(currentConversationId);
+      } catch {
+        // Keep the original stream error as the user-facing diagnostic.
+      }
+    }
+    throw error;
+  }
 }
 
 let notificationItems = [];
@@ -133,6 +234,10 @@ function stopPresenceHeartbeat() {
   if (presenceHeartbeatTimer) clearInterval(presenceHeartbeatTimer);
   presenceHeartbeatTimer = null;
 }
+
+window.addEventListener("pagehide", () => {
+  try { stopRealtimeVoice(); } catch {}
+});
 function startPresenceHeartbeat() {
   stopPresenceHeartbeat();
   if (!currentUser || currentUser.id === "guest") return;
@@ -170,6 +275,10 @@ function showApp(user) {
     : "مسجّل الدخول: " + user.name;
   updateAdminShortcut();
   $("notificationsBtn").hidden = user.id === "guest";
+  $("voiceCallBtn").hidden = user.id === "guest" || !naturalVoiceConfigured;
+  if (user.id !== "guest" && !naturalVoiceConfigured) {
+    setVoiceStatus("المكالمة الصوتية المباشرة غير مفعّلة على الخادم حاليًا؛ تقدر تستخدم الإملاء وصوت الجهاز.");
+  }
   $("notificationsPanel").hidden = true;
   startPresenceHeartbeat();
   if (user.id !== "guest") loadConversations().catch(error => setVoiceStatus("تعذّر تحميل المحادثات: " + error.message));
@@ -272,6 +381,7 @@ $("authForm").addEventListener("submit", async event => {
   }
 });
 $("logoutBtn").addEventListener("click", async () => {
+  stopRealtimeVoice();
   try { await api("/api/auth/logout", {}); } catch {}
   currentUser = null;
   $("messages").replaceChildren();
@@ -436,7 +546,12 @@ async function openConversation(id) {
     if (currentConversationId !== requestedId) return;
     loading.remove();
     setCurrentConversationTitle(data.title || "محادثة");
-    for (const item of data.messages || []) addMessage(item.content, item.role);
+    if (data.hasMore && data.nextBefore) renderOlderMessagesControl(data.nextBefore);
+    for (const item of data.messages || []) {
+      const row = addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq);
+      if (item.hasAttachments) row.dataset.hasAttachments = "true";
+    }
+    rebuildChatMessageEditActions();
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
     await loadConversations({ selectLatest: false });
     closeConversationSidebar();
@@ -444,6 +559,67 @@ async function openConversation(id) {
     loading.remove();
     addMessage("تعذّر تحميل المحادثة: " + error.message);
     setVoiceStatus("تعذّر تحميل المحادثة: " + error.message);
+  }
+}
+
+function renderOlderMessagesControl(before) {
+  const messages = $("messages");
+  const existing = $("loadOlderMessagesBtn");
+  if (existing) existing.remove();
+  if (!before) return;
+  const button = document.createElement("button");
+  button.id = "loadOlderMessagesBtn";
+  button.type = "button";
+  button.className = "text-btn load-older-messages";
+  button.dataset.before = String(before);
+  button.textContent = "عرض رسائل أقدم";
+  button.addEventListener("click", () => loadOlderMessages(button));
+  messages.insertBefore(button, messages.firstChild);
+}
+
+async function loadOlderMessages(button) {
+  if (!button || button.disabled || !currentConversationId) return;
+  const conversationId = currentConversationId;
+  const before = Number(button.dataset.before);
+  if (!Number.isSafeInteger(before) || before <= 0) {
+    button.remove();
+    setVoiceStatus("تعذّر تحديد موضع الرسائل الأقدم.");
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "جاري تحميل الرسائل الأقدم…";
+  const messages = $("messages");
+  const previousHeight = messages.scrollHeight;
+  const previousTop = messages.scrollTop;
+  try {
+    const data = await api(
+      "/api/chat/history?conversationId=" + encodeURIComponent(conversationId) + "&before=" + encodeURIComponent(String(before)),
+      undefined,
+      "GET"
+    );
+    if (currentConversationId !== conversationId) return;
+    const items = Array.isArray(data.messages) ? data.messages : [];
+    if (!items.length) {
+      button.remove();
+      setVoiceStatus("وصلت لبداية المحادثة.");
+      return;
+    }
+    const older = document.createDocumentFragment();
+    for (const item of items) {
+      const row = addMessage(item.content, item.role, [], [], [], [], [], [], item.id, item.seq, older);
+      if (item.hasAttachments) row.dataset.hasAttachments = "true";
+    }
+    button.remove();
+    messages.insertBefore(older, messages.firstChild);
+    rebuildChatMessageEditActions(messages);
+    if (data.hasMore && data.nextBefore) {
+      renderOlderMessagesControl(data.nextBefore);
+    }
+    messages.scrollTop = previousTop + (messages.scrollHeight - previousHeight);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "تعذّر التحميل — حاول مرة تانية";
+    setVoiceStatus("تعذّر تحميل الرسائل الأقدم: " + error.message);
   }
 }
 
@@ -803,6 +979,26 @@ function appendMarkdownText(container, value) {
 function appendMessageText(container, text) {
   appendMarkdownText(container, text);
 }
+
+function addStreamingAssistantMessage() {
+  const row = document.createElement("div");
+  row.className = "message assistant streaming-message";
+  const avatar = document.createElement("img");
+  avatar.className = "mini-avatar talking";
+  avatar.src = appSettings.avatarDataUrl || "/avatar.jpg";
+  avatar.alt = "ونس";
+  avatar.width = 30;
+  avatar.height = 30;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const content = document.createElement("div");
+  content.className = "bubble-text";
+  content.textContent = "";
+  bubble.appendChild(content);
+  row.append(avatar, bubble);
+  $("messages").appendChild(row);
+  return { row, content };
+}
 function hideExternalLinksFromDisplay(value) {
   let text = String(value ?? "");
   // Keep readable Markdown labels, but never expose external destinations.
@@ -815,10 +1011,82 @@ function hideExternalLinksFromDisplay(value) {
   return text.trim();
 }
 
-function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = []) {
+function attachChatMessageEditActions(assistantRow, userRow) {
+  if (!assistantRow || !userRow || !assistantRow.classList.contains("assistant") ||
+      !userRow.classList.contains("user") || assistantRow.querySelector(".message-retry-actions") ||
+      !currentUser || currentUser.id === "guest" || !currentConversationId ||
+      !userRow.dataset.messageId || userRow.dataset.hasAttachments === "true") return;
+  const retryActions = document.createElement("div");
+  retryActions.className = "message-retry-actions";
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "إعادة توليد الرد";
+  retry.addEventListener("click", async () => {
+    retry.disabled = true;
+    try {
+      const result = await requestStreamedReply("/api/chat/edit", {
+        conversationId: currentConversationId,
+        messageId: userRow.dataset.messageId,
+        deepThink: deepThinkEnabled
+      }, null, meta => {
+        if (meta.conversationId) currentConversationId = meta.conversationId;
+      });
+      currentConversationId = result.conversationId || currentConversationId;
+      await loadConversations({ selectLatest: false });
+      await openConversation(currentConversationId);
+      if (appSettings.autoSpeak) $("messages").lastElementChild?.querySelector(".voice-replay-btn")?.click();
+    } catch (error) {
+      setVoiceStatus("تعذّرت إعادة توليد الرد: " + error.message);
+      retry.disabled = false;
+    }
+  });
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.textContent = "تعديل سؤالي";
+  edit.addEventListener("click", async () => {
+    const original = userRow.querySelector(".bubble-text")?.textContent || "";
+    const revised = window.prompt("عدّل سؤالك ثم اضغط موافق لإعادة توليد الرد", original);
+    if (revised === null || !revised.trim() || revised.trim() === original.trim()) return;
+    edit.disabled = true;
+    retry.disabled = true;
+    try {
+      const result = await requestStreamedReply("/api/chat/edit", {
+        conversationId: currentConversationId,
+        messageId: userRow.dataset.messageId,
+        message: revised.trim(),
+        deepThink: deepThinkEnabled
+      }, null, meta => {
+        if (meta.conversationId) currentConversationId = meta.conversationId;
+      });
+      currentConversationId = result.conversationId || currentConversationId;
+      await loadConversations({ selectLatest: false });
+      await openConversation(currentConversationId);
+    } catch (error) {
+      setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
+      edit.disabled = false;
+      retry.disabled = false;
+    }
+  });
+  retryActions.append(retry, edit);
+  assistantRow.querySelector(".bubble")?.appendChild(retryActions);
+}
+
+function rebuildChatMessageEditActions(container = $("messages")) {
+  if (!container || !currentUser || currentUser.id === "guest" || !currentConversationId) return;
+  const rows = Array.from(container.querySelectorAll(".message"));
+  for (let index = 1; index < rows.length; index++) {
+    const userRow = rows[index - 1];
+    const assistantRow = rows[index];
+    if (userRow.classList.contains("user") && assistantRow.classList.contains("assistant")) {
+      attachChatMessageEditActions(assistantRow, userRow);
+    }
+  }
+}
+
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = [], messageId = null, messageSeq = null, targetContainer = $("messages")) {
   const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
-  const messageContainer = $("messages");
+  const messageContainer = targetContainer || $("messages");
   const previousRow = messageContainer.lastElementChild;
   const hasExtras = (steps?.length || attachments?.length || generatedImages?.length || generatedProjects?.length || activity?.length || sources?.length);
   if (who === "assistant" && replyKey && !hasExtras &&
@@ -827,6 +1095,8 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   }
   const row = document.createElement("div");
   row.className = "message " + who;
+  if (messageId) row.dataset.messageId = String(messageId);
+  if (messageSeq !== null && messageSeq !== undefined) row.dataset.messageSeq = String(messageSeq);
   if (who === "assistant") {
     const avatar = document.createElement("img");
     avatar.className = "mini-avatar";
@@ -950,53 +1220,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       bubble.appendChild(sourceTrace);
     }
   }
-  if (who === "assistant" && previousRow?.classList.contains("user") &&
-      currentUser && currentUser.id !== "guest" && currentConversationId &&
-      !previousRow.querySelector(".message-attachments")) {
-    const retryActions = document.createElement("div");
-    retryActions.className = "message-retry-actions";
-    const retry = document.createElement("button");
-    retry.type = "button";
-    retry.textContent = "إعادة توليد الرد";
-    retry.addEventListener("click", async () => {
-      retry.disabled = true;
-      try {
-        const result = await api("/api/chat/retry", { conversationId: currentConversationId, deepThink: deepThinkEnabled });
-        row.remove();
-        addMessage(result.reply, "assistant", result.steps || [], [], result.generatedImages || [], result.generatedProjects || [], result.activity || [], result.sources || []);
-        await loadConversations({ selectLatest: false });
-        if (appSettings.autoSpeak) $("messages").lastElementChild?.querySelector(".voice-replay-btn")?.click();
-      } catch (error) {
-        setVoiceStatus("تعذّرت إعادة توليد الرد: " + error.message);
-        retry.disabled = false;
-      }
-    });
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.textContent = "تعديل سؤالي";
-    edit.addEventListener("click", async () => {
-      const original = previousRow.querySelector(".bubble-text")?.textContent || "";
-      const revised = window.prompt("عدّل سؤالك ثم اضغط موافق لإعادة توليد الرد", original);
-      if (revised === null || !revised.trim() || revised.trim() === original.trim()) return;
-      edit.disabled = true;
-      retry.disabled = true;
-      try {
-        const result = await api("/api/chat/retry", {
-          conversationId: currentConversationId, message: revised.trim(), deepThink: deepThinkEnabled
-        });
-        previousRow.querySelector(".bubble-text").textContent = revised.trim();
-        row.remove();
-        addMessage(result.reply, "assistant", result.steps || [], [], result.generatedImages || [], result.generatedProjects || [], result.activity || [], result.sources || []);
-        await loadConversations({ selectLatest: false });
-      } catch (error) {
-        setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
-        edit.disabled = false;
-        retry.disabled = false;
-      }
-    });
-    retryActions.append(retry, edit);
-    bubble.appendChild(retryActions);
-  }
+  if (who === "assistant") attachChatMessageEditActions(row, previousRow);
   if (who === "assistant" && currentUser && currentUser.id !== "guest" && displayText.trim().length > 1) {
     const feedback = document.createElement("div");
     feedback.className = "reply-feedback";
@@ -1075,7 +1299,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   row.appendChild(bubble);
   if (who === "assistant") row.dataset.replyKey = replyKey;
   messageContainer.appendChild(row);
-  messageContainer.scrollTop = messageContainer.scrollHeight;
+  if (typeof messageContainer.scrollTop === "number") messageContainer.scrollTop = messageContainer.scrollHeight;
   return row;
 }
 function setBusy(busy) {
@@ -1270,6 +1494,351 @@ function readAsDataUrl(file) {
     reader.readAsDataURL(file);
   });
 }
+
+let pdfJsLibraryPromise = null;
+let tesseractLibraryPromise = null;
+
+async function loadWensPdfJs() {
+  if (!pdfJsLibraryPromise) {
+    pdfJsLibraryPromise = import("https://cdn.jsdelivr.net/npm/pdfjs-dist@6.5.438/build/pdf.mjs")
+      .then(pdfjs => {
+        pdfjs.GlobalWorkerOptions.workerSrc =
+          "https://cdn.jsdelivr.net/npm/pdfjs-dist@6.5.438/build/pdf.worker.mjs";
+        return pdfjs;
+      })
+      .catch(error => {
+        pdfJsLibraryPromise = null;
+        const wrapped = new Error("تعذّر تحميل قارئ PDF الآمن من الإنترنت. تحقق من الاتصال وحاول مرة أخرى.");
+        wrapped.code = "PDFJS_LOAD_FAILED";
+        wrapped.cause = error;
+        throw wrapped;
+      });
+  }
+  return pdfJsLibraryPromise;
+}
+
+function loadWensTesseract() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (!tesseractLibraryPromise) {
+    tesseractLibraryPromise = new Promise((resolve, reject) => {
+      // Remove a stale failed script so a later retry doesn't wait on an event already fired.
+      const stale = document.querySelector('script[data-wens-tesseract="true"]');
+      if (stale) stale.remove();
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      script.async = true;
+      script.crossOrigin = "anonymous";
+      script.dataset.wensTesseract = "true";
+      script.onload = () => window.Tesseract
+        ? resolve(window.Tesseract)
+        : reject(new Error("محرك OCR لم يبدأ بشكل صحيح."));
+      script.onerror = () => {
+        script.remove();
+        reject(new Error("تعذّر تحميل محرك OCR. تحقق من اتصال الإنترنت."));
+      };
+      document.head.appendChild(script);
+    }).catch(error => {
+      tesseractLibraryPromise = null;
+      throw error;
+    });
+  }
+  return tesseractLibraryPromise;
+}
+
+let legacyDocParserPromise = null;
+
+async function loadWensLegacyDocParser() {
+  if (!legacyDocParserPromise) {
+    legacyDocParserPromise = import("https://esm.sh/@file-viewer/doc@3.3.0?bundle&target=es2022")
+      .then(module => {
+        if (typeof module.parseMsDoc !== "function") {
+          throw new Error("قارئ Word القديم لم يوفّر دالة تحليل صالحة.");
+        }
+        return module;
+      })
+      .catch(error => {
+        legacyDocParserPromise = null;
+        throw error;
+      });
+  }
+  return legacyDocParserPromise;
+}
+
+function legacyDocInlineText(inlines) {
+  return (Array.isArray(inlines) ? inlines : []).map(node => {
+    if (!node || typeof node !== "object") return "";
+    if (node.type === "text") return String(node.text || "");
+    if (node.type === "lineBreak" || node.type === "pageBreak") return "\n";
+    if (node.type === "image") return "[صورة مضمّنة]";
+    if (node.type === "attachment") return "[مرفق مضمّن: " + String(node.asset?.name || "ملف") + "]";
+    return "";
+  }).join("").replace(/\u0000/g, "").trim();
+}
+
+async function extractLegacyDocOnDevice(file) {
+  if (!file || file.size <= 0 || file.size > 8 * 1024 * 1024) {
+    throw new Error("حجم ملف DOC فارغ أو يتجاوز 8 ميجابايت.");
+  }
+  setAttachmentStatus("تحميل قارئ Word القديم...");
+  const parser = await loadWensLegacyDocParser();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const parsed = parser.parseMsDoc(bytes, { maxPictureBytes: 0 });
+  if (!parsed || parsed.kind !== "msdoc" || !Array.isArray(parsed.blocks)) {
+    throw new Error("ملف DOC لا يحتوي على بنية Word قابلة للقراءة.");
+  }
+  if (parsed.blocks.length > 10000) {
+    throw new Error("ملف DOC يحتوي على عناصر أكثر من حد القراءة الآمن.");
+  }
+  const sections = [];
+  let rowsCount = 0;
+  let cellsCount = 0;
+  for (const block of parsed.blocks) {
+    if (block?.type === "paragraph") {
+      const text = String(block.text || legacyDocInlineText(block.inlines)).trim();
+      if (text) sections.push(text);
+    } else if (block?.type === "table") {
+      const tableRows = [];
+      for (const row of block.rows || []) {
+        rowsCount += 1;
+        if (rowsCount > 10000) throw new Error("ملف DOC يحتوي على أكثر من 10 آلاف صف جداول.");
+        const cells = [];
+        for (const cell of row.cells || []) {
+          if (cell.hidden) continue;
+          cellsCount += 1;
+          if (cellsCount > 100000) throw new Error("عدد خلايا جداول DOC يتجاوز حد القراءة الآمن.");
+          const value = (cell.paragraphs || [])
+            .map(paragraph => String(paragraph.text || legacyDocInlineText(paragraph.inlines)).trim())
+            .filter(Boolean)
+            .join(" / ");
+          cells.push(value || "—");
+        }
+        if (cells.length) tableRows.push(cells.join(" | "));
+      }
+      if (tableRows.length) sections.push("جدول:\n" + tableRows.join("\n"));
+    } else if (block?.type === "attachments") {
+      for (const item of block.items || []) {
+        sections.push("[مرفق مضمّن في المستند: " + String(item.name || "ملف") + "]");
+      }
+    }
+  }
+  const output = sections.join("\n\n").trim();
+  if (!output) throw new Error("لم يتم العثور على نص واضح داخل ملف DOC.");
+  const truncated = output.length > 90000;
+  const warnings = Array.isArray(parsed.warnings) ? parsed.warnings : [];
+  const text = output.slice(0, 90000) + (truncated
+    ? "\n\n[تم اختصار نص DOC عند 90 ألف حرف. أرسل المستند على أجزاء لقراءة الباقي.]"
+    : "");
+  const warningNote = warnings.length
+    ? "\n\n[ملاحظة: أبلغ قارئ DOC عن " + warnings.length + " تنبيهًا أثناء التحليل؛ راجع المستند الأصلي للجداول أو العناصر المعقدة.]"
+    : "";
+  return {
+    text: text + warningNote,
+    blockCount: parsed.blocks.length,
+    tableRows: rowsCount,
+    warnings: warnings.length,
+    truncated
+  };
+}
+
+let sheetJsLibraryPromise = null;
+
+async function loadWensSheetJs() {
+  if (!sheetJsLibraryPromise) {
+    sheetJsLibraryPromise = (async () => {
+      const xlsx = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs");
+      try {
+        const codepages = await import("https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/cpexcel.full.mjs");
+        xlsx.set_cptable?.(codepages);
+      } catch {
+        // Core parsing remains available for codepages supported natively by the browser build.
+      }
+      if (typeof xlsx.read !== "function" || !xlsx.utils?.decode_range) {
+        throw new Error("مكتبة قراءة Excel لم تبدأ بشكل صحيح.");
+      }
+      return xlsx;
+    })().catch(error => {
+      sheetJsLibraryPromise = null;
+      throw error;
+    });
+  }
+  return sheetJsLibraryPromise;
+}
+
+async function extractLegacyXlsOnDevice(file) {
+  if (!file || file.size <= 0 || file.size > 8 * 1024 * 1024) {
+    throw new Error("حجم ملف XLS فارغ أو يتجاوز 8 ميجابايت.");
+  }
+  const XLSX = await loadWensSheetJs();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const workbook = XLSX.read(bytes, {
+    type: "array",
+    cellDates: true,
+    cellNF: true,
+    cellText: true,
+    dense: false,
+    WTF: false
+  });
+  const names = Array.isArray(workbook.SheetNames) ? workbook.SheetNames : [];
+  if (!names.length) throw new Error("ملف XLS لا يحتوي على أوراق عمل قابلة للقراءة.");
+  if (names.length > 30) throw new Error("ملف XLS يحتوي على أكثر من 30 ورقة. قسّمه إلى ملفات أصغر.");
+  const sections = [];
+  let totalRows = 0;
+  let totalCells = 0;
+  let totalCharacters = 0;
+  let truncated = false;
+  for (const name of names) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet || !sheet["!ref"]) continue;
+    const range = XLSX.utils.decode_range(sheet["!ref"]);
+    const rowCount = range.e.r - range.s.r + 1;
+    const columnCount = range.e.c - range.s.c + 1;
+    if (rowCount > 10000 || columnCount > 100) {
+      throw new Error("إحدى أوراق XLS تتجاوز 10 آلاف صف أو 100 عمود. قسّم الورقة قبل قراءتها.");
+    }
+    totalRows += rowCount;
+    if (totalRows > 20000) {
+      truncated = true;
+      break;
+    }
+    const rows = [];
+    for (let row = range.s.r; row <= range.e.r; row++) {
+      const values = [];
+      let rowHasValue = false;
+      for (let column = range.s.c; column <= range.e.c; column++) {
+        totalCells += 1;
+        if (totalCells > 250000) {
+          truncated = true;
+          break;
+        }
+        const address = XLSX.utils.encode_cell({ r: row, c: column });
+        const cell = sheet[address];
+        let display = "—";
+        if (cell && cell.t !== "z") {
+          if (typeof cell.w === "string" && cell.w !== "") display = cell.w;
+          else if (cell.t === "b") display = cell.v ? "TRUE" : "FALSE";
+          else if (cell.t === "e") display = String(cell.w || cell.v || "#ERROR");
+          else if (cell.v instanceof Date && Number.isFinite(cell.v.getTime())) {
+            display = cell.w || cell.v.toISOString().slice(0, 10);
+          } else if (cell.v !== undefined && cell.v !== null && cell.v !== "") {
+            display = String(cell.v);
+          }
+          if (cell.f) display += " [صيغة: " + String(cell.f).slice(0, 160) + "]";
+          if (cell.t === "e") display = "خطأ: " + display;
+        }
+        if (display !== "—") rowHasValue = true;
+        values.push(XLSX.utils.encode_col(column) + "=" + display);
+      }
+      if (totalCells > 250000) break;
+      if (rowHasValue) rows.push("صف " + (row + 1) + ": " + values.join(" | "));
+      if (totalCharacters + rows.join("\n").length > 90000) {
+        truncated = true;
+        break;
+      }
+    }
+    if (rows.length) {
+      const section = "ورقة: " + name + "\n" + rows.join("\n");
+      sections.push(section);
+      totalCharacters += section.length;
+    }
+    if (truncated || totalCharacters > 90000) break;
+  }
+  const combined = sections.join("\n\n").trim();
+  if (!combined) throw new Error("لم يتم العثور على بيانات قابلة للقراءة في أوراق XLS.");
+  return {
+    text: combined.slice(0, 90000) + (truncated ? "\n\n[تم اختصار ملف XLS عند حد القراءة. أرسل الأوراق على أجزاء لقراءة الباقي.]" : ""),
+    sheetCount: sections.length,
+    rowCount: Math.min(totalRows, 20000),
+    truncated
+  };
+}
+
+async function extractPdfTextOnDevice(file) {
+  const pdfjs = await loadWensPdfJs();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = pdfjs.getDocument({
+    data: bytes,
+    isEvalSupported: false,
+    useSystemFonts: true
+  });
+  let pdf;
+  let ocrWorker = null;
+  let ocrPages = 0;
+  const pageTexts = [];
+  try {
+    pdf = await loadingTask.promise;
+    if (!pdf.numPages || pdf.numPages > 100) {
+      throw new Error("ملف PDF يجب ألا يتجاوز 100 صفحة في عملية القراءة الواحدة.");
+    }
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      setAttachmentStatus("قراءة صفحة PDF " + pageNumber + " من " + pdf.numPages + "...");
+      const page = await pdf.getPage(pageNumber);
+      const textContent = await page.getTextContent();
+      const selectableText = (textContent.items || [])
+        .map(item => String(item.str || "") + (item.hasEOL ? "\n" : " "))
+        .join("")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+      if (selectableText.replace(/\s/g, "").length >= 25) {
+        pageTexts.push("صفحة " + pageNumber + ":\n" + selectableText);
+        page.cleanup?.();
+        continue;
+      }
+      if (ocrPages >= 8) {
+        page.cleanup?.();
+        throw new Error("الملف يحتوي على أكثر من 8 صفحات مصوّرة. قسّم PDF إلى ملفات أصغر حتى نحافظ على سرعة وأمان هاتفك.");
+      }
+      if (!ocrWorker) {
+        setAttachmentStatus("تحميل محرك OCR العربي والإنجليزي لأول مرة...");
+        const tesseract = await loadWensTesseract();
+        ocrWorker = await tesseract.createWorker("ara+eng", 1, {
+          workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
+          corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1",
+          langPath: "https://tessdata.projectnaptha.com/4.0.0",
+          logger: progress => {
+            if (progress?.status) {
+              const percent = Number.isFinite(progress.progress)
+                ? " " + Math.round(progress.progress * 100) + "%"
+                : "";
+              setAttachmentStatus("تجهيز OCR: " + progress.status + percent);
+            }
+          }
+        });
+      }
+      ocrPages += 1;
+      const viewport = page.getViewport({ scale: 1 });
+      const scale = Math.max(1.2, Math.min(2, 1800 / Math.max(viewport.width, viewport.height)));
+      const renderViewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(renderViewport.width);
+      canvas.height = Math.ceil(renderViewport.height);
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("متصفح الهاتف لا يدعم تجهيز صورة الصفحة لعملية OCR.");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+      setAttachmentStatus("تحويل الصفحة المصوّرة إلى نص عربي — صفحة " + pageNumber + "...");
+      const recognized = await ocrWorker.recognize(canvas);
+      const ocrText = String(recognized?.data?.text || "").trim();
+      if (ocrText) pageTexts.push("صفحة " + pageNumber + " (OCR):\n" + ocrText);
+      else pageTexts.push("صفحة " + pageNumber + ": لم يتمكن OCR من قراءة نص واضح.");
+      canvas.width = 0;
+      canvas.height = 0;
+      page.cleanup?.();
+    }
+  } finally {
+    try { await ocrWorker?.terminate(); } catch {}
+    try { await pdf?.cleanup?.(); } catch {}
+    try { await loadingTask.destroy?.(); } catch {}
+  }
+  const combined = pageTexts.join("\n\n").trim();
+  if (!combined) throw new Error("لم يتم العثور على نص قابل للقراءة في صفحات PDF.");
+  const limit = 95000;
+  const text = combined.length > limit
+    ? combined.slice(0, limit) + "\n\n[تم اختصار النص المستخرج عند 95 ألف حرف. أرسل الملف على أجزاء لقراءة الباقي.]"
+    : combined;
+  return { text, ocrPages, pageCount: pdf?.numPages || pageTexts.length };
+}
 function renderAttachmentPreview() {
   const preview = $("attachmentsPreview");
   preview.replaceChildren();
@@ -1288,7 +1857,7 @@ function renderAttachmentPreview() {
       chip.appendChild(icon);
     }
     const label = document.createElement("span");
-    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : item.kind === "document" ? " (جاهز للقراءة)" : "");
+    label.textContent = item.name + (item.kind === "file" ? " (اسم الملف فقط)" : item.kind === "document" ? " (جاهز للقراءة)" : item.localExtracted ? " (نص مستخرج على الجهاز)" : "");
     chip.appendChild(label);
     const remove = document.createElement("button");
     remove.type = "button";
@@ -1352,7 +1921,66 @@ async function addSelectedFile(file) {
   } else {
     const extension = String(file.name.split(".").pop() || "").toLowerCase();
     const textExtensions = ["txt","md","csv","json","xml","html","js","css","log"];
-    if (textExtensions.includes(extension)) {
+    if (extension === "doc") {
+      try {
+        setAttachmentStatus("قراءة مستند Word القديم على جهازك...");
+        const result = await extractLegacyDocOnDevice(file);
+        pendingAttachments.push({
+          kind: "text", name: file.name, type: "application/msword",
+          size: file.size, text: result.text, localExtracted: true,
+          blockCount: result.blockCount, tableRows: result.tableRows
+        });
+        setAttachmentStatus("تم استخراج محتوى DOC وجداوله محليًا. " + result.blockCount + " عنصر، " + result.tableRows + " صف جدول." + (result.warnings ? " توجد تحذيرات في بعض عناصر المستند." : ""));
+      } catch (error) {
+        setAttachmentStatus(error.message || "تعذّرت قراءة ملف DOC القديم.", true);
+      }
+    } else if (extension === "xls") {
+      try {
+        setAttachmentStatus("قراءة أوراق ملف Excel القديم على جهازك...");
+        const result = await extractLegacyXlsOnDevice(file);
+        pendingAttachments.push({
+          kind: "text", name: file.name, type: "application/vnd.ms-excel",
+          size: file.size, text: result.text, localExtracted: true,
+          sheetCount: result.sheetCount, rowCount: result.rowCount
+        });
+        setAttachmentStatus("تم استخراج " + result.rowCount + " صف من " + result.sheetCount + " ورقة Excel قديمة على جهازك." + (result.truncated ? " تم اختصار المحتوى عند الحد الآمن." : ""));
+      } catch (error) {
+        setAttachmentStatus(error.message || "تعذّرت قراءة ملف XLS القديم.", true);
+      }
+    } else if (extension === "pdf") {
+      if (file.size > 8 * 1024 * 1024) {
+        setAttachmentStatus("حجم PDF يتجاوز 8 ميجابايت. اختَر نسخة أصغر.", true);
+        return;
+      }
+      try {
+        const result = await extractPdfTextOnDevice(file);
+        pendingAttachments.push({
+          kind: "text", name: file.name, type: "application/pdf",
+          size: file.size, text: result.text, localExtracted: true,
+          ocrPages: result.ocrPages, pageCount: result.pageCount
+        });
+        setAttachmentStatus(
+          result.ocrPages
+            ? "تم استخراج نص PDF على جهازك، مع OCR لـ " + result.ocrPages + " صفحة مصوّرة."
+            : "تم استخراج النص من " + result.pageCount + " صفحة PDF على جهازك."
+        );
+      } catch (error) {
+        if (error?.code === "PDFJS_LOAD_FAILED") {
+          try {
+            const dataUrl = await readAsDataUrl(file);
+            pendingAttachments.push({
+              kind: "document", name: file.name, type: "application/pdf",
+              size: file.size, data: dataUrl.split(",")[1]
+            });
+            setAttachmentStatus("تعذّر تحميل قارئ PDF المحلي؛ أُرسل الملف للقارئ النصي المعتاد. صفحات المسح الضوئي قد لا تُقرأ بهذه الطريقة.", true);
+          } catch {
+            setAttachmentStatus("تعذّر تجهيز ملف PDF من الهاتف.", true);
+          }
+        } else {
+          setAttachmentStatus(error.message || "تعذّرت قراءة ملف PDF.", true);
+        }
+      }
+    } else if (textExtensions.includes(extension)) {
       if (file.size > 150 * 1024) {
         setAttachmentStatus("الملف النصي أكبر من 150 كيلوبايت.", true);
         return;
@@ -1481,7 +2109,7 @@ $("chatForm").addEventListener("submit", async event => {
   const text = message || (selected.some(item => item.kind === "image")
     ? "افحص الصورة المرفقة واشرح لي ما يظهر فيها."
     : "ساعدني في قراءة المرفقات المرسلة.");
-  addMessage(text, "user", [], selected);
+  const userRow = addMessage(text, "user", [], selected);
   const payload = attachmentPayload();
   const deepThink = deepThinkEnabled;
   $("messageInput").value = "";
@@ -1496,9 +2124,13 @@ $("chatForm").addEventListener("submit", async event => {
       currentConversationId = created.conversation.id;
       setCurrentConversationTitle(created.conversation.title);
     }
-    const data = await api("/api/chat", {
+    const data = await requestStreamedReply("/api/chat", {
       message: text, attachments: payload, deepThink, conversationId: currentConversationId
+    }, progressRow, meta => {
+      if (meta.conversationId) currentConversationId = meta.conversationId;
+      if (meta.userMessageId) userRow.dataset.messageId = meta.userMessageId;
     });
+    if (data.userMessageId) userRow.dataset.messageId = data.userMessageId;
     if (data.conversationId) currentConversationId = data.conversationId;
     progressRow.remove();
     const assistantRow = addMessage(
@@ -1540,7 +2172,11 @@ $("markNotificationsReadBtn").addEventListener("click", async () => {
 let activeVoicePeer = null;
 let activeVoiceDataChannel = null;
 let activeVoiceAudio = null;
+let activeVoiceMicStream = null;
+let activeVoiceCallConversationId = null;
 let voiceFinishTimer = null;
+const voiceCallInputItems = new Map();
+const voiceCallOutputItems = new Map();
 
 function setAvatarSpeaking(active) {
   document.querySelectorAll(".mini-avatar").forEach(image => image.classList.toggle("talking", active));
@@ -1552,6 +2188,7 @@ function stopRealtimeVoice() {
   try { activeVoiceDataChannel?.close(); } catch {}
   try { activeVoicePeer?.close(); } catch {}
   try { activeVoiceAudio?.pause(); } catch {}
+  try { activeVoiceMicStream?.getTracks?.().forEach(track => track.stop()); } catch {}
   if (activeVoiceAudio) {
     activeVoiceAudio.srcObject = null;
     activeVoiceAudio.closest(".voice-player-shell")?.remove();
@@ -1559,7 +2196,28 @@ function stopRealtimeVoice() {
   activeVoicePeer = null;
   activeVoiceDataChannel = null;
   activeVoiceAudio = null;
+  activeVoiceMicStream = null;
+  for (const record of voiceCallInputItems.values()) {
+    if (!record.completed) {
+      record.text = record.text && !record.isPlaceholder
+        ? "تفريغ جزئي: " + record.text
+        : "لم يكتمل تفريغ هذا المقطع الصوتي قبل إنهاء المكالمة.";
+      record.isPlaceholder = false;
+      record.completed = true;
+      voiceCallRowText(record.row, record.text);
+      saveVoiceCallTranscript(record, "user");
+    }
+  }
+  activeVoiceCallConversationId = null;
+  voiceCallInputItems.clear();
+  voiceCallOutputItems.clear();
   setAvatarSpeaking(false);
+  const callButton = $("voiceCallBtn");
+  if (callButton) {
+    callButton.textContent = "🎧 مكالمة صوتية";
+    callButton.setAttribute("aria-pressed", "false");
+    callButton.disabled = false;
+  }
 }
 
 function waitForIce(peer) {
@@ -1575,6 +2233,283 @@ function waitForIce(peer) {
     };
     peer.addEventListener("icegatheringstatechange", onChange);
   });
+}
+
+function voiceCallRowText(row, text) {
+  if (!row) return;
+  let target = row.querySelector(".bubble-text");
+  if (!target) {
+    target = row.querySelector(".bubble");
+  }
+  if (target) target.textContent = String(text || "");
+  const messages = $("messages");
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function ensureVoiceCallTranscriptRow(map, itemId, role, placeholder) {
+  const key = String(itemId || crypto.randomUUID());
+  let record = map.get(key);
+  if (record) return record;
+  const row = addMessage(placeholder, role);
+  row.classList.add("voice-call-transcript");
+  row.dataset.voiceItemId = key;
+  row.dataset.voiceConversationId = String(activeVoiceCallConversationId || "");
+  record = {
+    row,
+    messageId: crypto.randomUUID(),
+    text: "",
+    saved: false,
+    saving: null,
+    persistQueue: Promise.resolve(),
+    lastQueuedText: "",
+    isPlaceholder: false,
+    completed: false
+  };
+  map.set(key, record);
+  return record;
+}
+
+async function saveVoiceCallTranscript(record, role) {
+  if (!record || !record.text.trim()) return record?.persistQueue || null;
+  const conversationId = String(record.row.dataset.voiceConversationId || activeVoiceCallConversationId || "");
+  if (!conversationId) return null;
+  const snapshot = record.text.trim().slice(0, 6000);
+  if (record.lastQueuedText === snapshot) return record.persistQueue;
+  record.lastQueuedText = snapshot;
+  const persist = async () => {
+    const result = await api("/api/voice/transcript", {
+      conversationId,
+      role,
+      text: snapshot,
+      messageId: record.messageId
+    });
+    record.saved = true;
+    record.row.dataset.messageId = result.messageId;
+    rebuildChatMessageEditActions();
+    return result;
+  };
+  record.persistQueue = (record.persistQueue || Promise.resolve()).then(persist).catch(error => {
+    record.lastQueuedText = "";
+    setVoiceStatus("المكالمة شغالة، لكن تعذّر حفظ نص أحد الأدوار في سجل المحادثة: " + error.message);
+    return null;
+  });
+  record.saving = record.persistQueue;
+  return record.persistQueue;
+}
+
+function receiveWensVoiceCallEvent(data) {
+  if (!data || typeof data.type !== "string") return;
+  const itemId = String(data.item_id || data.item?.id || data.response_id || "");
+  if (data.type === "input_audio_buffer.speech_started") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallInputItems,
+      itemId,
+      "user",
+      "🎙️ جاري التقاط كلامك..."
+    );
+    record.text = "جاري تحويل كلامك إلى نص...";
+    record.isPlaceholder = true;
+    voiceCallRowText(record.row, record.text);
+    saveVoiceCallTranscript(record, "user");
+    setVoiceStatus("سامعاك… كمّل كلامك 💜");
+    return;
+  }
+  if (data.type === "conversation.item.input_audio_transcription.delta") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallInputItems, itemId, "user", "🎙️ جاري كتابة كلامك..."
+    );
+    if (record.isPlaceholder) {
+      record.text = "";
+      record.isPlaceholder = false;
+    }
+    record.text += String(data.delta || "");
+    voiceCallRowText(record.row, record.text);
+    return;
+  }
+  if (data.type === "conversation.item.input_audio_transcription.completed") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallInputItems, itemId, "user", ""
+    );
+    record.text = String(data.transcript || "").trim() || "لم يتمكن محرك التفريغ من قراءة هذا المقطع الصوتي.";
+    record.isPlaceholder = false;
+    record.completed = true;
+    voiceCallRowText(record.row, record.text);
+    saveVoiceCallTranscript(record, "user");
+    setVoiceStatus("وصل كلامك لونس…");
+    return;
+  }
+  if (data.type === "response.output_audio_transcript.delta") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallOutputItems, itemId, "assistant", ""
+    );
+    record.text += String(data.delta || "");
+    voiceCallRowText(record.row, record.text);
+    setAvatarSpeaking(true);
+    return;
+  }
+  if (data.type === "response.output_audio_transcript.done") {
+    const record = ensureVoiceCallTranscriptRow(
+      voiceCallOutputItems, itemId, "assistant", ""
+    );
+    const finalText = String(data.transcript || "").trim();
+    if (finalText) record.text = finalText;
+    if (record.text.trim()) {
+      voiceCallRowText(record.row, record.text);
+      Promise.all(Array.from(voiceCallInputItems.values()).map(item => item.persistQueue).filter(Boolean))
+        .then(() => saveVoiceCallTranscript(record, "assistant"));
+    } else {
+      record.row.remove();
+      voiceCallOutputItems.delete(itemId);
+    }
+    setAvatarSpeaking(false);
+    setVoiceStatus("ونس ردّت عليك. اتكلم تاني وقت ما تحب 💜");
+    return;
+  }
+  if (data.type === "input_audio_buffer.speech_stopped") {
+    setVoiceStatus("براجع كلامك وبجهّز الرد…");
+    return;
+  }
+  if (data.type === "response.done") {
+    const failed = data.response?.status && data.response.status !== "completed";
+    if (failed) {
+      const detail = data.response?.status_details?.error?.message || "ونس ماقدرتش تكمل الرد الصوتي.";
+      setVoiceStatus(String(detail).slice(0, 200));
+    }
+    setAvatarSpeaking(false);
+    return;
+  }
+  if (data.type === "error") {
+    const detail = data.error?.message || data.message || "حصل خطأ في المكالمة الصوتية.";
+    setVoiceStatus(String(detail).slice(0, 200));
+  }
+}
+
+async function startWensVoiceCall() {
+  if (!currentUser || currentUser.id === "guest") {
+    setVoiceStatus("سجّل الدخول الأول علشان تحفظ محادثة المكالمة.");
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || !("RTCPeerConnection" in window)) {
+    setVoiceStatus("المتصفح ده مش بيدعم المكالمات الصوتية المباشرة. افتح ونس من Chrome أو متصفح حديث على HTTPS.");
+    return;
+  }
+  if (!window.confirm(
+    "هتبدأ مكالمة صوتية مباشرة مع ونس. هنستخدم الميكروفون ونحفظ نص كلامك وردود ونس في المحادثة. خدمة الصوت المباشر ممكن تستهلك رصيد API مدفوع حسب إعداد حساب الخدمة. هل توافق وتبدأ المكالمة؟"
+  )) return;
+
+  const button = $("voiceCallBtn");
+  stopRealtimeVoice();
+  if (button) {
+    button.disabled = true;
+    button.textContent = "جاري الاتصال…";
+  }
+  try {
+    if (!currentConversationId) {
+      const created = await api("/api/conversations", { title: "مكالمة صوتية مع ونس" });
+      currentConversationId = created.conversation.id;
+      setCurrentConversationTitle(created.conversation.title);
+      await loadConversations({ selectLatest: false });
+    }
+    activeVoiceCallConversationId = String(currentConversationId);
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false
+    });
+    activeVoiceMicStream = stream;
+
+    const host = $("voicePlayerDock");
+    const shell = document.createElement("div");
+    shell.className = "voice-player-shell voice-call-player-shell";
+    const label = document.createElement("span");
+    label.className = "voice-player-label";
+    label.textContent = "مكالمة صوتية مباشرة مع ونس — الميكروفون شغال";
+    const player = document.createElement("audio");
+    player.className = "voice-audio-player";
+    player.controls = true;
+    player.autoplay = true;
+    player.playsInline = true;
+    player.setAttribute("aria-label", "صوت المكالمة المباشرة مع ونس");
+    shell.append(label, player);
+    host.querySelector(".voice-player-shell")?.remove();
+    host.appendChild(shell);
+    activeVoiceAudio = player;
+
+    const peer = new RTCPeerConnection();
+    activeVoicePeer = peer;
+    for (const track of stream.getAudioTracks()) peer.addTrack(track, stream);
+    const channel = peer.createDataChannel("oai-events");
+    activeVoiceDataChannel = channel;
+
+    peer.ontrack = event => {
+      const remoteStream = event.streams?.[0] || new MediaStream([event.track]);
+      player.srcObject = remoteStream;
+      player.play().then(() => {
+        setVoiceStatus("المكالمة شغالة، اتكلم مع ونس بصوتك 💜");
+      }).catch(() => {
+        setVoiceStatus("الصوت وصل. اضغط ▶ في مشغل المكالمة لو التشغيل التلقائي مرفوض.");
+      });
+    };
+    peer.addEventListener("connectionstatechange", () => {
+      if (activeVoicePeer !== peer) return;
+      if (peer.connectionState === "failed" || peer.connectionState === "disconnected") {
+        setVoiceStatus("اتصال المكالمة اتقطع. اضغط إنهاء ثم ابدأ مكالمة جديدة.");
+      }
+    });
+    channel.addEventListener("message", event => {
+      let data;
+      try { data = JSON.parse(event.data); } catch { return; }
+      receiveWensVoiceCallEvent(data);
+    });
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    await waitForIce(peer);
+    const response = await fetch("/api/voice/connect", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sdp: peer.localDescription.sdp,
+        voice: "coral",
+        mode: "conversation"
+      })
+    });
+    if (!response.ok) {
+      let data = {};
+      try { data = await response.json(); } catch {}
+      throw new Error(data.error || "تعذّر بدء المكالمة الصوتية.");
+    }
+    const answer = await response.text();
+    if (!answer.startsWith("v=0")) throw new Error("رد اتصال المكالمة غير صالح.");
+    await peer.setRemoteDescription({ type: "answer", sdp: answer });
+
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("انتهت مهلة فتح قناة المكالمة.")), 15000);
+      channel.addEventListener("open", () => {
+        clearTimeout(timer);
+        setVoiceStatus("المكالمة جاهزة. اتكلم بالمصري وونس هتسمعك وترد عليك 💜");
+        resolve();
+      }, { once: true });
+      channel.addEventListener("error", () => {
+        clearTimeout(timer);
+        reject(new Error("تعذّر فتح قناة أحداث المكالمة."));
+      }, { once: true });
+    });
+    if (button) {
+      button.disabled = false;
+      button.textContent = "⏹ إنهاء المكالمة";
+      button.setAttribute("aria-pressed", "true");
+    }
+  } catch (error) {
+    stopRealtimeVoice();
+    setVoiceStatus(String(error?.message || error).slice(0, 220));
+  } finally {
+    if (button && activeVoicePeer === null) {
+      button.disabled = false;
+      button.textContent = "🎧 مكالمة صوتية";
+      button.setAttribute("aria-pressed", "false");
+    }
+  }
 }
 
 async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = false) {
@@ -1971,6 +2906,15 @@ function getAdminVoicePreviewDock() {
 }
 window.WensPlayVoicePreview = text =>
   speak(text, null, getAdminVoicePreviewDock(), true);
+$("voiceCallBtn").addEventListener("click", () => {
+  if (activeVoicePeer) {
+    stopRealtimeVoice();
+    setVoiceStatus("تم إنهاء المكالمة الصوتية.");
+  } else {
+    startWensVoiceCall();
+  }
+});
+
 $("voiceBtn").addEventListener("click", () => {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
@@ -1993,9 +2937,13 @@ async function loadSystemStatus() {
     const response = await fetch("/api/health", { cache: "no-store" });
     const data = await response.json();
     const f = data.features || {};
+    naturalVoiceConfigured = Boolean(f.naturalVoiceConfigured);
+    const callButton = $("voiceCallBtn");
+    if (callButton) callButton.hidden = !naturalVoiceConfigured || !currentUser || currentUser.id === "guest";
     const labels = [
       "محرك الدردشة " + (f.openAI ? "OpenAI جاهز" : f.workersAI ? "Workers AI جاهز" : "غير مربوط"),
-      "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة")
+      "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة"),
+      "المكالمة المباشرة " + (naturalVoiceConfigured ? "متاحة" : "غير مفعّلة")
     ];
     $("systemStatus").textContent = labels.concat(f.workersAI ? "توليد الصور عبر Cloudflare جاهز" : "توليد الصور غير مربوط", f.browser ? "متصفح المواقع جاهز" : "متصفح المواقع غير مربوط").join(" · ");
     $("systemStatus").classList.toggle("all-ready", !!((f.openAI || f.workersAI) && f.database));

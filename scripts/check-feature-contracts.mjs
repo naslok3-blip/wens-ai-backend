@@ -29,7 +29,7 @@ const checks = [
   [worker, 'path === "/api/chat/retry"', "authenticated retry and edit endpoint for the latest chat turn"],
   [worker, "historyBeforeRowid", "regeneration uses only context before the replaced user turn"],
   [worker, "DELETE FROM messages WHERE id=? AND user_id=? AND conversation_id=?", "replaced messages are deleted only after a successful regenerated reply and only within the owning conversation"],
-  [app, 'api("/api/chat/retry"', "chat UI calls the authenticated retry endpoint"],
+  [app, 'requestStreamedReply("/api/chat/edit"', "chat UI streams authenticated historical edits into a preserved conversation fork"],
   [app, "إعادة توليد الرد", "assistant reply exposes regenerate action"],
   [app, "تعديل سؤالي", "latest user prompt can be edited and resubmitted"],
   [style, ".message-retry-actions", "edit and regenerate controls are styled for mobile"],
