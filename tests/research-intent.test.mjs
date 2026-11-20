@@ -474,3 +474,11 @@ test("voice transcripts are saved only to the authenticated owner's active conve
   assert.ok(worker.includes("INSERT OR IGNORE INTO messages"));
   assert.ok(worker.includes('body.role === "assistant" ? "assistant" : body.role === "user" ? "user" : ""'));
 });
+
+
+test("live call control is hidden unless the Realtime API key is configured", () => {
+  assert.ok(client.includes("naturalVoiceConfigured = Boolean(f.naturalVoiceConfigured)"));
+  assert.ok(client.includes('user.id === "guest" || !naturalVoiceConfigured'));
+  assert.ok(worker.includes("naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY)"));
+  assert.ok(worker.includes("return json({ error: \\"المحادثة الصوتية المباشرة غير مفعّلة بدون OpenAI API."));
+});
