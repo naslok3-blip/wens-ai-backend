@@ -3583,13 +3583,14 @@ export default {
         const desc = rows.results || [];
         const hasMore = desc.length > 100;
         const page = desc.slice(0, 100);
+        const nextBefore = hasMore ? Number(page[page.length - 1]?.seq) : null;
         return json({
           messages: page.reverse(),
           persistence: true,
           conversationId: conversation.id,
           title: conversation.title,
           hasMore,
-          nextBefore: hasMore ? Number(page[page.length - 1]?.seq) : null
+          nextBefore
         });
       }
       if (path === "/api/chat/edit" && request.method === "POST") {
