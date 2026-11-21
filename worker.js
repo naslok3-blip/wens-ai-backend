@@ -8,8 +8,40 @@ const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية 
 
 
 async function runWensTextModel(env, fallbackModel, options = {}) {
-  // Wens runs entirely on the Cloudflare Workers AI binding.
-  // No OpenAI API key, external billing, or OpenAI Responses request is used.
+  // Prefer the user's explicitly configured OpenAI API key; otherwise use Workers AI.
+  // ChatGPT subscriptions are not API credentials. OpenAI API usage is billed separately.
+  if (env.OPENAI_API_KEY) {
+    const model = String(env.WENS_OPENAI_MODEL || "gpt-6.2-astra").trim();
+    const { chat_template_kwargs, reasoning_effort, max_tokens, ...requestOptions } = options || {};
+    const payload = { ...requestOptions, model };
+    if (max_tokens !== undefined && payload.max_completion_tokens === undefined) {
+      payload.max_completion_tokens = max_tokens;
+    }
+    delete payload.max_tokens;
+    delete payload.chat_template_kwargs;
+    delete payload.reasoning_effort;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + env.OPENAI_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = String(data?.error?.message || "OpenAI request failed").slice(0, 180);
+        throw new Error("OPENAI_API_ERROR_" + response.status + ": " + detail);
+      }
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
   if (!env.AI) throw new Error("WENS_AI_NOT_CONFIGURED");
   return await env.AI.run(fallbackModel, options);
 }
@@ -792,7 +824,7 @@ async function adminRoute(request, env, path) {
     });
   }
   if (path === "/api/admin/test-agent" && request.method === "POST") {
-    if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+    if (!env.AI && !env.OPENAI_API_KEY) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
     const probe = new Request(new URL("/api/agent", request.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -892,9 +924,9 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
+      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
       features: {
-        openAI: false, workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
+        openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
         naturalVoiceConfigured: false, browserConfigured: Boolean(env.BROWSER)
       }
@@ -903,7 +935,7 @@ async function adminRoute(request, env, path) {
   if (path === "/api/admin/test-ai" && request.method === "POST") {
     if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "لم يتم ربط محرك الذكاء الاصطناعي على الخادم." }, 503);
     try {
-      const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
       const result = await runWensTextModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -3034,7 +3066,7 @@ async function handleAgent(request, env, user, options = {}) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
-      return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
+      return json({ ok: true, model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"), steps, activity, sources, reply, generatedImages, generatedProjects });
     }
     if (explicitSearchRequest && !searchVerified) {
       const reply = "حاولت أبحث في المواقع الخارجية، لكن ما قدرتش أوصل لنتائج ومصادر قابلة للتحقق دلوقتي. مش هقدّم معلومات على إنها نتيجة بحث ناجح.";
@@ -3071,7 +3103,7 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = useReasoningModel ? (env.WENS_REASONING_MODEL || "@cf/qwen/qwen3.8-27b") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+  const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (useReasoningModel ? (env.WENS_REASONING_MODEL || "@cf/qwen/qwen3.8-27b") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
