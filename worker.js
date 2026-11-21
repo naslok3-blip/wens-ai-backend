@@ -8,62 +8,22 @@ const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية 
 
 
 async function runWensTextModel(env, fallbackModel, options = {}) {
-  // Prefer OpenAI Responses API when configured. It is required for GPT-6.2 hosted tool calling.
+  // Prefer OpenAI Responses API when configured; it supports GPT-6.2 function calling.
   // ChatGPT subscriptions are not API credentials; API usage is billed separately.
   if (env.OPENAI_API_KEY) {
     const model = String(env.WENS_OPENAI_MODEL || "gpt-6.2-astra").trim();
-    const { messages = [], tools = [], max_tokens, max_completion_tokens, reasoning_effort, temperature, chat_template_kwargs, ...rest } = options || {};
-    const input = [];
-    for (const message of messages) {
-      if (!message || typeof message !== "object") continue;
-      if (message.role === "tool") {
-        input.push({
-          type: "function_call_output",
-          call_id: String(message.tool_call_id || ""),
-          output: String(message.content ?? "")
-        });
-        continue;
-      }
-      if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
-        if (message.content) input.push({ role: "assistant", content: String(message.content) });
-        for (const call of message.tool_calls) {
-          const fn = call.function || {};
-          input.push({
-            type: "function_call",
-            call_id: String(call.id || call.call_id || ""),
-            name: String(fn.name || call.name || ""),
-            arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments || {})
-          });
-        }
-        continue;
-      }
-      const content = Array.isArray(message.content)
-        ? message.content.map(part => {
-            if (part?.type === "text") return { type: message.role === "assistant" ? "output_text" : "input_text", text: String(part.text || "") };
-            if (part?.type === "image_url") return { type: "input_image", image_url: String(part.image_url?.url || "") };
-            return part;
-          })
-        : String(message.content ?? "");
-      input.push({ role: message.role || "user", content });
-    }
-    const responseTools = tools.map(tool => {
-      const fn = tool.function || tool;
-      return {
-        type: "function",
-        name: String(fn.name || ""),
-        description: String(fn.description || ""),
-        parameters: fn.parameters || { type: "object", properties: {} },
-        strict: false
-      };
-    });
+    const {
+      messages = [], tools = [], max_tokens, max_completion_tokens,
+      reasoning_effort, temperature, chat_template_kwargs, tool_choice
+    } = options || {};
+    const responseTools = toResponsesTools(tools);
     const payload = {
       model,
-      input,
+      input: toResponsesInput(messages),
       max_output_tokens: max_completion_tokens || max_tokens || 1000,
       ...(reasoning_effort ? { reasoning: { effort: reasoning_effort } } : {}),
-      ...(responseTools.length ? { tools: responseTools, tool_choice: rest.tool_choice || "auto" } : {})
+      ...(responseTools.length ? { tools: responseTools, tool_choice: tool_choice || "auto" } : {})
     };
-    if (rest.temperature !== undefined) delete rest.temperature;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 55000);
     try {
@@ -81,28 +41,13 @@ async function runWensTextModel(env, fallbackModel, options = {}) {
         const detail = String(data?.error?.message || "OpenAI Responses request failed").slice(0, 180);
         throw new Error("OPENAI_API_ERROR_" + response.status + ": " + detail);
       }
-      const output = Array.isArray(data.output) ? data.output : [];
-      const text = output
-        .filter(item => item?.type === "message")
-        .flatMap(item => Array.isArray(item.content) ? item.content : [])
-        .filter(part => part?.type === "output_text")
-        .map(part => String(part.text || ""))
-        .join("");
-      const calls = output.filter(item => item?.type === "function_call").map(item => ({
-        id: String(item.call_id || item.id || ""),
-        type: "function",
-        function: { name: String(item.name || ""), arguments: String(item.arguments || "{}") }
-      }));
-      return {
-        id: data.id,
-        model: data.model || model,
-        status: data.status,
-        choices: [{
-          message: { role: "assistant", content: text, ...(calls.length ? { tool_calls: calls } : {}) },
-          finish_reason: data.status === "incomplete" ? "length" : calls.length ? "tool_calls" : "stop"
-        }],
-        usage: data.usage || null
-      };
+      const normalized = fromResponsesResponse(data);
+      normalized.choices[0].finish_reason = data.status === "incomplete"
+        ? "length"
+        : normalized.choices[0].message.tool_calls?.length ? "tool_calls" : "stop";
+      normalized.status = data.status;
+      normalized.usage = data.usage || null;
+      return normalized;
     } finally {
       clearTimeout(timeout);
     }
@@ -1524,7 +1469,7 @@ async function ensureGeneratedProjects(db) {
 }
 async function createWebProject(env, user, args, options = {}) {
   if (!env.DB || !user) return { error: "سجّل الدخول أولًا لحفظ التطبيقات والألعاب في حسابك." };
-  if (!env.AI) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
+  if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
   const kind = args.kind === "game" ? "game" : "app";
   const title = String(args.title || (kind === "game" ? "لعبة ونس" : "تطبيق ونس")).replace(/[\\r\\n<>]/g, " ").trim().slice(0, 80);
   const prompt = String(args.prompt || "").trim().slice(0, 3200);
