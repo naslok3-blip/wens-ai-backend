@@ -2047,7 +2047,7 @@ async function executeAgentTool(name, args, env, user) {
         const publisher = sourceMatch ? cleanText(sourceMatch[2]) : engineName;
         const content = [title, description].filter(Boolean).join(" — ");
         if (!title || !articleUrl) continue;
-        if (sportsQuery && !/(?:egypt|مصر|malawi|مالاوي|الفراعنه|منتخب|football|soccer|fixture|match|تصفيات|افريقيا)/i.test(content)) continue;
+        if (sportsQuery && !isRelevantSportsSearchResult(content)) continue;
         addSource(title + (publisher ? " — " + publisher : ""), articleUrl);
         const section = [
           "نتيجة بحث: " + title,
@@ -2095,7 +2095,7 @@ async function executeAgentTool(name, args, env, user) {
         } catch { continue; }
         const nearby = cleanText(html.slice(match.index, match.index + 1500));
         const content = title + " " + nearby;
-        if (sportsQuery && !/(?:egypt|مصر|malawi|مالاوي|منتخب|football|soccer|fixture|match|schedule|تصفيات)/i.test(content)) continue;
+        if (sportsQuery && !isRelevantSportsSearchResult(content)) continue;
         addSource(title, articleUrl);
         sections.push("نتيجة بحث ويب: " + title + "\\nمقتطف: " + nearby.slice(0, 420) + "\\nالرابط: " + articleUrl);
         count++;
@@ -2469,6 +2469,11 @@ function isEgyptNationalTeamRequest(message) {
   const egypt = /(?:منتخب(?:\s+مصر)?|مصر(?:\s+(?:المنتخب|الوطني|القومي))?|الفراعنه|egypt(?:ian)?(?:\s+(?:national|football|soccer|team))?)/i.test(text);
   const fixture = /(?:موعد|مواعيد|ميعاد|معاد|متى|امتى|ماتش|ماتشات|مباراه|مباريات|جدول|القادم|القادمه|الجاي|الجايه|التالي|التاليه|موعده|fixtures|schedule|upcoming|next match)/i.test(text);
   return egypt && fixture;
+}
+
+function isRelevantSportsSearchResult(value) {
+  // Keep Egyptian club results even when publishers omit generic "football" keywords.
+  return /(?:egypt|مصر|malawi|مالاوي|الفراعنه|منتخب|الاهلي|الأهلي|al[\\s-]?ahly|الزمالك|zamalek|بيراميدز|pyramids|football|soccer|fixture|match|schedule|تصفيات|افريقيا)/i.test(String(value || ""));
 }
 
 function isSportsScheduleRequest(message) {
