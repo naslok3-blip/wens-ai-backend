@@ -3240,6 +3240,9 @@ async function handleAgent(request, env, user, options = {}) {
         finalText = stripToolCallMarkup(rawAssistantText);
         break;
       }
+      // The agent executes at most six calls per turn. Trim before storing
+      // the assistant call list so every emitted call receives an output.
+      calls = calls.slice(0, 6);
       const nativeToolResponse = !parsedTextToolCalls &&
         Array.isArray(result?.tool_calls) && !Array.isArray(assistantMessage?.tool_calls);
       if (parsedTextToolCalls) {
@@ -3252,10 +3255,15 @@ async function handleAgent(request, env, user, options = {}) {
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
         const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project","list_web_projects","edit_web_project","list_web_project_revisions","restore_web_project_revision","save_memory","list_memories","delete_memory"];
-        if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
+        const toolAllowed = allowed.includes(name);
+        if (!toolAllowed) steps.push("تم رفض أداة غير مسموح بها.");
         let output;
         let reusedSearchResult = false;
-        if (name === "search_web") {
+        if (!toolAllowed) {
+          // Responses API requires one function_call_output for every call,
+          // including rejected calls, otherwise the next turn is invalid.
+          output = { error: "TOOL_NOT_ALLOWED" };
+        } else if (name === "search_web") {
           const requestedQuery = String(args?.query || buildExternalSearchQuery(message) || message).trim();
           const key = searchCacheKey(requestedQuery);
           if (preSearchResult) {
