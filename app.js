@@ -436,7 +436,7 @@ async function openConversation(id) {
     if (currentConversationId !== requestedId) return;
     loading.remove();
     setCurrentConversationTitle(data.title || "محادثة");
-    for (const item of data.messages || []) addMessage(item.content, item.role);
+    for (const item of data.messages || []) addMessage(item.content, item.role, [], [], [], [], [], [], item.id || "");
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
     await loadConversations({ selectLatest: false });
     closeConversationSidebar();
@@ -482,7 +482,7 @@ async function loadChatHistory(conversationId) {
   }
   try {
     const data = await api("/api/chat/history?conversationId=" + encodeURIComponent(conversationId), undefined, "GET");
-    for (const item of data.messages || []) addMessage(item.content, item.role);
+    for (const item of data.messages || []) addMessage(item.content, item.role, [], [], [], [], [], [], item.id || "");
     if (!(data.messages || []).length) addMessage(appSettings.greeting);
   } catch (error) {
     addMessage("تعذّر تحميل المحادثة: " + error.message);
@@ -815,7 +815,38 @@ function hideExternalLinksFromDisplay(value) {
   return text.trim();
 }
 
-function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = []) {
+function attachMessageEditControl(row, messageId) {
+  if (!row || !messageId || row.classList.contains("assistant") || row.querySelector(".message-attachments")) return;
+  if (row.querySelector(".edit-message-btn")) return;
+  row.dataset.messageId = String(messageId);
+  const bubble = row.querySelector(".bubble");
+  if (!bubble) return;
+  const actions = document.createElement("div");
+  actions.className = "message-retry-actions";
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "edit-message-btn";
+  edit.textContent = "تعديل الرسالة";
+  edit.addEventListener("click", async () => {
+    const original = row.querySelector(".bubble-text")?.textContent || "";
+    const revised = window.prompt("اكتب التعديل المطلوب على رسالتك", original);
+    if (revised === null || !revised.trim() || revised.trim() === original.trim()) return;
+    edit.disabled = true;
+    try {
+      const result = await api("/api/chat/edit", { conversationId: currentConversationId, messageId: String(messageId), message: revised.trim(), deepThink: deepThinkEnabled });
+      if (!result.edited) throw new Error("لم يتم تأكيد حفظ التعديل.");
+      await openConversation(currentConversationId);
+      await loadConversations({ selectLatest: false });
+      setVoiceStatus("تم تعديل الرسالة وإعادة توليد الرد، وحذف الرسائل اللاحقة المتأثرة من هذه المحادثة فقط.");
+    } catch (error) {
+      setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
+      edit.disabled = false;
+    }
+  });
+  actions.appendChild(edit);
+  bubble.appendChild(actions);
+}
+function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = [], messageId = "") {
   const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
   const messageContainer = $("messages");
@@ -971,30 +1002,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
         retry.disabled = false;
       }
     });
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.textContent = "تعديل سؤالي";
-    edit.addEventListener("click", async () => {
-      const original = previousRow.querySelector(".bubble-text")?.textContent || "";
-      const revised = window.prompt("عدّل سؤالك ثم اضغط موافق لإعادة توليد الرد", original);
-      if (revised === null || !revised.trim() || revised.trim() === original.trim()) return;
-      edit.disabled = true;
-      retry.disabled = true;
-      try {
-        const result = await api("/api/chat/retry", {
-          conversationId: currentConversationId, message: revised.trim(), deepThink: deepThinkEnabled
-        });
-        previousRow.querySelector(".bubble-text").textContent = revised.trim();
-        row.remove();
-        addMessage(result.reply, "assistant", result.steps || [], [], result.generatedImages || [], result.generatedProjects || [], result.activity || [], result.sources || []);
-        await loadConversations({ selectLatest: false });
-      } catch (error) {
-        setVoiceStatus("تعذّر تعديل الرسالة: " + error.message);
-        edit.disabled = false;
-        retry.disabled = false;
-      }
-    });
-    retryActions.append(retry, edit);
+    retryActions.append(retry);
     bubble.appendChild(retryActions);
   }
   if (who === "assistant" && currentUser && currentUser.id !== "guest" && displayText.trim().length > 1) {
@@ -1074,6 +1082,7 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   }
   row.appendChild(bubble);
   if (who === "assistant") row.dataset.replyKey = replyKey;
+  if (who === "user" && messageId) attachMessageEditControl(row, messageId);
   messageContainer.appendChild(row);
   messageContainer.scrollTop = messageContainer.scrollHeight;
   return row;
@@ -1481,7 +1490,7 @@ $("chatForm").addEventListener("submit", async event => {
   const text = message || (selected.some(item => item.kind === "image")
     ? "افحص الصورة المرفقة واشرح لي ما يظهر فيها."
     : "ساعدني في قراءة المرفقات المرسلة.");
-  addMessage(text, "user", [], selected);
+  const userMessageRow = addMessage(text, "user", [], selected);
   const payload = attachmentPayload();
   const deepThink = deepThinkEnabled;
   $("messageInput").value = "";
@@ -1500,6 +1509,7 @@ $("chatForm").addEventListener("submit", async event => {
       message: text, attachments: payload, deepThink, conversationId: currentConversationId
     });
     if (data.conversationId) currentConversationId = data.conversationId;
+    if (data.userMessageId) attachMessageEditControl(userMessageRow, data.userMessageId);
     progressRow.remove();
     const assistantRow = addMessage(
       data.reply, "assistant", data.steps || [], [],
