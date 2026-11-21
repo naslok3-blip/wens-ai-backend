@@ -766,7 +766,7 @@ async function adminRoute(request, env, path) {
         workersAI: Boolean(env.AI),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
-        naturalVoiceConfigured: false,
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
         documentReadingConfigured: true,
         freeDocumentParsing: true,
         documentAIConfigured: Boolean(env.AI),
@@ -3495,7 +3495,7 @@ export default {
     }
     if (request.method === "GET" && path === "/api/health") {
       const workersAiBindingPresent = Boolean(env.AI);
-      const openAiConfigured = false;
+      const openAiConfigured = Boolean(env.OPENAI_API_KEY);
       return json({
         ok: true,
         service: "wens-ai",
@@ -3514,7 +3514,7 @@ export default {
         diagnostics: {
           workersAiBindingPresent,
           browserBindingPresent: Boolean(env.BROWSER),
-          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
+          model: openAiConfigured ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
         }
       });
     }
