@@ -23,7 +23,8 @@ const helpers = [
   extractFunction("isEgyptGoldPriceRequest", "isLiveDataRequest"),
   extractFunction("isLiveDataRequest", "isEgyptNationalTeamRequest"),
   extractFunction("isEgyptNationalTeamRequest", "isSportsScheduleRequest"),
-  extractFunction("isSportsScheduleRequest", "hasVerifiableLiveSources"),
+  extractFunction("isSportsScheduleRequest", "isRelevantSportsSearchResult"),
+  extractFunction("isRelevantSportsSearchResult", "hasVerifiableLiveSources"),
   extractFunction("hasVerifiableLiveSources", "hasVerifiableSportsScheduleSources"),
   extractFunction("isExplicitExternalSearchRequest", "isExternalResearchIntent"),
   extractFunction("isExternalResearchIntent", "extractExternalSources"),
@@ -38,10 +39,10 @@ const helpers = [
 
 const sandbox = { URL, atob, Date, module: { exports: {} } };
 vm.runInNewContext(
-  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle };",
+  helpers + "\nmodule.exports = { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, isRelevantSportsSearchResult, extractExternalSources, buildExternalSearchQuery, buildConversationTitle };",
   sandbox
 );
-const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, extractExternalSources, buildExternalSearchQuery, buildConversationTitle } = sandbox.module.exports;
+const { isExternalResearchIntent, isLiveDataRequest, isEgyptNationalTeamRequest, isSportsScheduleRequest, getCurrentEgyptFootballSeason, hasUpcomingFootballDate, hasRecentFootballSchedulePublication, hasVerifiableSportsScheduleSources, hasVerifiableGoldPriceSources, isRelevantSportsSearchResult, extractExternalSources, buildExternalSearchQuery, buildConversationTitle } = sandbox.module.exports;
 
 test("does not search for greetings", () => {
   assert.equal(isExternalResearchIntent("ازيك يا ونس"), false);
@@ -68,6 +69,13 @@ test("does not misclassify create, edit, or update requests as research", () => 
   assert.equal(isExternalResearchIntent("اعمللي تطبيق لإدارة المحل"), false);
   assert.equal(isExternalResearchIntent("عدل الصورة وخلي الخلفية بيضاء"), false);
   assert.equal(isExternalResearchIntent("ممكن تحدثي الموقع"), false);
+});
+
+test("sports search keeps Egyptian club results even without generic football keywords", () => {
+  assert.equal(isRelevantSportsSearchResult("الأهلي يعلن موعد مباراته القادمة أمام الزمالك"), true);
+  assert.equal(isRelevantSportsSearchResult("Al Ahly FC upcoming fixture"), true);
+  assert.equal(isRelevantSportsSearchResult("الزمالك يواجه بيراميدز في الدوري"), true);
+  assert.equal(isRelevantSportsSearchResult("NBA basketball playoff schedule"), false);
 });
 
 test("Egypt gold verification rejects one source and non-EGP prices", () => {
