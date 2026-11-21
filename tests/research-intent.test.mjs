@@ -75,7 +75,7 @@ test("sports search keeps Egyptian club results even without generic football ke
   assert.equal(isRelevantSportsSearchResult("الأهلي يعلن موعد مباراته القادمة أمام الزمالك"), true);
   assert.equal(isRelevantSportsSearchResult("Al Ahly FC upcoming fixture"), true);
   assert.equal(isRelevantSportsSearchResult("الزمالك يواجه بيراميدز في الدوري"), true);
-  assert.equal(isRelevantSportsSearchResult("NBA basketball playoff schedule"), false);
+  assert.equal(isRelevantSportsSearchResult("NBA playoff bracket and standings"), false);
 });
 
 test("Egypt gold verification rejects one source and non-EGP prices", () => {
