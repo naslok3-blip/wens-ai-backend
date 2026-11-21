@@ -12,14 +12,14 @@ async function runWensTextModel(env, fallbackModel, options = {}) {
   // ChatGPT subscriptions are not API credentials. OpenAI API usage is billed separately.
   if (env.OPENAI_API_KEY) {
     const model = String(env.WENS_OPENAI_MODEL || "gpt-6.2-astra").trim();
-    const { chat_template_kwargs, reasoning_effort, max_tokens, ...requestOptions } = options || {};
+    const { chat_template_kwargs, reasoning_effort, max_tokens, temperature, ...requestOptions } = options || {};
     const payload = { ...requestOptions, model };
     if (max_tokens !== undefined && payload.max_completion_tokens === undefined) {
       payload.max_completion_tokens = max_tokens;
     }
     delete payload.max_tokens;
     delete payload.chat_template_kwargs;
-    delete payload.reasoning_effort;
+    if (reasoning_effort) payload.reasoning_effort = reasoning_effort;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 55000);
     try {
