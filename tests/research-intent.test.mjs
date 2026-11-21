@@ -366,8 +366,8 @@ test("chat retry is owner-scoped, context-safe, and only replaces a successful l
 });
 
 test("chat UI exposes edit and regenerate controls for the latest text-only turn", () => {
-  assert.match(client, /api\("\\/api\\/chat\\/retry"/);
+  assert.ok(client.includes('api("/api/chat/retry"'));
   assert.match(client, /إعادة توليد الرد/);
   assert.match(client, /تعديل سؤالي/);
-  assert.match(client, /!previousRow\.querySelector\("\\.message-attachments"\\)/);
+  assert.ok(client.includes('!previousRow.querySelector(".message-attachments")'));
 });
