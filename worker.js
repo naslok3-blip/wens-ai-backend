@@ -3573,12 +3573,12 @@ export default {
         const safeStoredReply = String(payload.reply || "").replace(/https:\/\/live\.browser\.run\/[^\s)]+/g, "[رابط متصفح مؤقت]");
         const assistantMessageId = crypto.randomUUID();
         const writeResults = await env.DB.batch([
-          env.DB.prepare("UPDATE messages SET content=?,created_at=? WHERE id=? AND user_id=? AND conversation_id=? AND role='user'")
-            .bind(message, timestamp, messageId, user.id, conversationId),
-          env.DB.prepare("DELETE FROM messages WHERE user_id=? AND conversation_id=? AND rowid>? AND rowid<=?")
-            .bind(user.id, conversationId, Number(target.seq), Number(target.tailSeq)),
-          env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
-            .bind(assistantMessageId, user.id, conversationId, "assistant", safeStoredReply, timestamp),
+          env.DB.prepare("UPDATE messages SET content=?,created_at=? WHERE id=? AND user_id=? AND conversation_id=? AND role='user' AND content=? AND (SELECT COALESCE(MAX(rowid),0) FROM messages WHERE user_id=? AND conversation_id=?)=?")
+            .bind(message, timestamp, messageId, user.id, conversationId, target.content, user.id, conversationId, Number(target.tailSeq)),
+          env.DB.prepare("DELETE FROM messages WHERE user_id=? AND conversation_id=? AND rowid>? AND rowid<=? AND EXISTS (SELECT 1 FROM messages WHERE id=? AND user_id=? AND conversation_id=? AND content=? AND created_at=?)")
+            .bind(user.id, conversationId, Number(target.seq), Number(target.tailSeq), messageId, user.id, conversationId, message, timestamp),
+          env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM messages WHERE id=? AND user_id=? AND conversation_id=? AND content=? AND created_at=?)")
+            .bind(assistantMessageId, user.id, conversationId, "assistant", safeStoredReply, timestamp, messageId, user.id, conversationId, message, timestamp),
           env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
             .bind(timestamp, conversationId, user.id)
         ]);
