@@ -365,9 +365,28 @@ test("chat retry is owner-scoped, context-safe, and only replaces a successful l
   assert.match(route, /أسماء المرفقات/);
 });
 
-test("chat UI exposes edit and regenerate controls for the latest text-only turn", () => {
-  assert.match(client, /api\("\\/api\\/chat\\/retry"/);
-  assert.match(client, /إعادة توليد الرد/);
-  assert.match(client, /تعديل سؤالي/);
-  assert.match(client, /!previousRow\.querySelector\("\\.message-attachments"\\)/);
+test("chat UI exposes edit controls on persisted user messages", () => {
+  assert.ok(client.includes('api("/api/chat/edit"'));
+  assert.ok(client.includes("تعديل الرسالة"));
+  assert.ok(client.includes("attachMessageEditControl(row, messageId)"));
+  assert.ok(client.includes('item.id || ""'));
+  assert.ok(client.includes("userMessageId"));
+  assert.ok(client.includes("إعادة توليد الرد"));
+});
+
+test("editing an older chat message regenerates first and atomically replaces only its later tail", () => {
+  const routeStart = worker.indexOf('path === "/api/chat/edit"');
+  const routeEnd = worker.indexOf('path === "/api/chat/retry"', routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const route = worker.slice(routeStart, routeEnd);
+  assert.match(route, /currentUser\\(request, env\\)/);
+  assert.match(route, /WHERE id=\\? AND user_id=\\? AND archived_at IS NULL/);
+  assert.match(route, /target\\.role !== "user"/);
+  assert.match(route, /deferPersist: true/);
+  assert.match(route, /historyBeforeRowid: Number\\(target\\.seq\\)/);
+  assert.match(route, /if \\(!response\\.ok\\) return response/);
+  assert.match(route, /env\\.DB\\.batch\\(/);
+  assert.match(route, /rowid>\\? AND rowid<=\\?/);
+  assert.match(route, /COALESCE\\(MAX\\(rowid\\),0\\)/);
+  assert.match(route, /latestState\\.tailSeq/);
 });
