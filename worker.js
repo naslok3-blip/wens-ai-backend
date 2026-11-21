@@ -7,6 +7,55 @@ import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
 
 
+async function runOpenAIWebSearchFallback(env, query) {
+  if (!env.OPENAI_API_KEY) return { error: "OPENAI_WEB_SEARCH_NOT_CONFIGURED" };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.OPENAI_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: String(env.WENS_OPENAI_MODEL || "gpt-6.2-astra").trim(),
+        tools: [{ type: "web_search" }],
+        tool_choice: "auto",
+        max_output_tokens: 1400,
+        input: [
+          {
+            role: "system",
+            content: "ابحث في الويب عن معلومات حديثة مرتبطة بالسؤال. لخّص الحقائق المدعومة فقط، واذكر التواريخ وسياق الموسم عند الحاجة. لا تخمّن. اعتمد على صفحات أصلية وحديثة، وأرفق الاستشهادات بالمصادر."
+          },
+          { role: "user", content: String(query || "").slice(0, 1200) }
+        ]
+      }),
+      signal: controller.signal
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { error: "OPENAI_WEB_SEARCH_ERROR_" + response.status + ": " + String(data?.error?.message || "").slice(0, 160) };
+    }
+    const parsed = extractResponsesWebSearch(data);
+    const domains = [...new Set(parsed.sources.map(source => source.domain))];
+    if (parsed.text.length < 80 || !parsed.sources.length) {
+      return { error: "OPENAI_WEB_SEARCH_NO_VERIFIABLE_RESULTS", text: parsed.text, sources: parsed.sources };
+    }
+    return {
+      results: parsed.text,
+      sources: parsed.sources,
+      engines: ["OpenAI web search"],
+      verifiedDomains: domains,
+      responseId: data.id || null
+    };
+  } catch (error) {
+    return { error: "OPENAI_WEB_SEARCH_FAILED: " + String(error?.message || error).slice(0, 160) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function runWensTextModel(env, fallbackModel, options = {}) {
   // Prefer OpenAI Responses API when configured; it supports GPT-6.2 function calling.
   // ChatGPT subscriptions are not API credentials; API usage is billed separately.
@@ -3044,16 +3093,46 @@ async function handleAgent(request, env, user, options = {}) {
     const liveSearch = await executeAgentTool("search_web", { query: searchQuery }, env, user);
     preSearchResult = liveSearch;
     searchResultCache.set(searchCacheKey(searchQuery), liveSearch);
-    const searchText = String(liveSearch?.results || "");
-    const hasSearchText = !liveSearch?.error && searchText.length >= 80;
+    let searchText = String(liveSearch?.results || "");
+    let hasSearchText = !liveSearch?.error && searchText.length >= 80;
     rememberSources(liveSearch);
-    const searchVerified = sportsScheduleRequest
+    let searchVerified = sportsScheduleRequest
       ? hasVerifiableSportsScheduleSources(liveSearch)
       : !liveDataRequest
         ? hasSearchText && sources.length > 0
         : goldPriceRequest
           ? hasVerifiableGoldPriceSources(liveSearch)
           : hasVerifiableLiveSources(liveSearch, 1);
+
+    // If the external search adapter is unavailable or returns weak evidence,
+    // use Responses API hosted web_search before refusing a current-information request.
+    if (!searchVerified && env.OPENAI_API_KEY) {
+      const fallbackSearch = await runOpenAIWebSearchFallback(env, searchQuery);
+      if (!fallbackSearch.error) {
+        searchText = String(fallbackSearch.results || "");
+        hasSearchText = searchText.length >= 80;
+        for (const source of (fallbackSearch.sources || [])) {
+          if (!sources.some(existing => existing.url === source.url)) sources.push(source);
+        }
+        const independentDomains = new Set((fallbackSearch.sources || []).map(source => source.domain));
+        const enoughIndependentSources = independentDomains.size >= 2;
+        searchVerified = sportsScheduleRequest
+          ? enoughIndependentSources && searchText.includes(getCurrentEgyptFootballSeason().full)
+          : goldPriceRequest || liveDataRequest
+            ? enoughIndependentSources
+            : hasSearchText && sources.length > 0;
+        if (searchVerified) {
+          preSearchResult = fallbackSearch;
+          searchResultCache.set(searchCacheKey(searchQuery), fallbackSearch);
+        }
+      } else {
+        activity.push({
+          label: "البحث الاحتياطي عبر OpenAI",
+          status: "failed",
+          detail: String(fallbackSearch.error).slice(0, 180)
+        });
+      }
+    }
     steps.push("البحث في المواقع الخارجية قبل صياغة الإجابة");
     activity.push({
       label: "البحث في المواقع الخارجية",
@@ -3084,7 +3163,7 @@ async function handleAgent(request, env, user, options = {}) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
-      return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
+      return json({ ok: true, model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"), steps, activity, sources, reply, generatedImages, generatedProjects });
     }
     if (hasSearchText) {
       const verifiedResults = searchText.slice(0, 12000);
