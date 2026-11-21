@@ -771,7 +771,7 @@ async function adminRoute(request, env, path) {
         freeDocumentParsing: true,
         documentAIConfigured: Boolean(env.AI),
         browserConfigured: Boolean(env.BROWSER),
-        agentToolingConfigured: Boolean(env.AI && tools.length)
+        agentToolingConfigured: Boolean((env.AI || env.OPENAI_API_KEY) && tools.length)
       },
       counts,
       onlineUsers: databaseConnected && tableNames.has("sessions") && tableNames.has("users") && tableNames.has("messages")
@@ -938,7 +938,7 @@ async function adminRoute(request, env, path) {
       features: {
         openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
-        naturalVoiceConfigured: false, browserConfigured: Boolean(env.BROWSER)
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
       }
     });
   }
