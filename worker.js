@@ -3563,6 +3563,9 @@ export default {
         });
         if (!response.ok) return response;
         const payload = await response.json();
+        if (!payload?.ok || !String(payload.reply || "").trim()) {
+          return json({ error: "لم يتم توليد رد صالح؛ لم يتم تغيير الرسالة أو حذف أي رسائل." }, 502);
+        }
         const latestState = await env.DB.prepare(
           "SELECT content,(SELECT COALESCE(MAX(rowid),0) FROM messages WHERE user_id=? AND conversation_id=?) AS tailSeq FROM messages WHERE id=? AND user_id=? AND conversation_id=? LIMIT 1"
         ).bind(user.id, conversationId, messageId, user.id, conversationId).first();
@@ -3579,8 +3582,8 @@ export default {
             .bind(user.id, conversationId, Number(target.seq), Number(target.tailSeq), messageId, user.id, conversationId, message, timestamp),
           env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM messages WHERE id=? AND user_id=? AND conversation_id=? AND content=? AND created_at=?)")
             .bind(assistantMessageId, user.id, conversationId, "assistant", safeStoredReply, timestamp, messageId, user.id, conversationId, message, timestamp),
-          env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=?")
-            .bind(timestamp, conversationId, user.id)
+          env.DB.prepare("UPDATE conversations SET updated_at=? WHERE id=? AND user_id=? AND EXISTS (SELECT 1 FROM messages WHERE id=? AND user_id=? AND conversation_id=? AND content=? AND created_at=?)")
+            .bind(timestamp, conversationId, user.id, messageId, user.id, conversationId, message, timestamp)
         ]);
         if (!writeResults?.[0]?.meta?.changes) return json({ error: "تعذّر تثبيت التعديل؛ لم يتم تأكيد تحديث الرسالة." }, 409);
         return json({ ...payload, conversationId, userMessageId: messageId, assistantMessageId, edited: true, removedLaterMessages: true });
