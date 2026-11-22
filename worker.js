@@ -811,7 +811,7 @@ async function adminRoute(request, env, path) {
       ok: true,
       checkedAt: new Date().toISOString(),
       features: {
-        openAI: false,
+        openAI: Boolean(env.OPENAI_API_KEY),
         workersAI: Boolean(env.AI),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
