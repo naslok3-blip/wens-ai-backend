@@ -165,8 +165,8 @@ test("worker imports every OpenAI Responses adapter used by its chat path", asyn
   const diagnosticsStart = worker.indexOf('path === "/api/admin/diagnostics" && request.method === "GET"');
   assert.ok(diagnosticsStart >= 0, "owner diagnostics route must exist");
   const diagnosticsSnippet = worker.slice(diagnosticsStart, diagnosticsStart + 5000);
-  assert.match(diagnosticsSnippet, /openAI: Boolean\\(env\\.OPENAI_API_KEY\\)/);
-  assert.doesNotMatch(diagnosticsSnippet, /openAI:\\s*false/);
+  assert.ok(diagnosticsSnippet.includes("openAI: Boolean(env.OPENAI_API_KEY)"));
+  assert.equal(diagnosticsSnippet.includes("openAI: false"), false);
   const adapterImport = worker.split("\n").find(line => line.includes('from "./openai-responses-utils.mjs"'));
   assert.ok(adapterImport, "worker.js must import the OpenAI Responses adapter module");
   for (const name of [
