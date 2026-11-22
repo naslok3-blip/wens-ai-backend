@@ -188,7 +188,7 @@ function openAdminInsideWens() {
   $("backToAppBtn").hidden = false;
   const frame = $("adminFrame");
   if (!frame.dataset.loaded) {
-    frame.src = "/admin.html?embed=1&v=single-entry-20261104";
+    frame.src = "/admin.html?embed=1&v=20261122-admin-entry-fix";
     frame.dataset.loaded = "true";
   }
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -212,32 +212,22 @@ function handleAdminAvatarTap() {
   adminAvatarTapTimer = setTimeout(() => {
     adminAvatarTapCount = 0;
     adminAvatarTapTimer = null;
-  }, 4000);
+  }, 5000);
   if (adminAvatarTapCount < 5) return;
   adminAvatarTapCount = 0;
   clearTimeout(adminAvatarTapTimer);
   adminAvatarTapTimer = null;
-  // افتح بوابة الإدارة بعد خمس ضغطات؛ الخادم نفسه يتحقق من كلمة المرور والصلاحيات.
-  // لا نشترط جلسة مالك مسبقة هنا حتى لا يمنع فشل فحص الجلسة ظهور شاشة تسجيل دخول المدير.
   openAdminInsideWens();
 }
-function bindAdminAvatarEntry(element) {
-  if (!element) return;
-  element.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    handleAdminAvatarTap();
-  });
-  element.addEventListener("keydown", event => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      event.stopPropagation();
-      handleAdminAvatarTap();
-    }
-  });
-}
-bindAdminAvatarEntry($("brandAdminEntry"));
-bindAdminAvatarEntry(document.querySelector(".auth-avatar-wrap"));
+// Event delegation in capture phase: works on both avatar images and their wrappers,
+// including the login screen, without requiring an authenticated chat session.
+document.addEventListener("click", event => {
+  const entry = event.target.closest("#brandAdminEntry, .auth-avatar-wrap");
+  if (!entry) return;
+  event.preventDefault();
+  event.stopPropagation();
+  handleAdminAvatarTap();
+}, true);
 
 function updateAuthMode() {
   const registering = authMode === "register";
