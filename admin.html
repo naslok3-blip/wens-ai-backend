@@ -61,7 +61,7 @@
         <button id="testWorkersAiBtn" class="btn primary">اختبار Cloudflare AI الآن</button>
         <p id="serviceStatus" class="status-line" role="status" aria-live="polite"></p>
       </div>
-      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. تُستخدم خدمة OpenAI للمحادثة عند توافر المفتاح، وتظل بعض مهام الصور مرتبطة بخدمات Cloudflare.</p>
+      <p class="disclaimer">تعرض اللوحة حالة الإعداد فقط ولا تكشف مفاتيح API أو أسرار الخادم. تعمل المحادثة عبر Cloudflare Workers AI دون الحاجة إلى مفتاح OpenAI. وتظل بعض مهام الصور مرتبطة بخدمات Cloudflare.</p>
     </section>
 
     <div class="admin-grid">
@@ -150,7 +150,7 @@
         </section>
         <section class="tab-page" id="tab-files">
           <h2>اختبار قراءة الملفات من الهاتف</h2>
-          <p class="muted">اختبر قراءة ملف PDF نصي أو Word (DOCX) أو Excel (XLSX) أو PowerPoint (PPTX). تتم محاولة استخراج النص محليًا مجانًا على خادم ونس دون إرسال الملف إلى OpenAI أو خدمة مدفوعة. ملفات PDF الممسوحة ضوئيًا وملفات Office القديمة تحتاج OCR أو تحويلًا خارجيًا غير متاح هنا.</p>
+          <p class="muted">اختبر قراءة ملف PDF نصي أو Word (DOCX) أو Excel (XLSX) أو PowerPoint (PPTX). تتم محاولة استخراج النص محليًا مجانًا على خادم ونس دون إرسال الملف إلى مزود ذكاء اصطناعي خارجي. ملفات PDF الممسوحة ضوئيًا وملفات Office القديمة تحتاج OCR أو تحويلًا خارجيًا غير متاح هنا.</p>
           <div class="field">
             <label for="documentTestFile">الملف المراد اختباره</label>
             <input id="documentTestFile" type="file" accept=".pdf,.docx,.xlsx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation">

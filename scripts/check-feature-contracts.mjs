@@ -72,7 +72,7 @@ const checks = [
   [app, "brandAdminEntry", "hidden owner entry preserved in header logo"],
   [app, 'fetch("/api/voice/connect"', "browser WebRTC route"],
   [worker, 'path === "/api/voice/connect"', "Worker voice route"],
-  [worker, "https://api.openai.com/v1/realtime/calls", "Realtime upstream"],
+  [worker, 'code: "REALTIME_VOICE_NOT_CONFIGURED"', "Realtime is explicitly disabled without an external API key"],
   [owner, "WensPlayVoicePreview", "admin calls parent voice preview"],
   [worker, "item.result === 437", "agent verifies calculator result"],
   [worker, '.replace(/\\s+/g, "") === "19*23"', "calculator expression whitespace normalization"],

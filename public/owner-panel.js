@@ -245,7 +245,7 @@ async function refreshDiagnostics() {
     setMetric("metricTools", data.agent?.toolCount);
     setDiagnostic("diagWorkersAI", features.workersAI ? "مربوط" : "غير مربوط", !!features.workersAI);
     setDiagnostic("diagDatabase", features.databaseConnected ? "متصلة" : "غير متصلة", !!features.databaseConnected);
-    setDiagnostic("diagVoice", features.naturalVoiceConfigured ? "المفتاح موجود — يلزم سماع فعلي" : "غير مهيأ", !!features.naturalVoiceConfigured);
+    setDiagnostic("diagVoice", features.deviceVoiceFallback ? "صوت الهاتف — يلزم اختبار فعلي" : "غير مهيأ", !!features.deviceVoiceFallback);
     setDiagnostic("diagDocuments", features.freeDocumentParsing ? "استخراج محلي مجاني — اختبر ملفًا" : "غير متاح", !!features.freeDocumentParsing);
     setDiagnostic("diagBrowser", features.browserConfigured ? "الربط موجود — لم يُختبر التصفح" : "غير مربوط", !!features.browserConfigured);
     setDiagnostic("diagTables", tables.missing?.length ? "جداول ناقصة: " + tables.missing.join("، ") : "الجداول الأساسية موجودة", !(tables.missing?.length));
