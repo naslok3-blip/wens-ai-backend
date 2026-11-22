@@ -222,7 +222,7 @@ function handleAdminAvatarTap() {
 // Event delegation in capture phase: works on both avatar images and their wrappers,
 // including the login screen, without requiring an authenticated chat session.
 document.addEventListener("click", event => {
-  const entry = event.target.closest("#brandAdminEntry, .auth-avatar-wrap");
+  const entry = event.target.closest("#brandAdminEntry, .auth-avatar-wrap, .mini-avatar");
   if (!entry) return;
   event.preventDefault();
   event.stopPropagation();
