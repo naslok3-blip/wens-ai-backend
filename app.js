@@ -206,31 +206,29 @@ $("backToAppBtn").addEventListener("click", returnToWensChat);
 
 let adminAvatarTapCount = 0;
 let adminAvatarTapTimer = null;
-async function handleAdminAvatarTap() {
-  if (!currentUser || currentUser.id === "guest") return;
+function handleAdminAvatarTap() {
   adminAvatarTapCount += 1;
   if (adminAvatarTapTimer) clearTimeout(adminAvatarTapTimer);
-  adminAvatarTapTimer = setTimeout(() => { adminAvatarTapCount = 0; }, 3000);
+  adminAvatarTapTimer = setTimeout(() => {
+    adminAvatarTapCount = 0;
+    adminAvatarTapTimer = null;
+  }, 4000);
   if (adminAvatarTapCount < 5) return;
   adminAvatarTapCount = 0;
   clearTimeout(adminAvatarTapTimer);
   adminAvatarTapTimer = null;
-  try {
-    const session = await api("/api/admin/session", undefined, "GET");
-    if (session.owner) openAdminInsideWens();
-    else $("voiceStatus").textContent = "هذا المدخل مخصص لمالك التطبيق فقط.";
-  } catch {
-    $("voiceStatus").textContent = "تعذّر التحقق من صلاحية الإدارة الآن.";
-  }
+  // افتح بوابة الإدارة بعد خمس ضغطات؛ الخادم نفسه يتحقق من كلمة المرور والصلاحيات.
+  // لا نشترط جلسة مالك مسبقة هنا حتى لا يمنع فشل فحص الجلسة ظهور شاشة تسجيل دخول المدير.
+  openAdminInsideWens();
 }
-const adminBrandEntry = $("brandAdminEntry");
-if (adminBrandEntry) {
-  adminBrandEntry.addEventListener("click", event => {
+function bindAdminAvatarEntry(element) {
+  if (!element) return;
+  element.addEventListener("click", event => {
     event.preventDefault();
     event.stopPropagation();
     handleAdminAvatarTap();
   });
-  adminBrandEntry.addEventListener("keydown", event => {
+  element.addEventListener("keydown", event => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       event.stopPropagation();
@@ -238,6 +236,8 @@ if (adminBrandEntry) {
     }
   });
 }
+bindAdminAvatarEntry($("brandAdminEntry"));
+bindAdminAvatarEntry(document.querySelector(".auth-avatar-wrap"));
 
 function updateAuthMode() {
   const registering = authMode === "register";

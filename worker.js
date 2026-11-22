@@ -1,15 +1,106 @@
 import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
-import { extractResponsesWebSearch } from "./openai-responses-utils.mjs";
+import { extractResponsesWebSearch, fromResponsesResponse, toResponsesInput, toResponsesTools } from "./openai-responses-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
 
 
+async function runOpenAIWebSearchFallback(env, query) {
+  if (!env.OPENAI_API_KEY) return { error: "OPENAI_WEB_SEARCH_NOT_CONFIGURED" };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.OPENAI_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: String(env.WENS_OPENAI_MODEL || "gpt-6.2-astra").trim(),
+        tools: [{ type: "web_search" }],
+        tool_choice: "auto",
+        max_output_tokens: 1400,
+        input: [
+          {
+            role: "system",
+            content: "ابحث في الويب عن معلومات حديثة مرتبطة بالسؤال. لخّص الحقائق المدعومة فقط، واذكر التواريخ وسياق الموسم عند الحاجة. لا تخمّن. اعتمد على صفحات أصلية وحديثة، وأرفق الاستشهادات بالمصادر."
+          },
+          { role: "user", content: String(query || "").slice(0, 1200) }
+        ]
+      }),
+      signal: controller.signal
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return { error: "OPENAI_WEB_SEARCH_ERROR_" + response.status + ": " + String(data?.error?.message || "").slice(0, 160) };
+    }
+    const parsed = extractResponsesWebSearch(data);
+    const domains = [...new Set(parsed.sources.map(source => source.domain))];
+    if (parsed.text.length < 80 || !parsed.sources.length) {
+      return { error: "OPENAI_WEB_SEARCH_NO_VERIFIABLE_RESULTS", text: parsed.text, sources: parsed.sources };
+    }
+    return {
+      results: parsed.text,
+      sources: parsed.sources,
+      engines: ["OpenAI web search"],
+      verifiedDomains: domains,
+      responseId: data.id || null
+    };
+  } catch (error) {
+    return { error: "OPENAI_WEB_SEARCH_FAILED: " + String(error?.message || error).slice(0, 160) };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function runWensTextModel(env, fallbackModel, options = {}) {
-  // Wens runs entirely on the Cloudflare Workers AI binding.
-  // No OpenAI API key, external billing, or OpenAI Responses request is used.
+  // Prefer OpenAI Responses API when configured; it supports GPT-6.2 function calling.
+  // ChatGPT subscriptions are not API credentials; API usage is billed separately.
+  if (env.OPENAI_API_KEY) {
+    const model = String(env.WENS_OPENAI_MODEL || "gpt-6.2-astra").trim();
+    const {
+      messages = [], tools = [], max_tokens, max_completion_tokens,
+      reasoning_effort, temperature, chat_template_kwargs, tool_choice
+    } = options || {};
+    const responseTools = toResponsesTools(tools);
+    const payload = {
+      model,
+      input: toResponsesInput(messages),
+      max_output_tokens: max_completion_tokens || max_tokens || 1000,
+      ...(reasoning_effort ? { reasoning: { effort: reasoning_effort } } : {}),
+      ...(responseTools.length ? { tools: responseTools, tool_choice: tool_choice || "auto" } : {})
+    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 55000);
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + env.OPENAI_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = String(data?.error?.message || "OpenAI Responses request failed").slice(0, 180);
+        throw new Error("OPENAI_API_ERROR_" + response.status + ": " + detail);
+      }
+      const normalized = fromResponsesResponse(data);
+      normalized.choices[0].finish_reason = data.status === "incomplete"
+        ? "length"
+        : normalized.choices[0].message.tool_calls?.length ? "tool_calls" : "stop";
+      normalized.status = data.status;
+      normalized.usage = data.usage || null;
+      return normalized;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
   if (!env.AI) throw new Error("WENS_AI_NOT_CONFIGURED");
   return await env.AI.run(fallbackModel, options);
 }
@@ -720,16 +811,16 @@ async function adminRoute(request, env, path) {
       ok: true,
       checkedAt: new Date().toISOString(),
       features: {
-        openAI: false,
+        openAI: Boolean(env.OPENAI_API_KEY),
         workersAI: Boolean(env.AI),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
-        naturalVoiceConfigured: false,
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY),
         documentReadingConfigured: true,
         freeDocumentParsing: true,
         documentAIConfigured: Boolean(env.AI),
         browserConfigured: Boolean(env.BROWSER),
-        agentToolingConfigured: Boolean(env.AI && tools.length)
+        agentToolingConfigured: Boolean((env.AI || env.OPENAI_API_KEY) && tools.length)
       },
       counts,
       onlineUsers: databaseConnected && tableNames.has("sessions") && tableNames.has("users") && tableNames.has("messages")
@@ -792,7 +883,7 @@ async function adminRoute(request, env, path) {
     });
   }
   if (path === "/api/admin/test-agent" && request.method === "POST") {
-    if (!env.AI) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
+    if (!env.AI && !env.OPENAI_API_KEY) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
     const probe = new Request(new URL("/api/agent", request.url), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -892,18 +983,18 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
+      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
       features: {
-        openAI: false, workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
+        openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
-        naturalVoiceConfigured: false, browserConfigured: Boolean(env.BROWSER)
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), browserConfigured: Boolean(env.BROWSER)
       }
     });
   }
   if (path === "/api/admin/test-ai" && request.method === "POST") {
     if (!env.OPENAI_API_KEY && !env.AI) return json({ error: "لم يتم ربط محرك الذكاء الاصطناعي على الخادم." }, 503);
     try {
-      const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+      const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
       const result = await runWensTextModel(env, model, {
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -1427,7 +1518,7 @@ async function ensureGeneratedProjects(db) {
 }
 async function createWebProject(env, user, args, options = {}) {
   if (!env.DB || !user) return { error: "سجّل الدخول أولًا لحفظ التطبيقات والألعاب في حسابك." };
-  if (!env.AI) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
+  if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة إنشاء التطبيقات غير متاحة حاليًا." };
   const kind = args.kind === "game" ? "game" : "app";
   const title = String(args.title || (kind === "game" ? "لعبة ونس" : "تطبيق ونس")).replace(/[\\r\\n<>]/g, " ").trim().slice(0, 80);
   const prompt = String(args.prompt || "").trim().slice(0, 3200);
@@ -1435,7 +1526,7 @@ async function createWebProject(env, user, args, options = {}) {
   await ensureGeneratedProjects(env.DB);
 
   // Prefer the low-latency multilingual model for code generation; do not inherit a reasoning-heavy chat model.
-  const model = env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash";
+  const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_PROJECT_MODEL || "@cf/zai-org/glm-4.7-flash");
   const system = [
     "You are a senior frontend engineer. Output only one complete standalone HTML5 document.",
     "Use inline CSS and vanilla JavaScript. The app/game must actually work, not be a mockup.",
@@ -1956,7 +2047,7 @@ async function executeAgentTool(name, args, env, user) {
         const publisher = sourceMatch ? cleanText(sourceMatch[2]) : engineName;
         const content = [title, description].filter(Boolean).join(" — ");
         if (!title || !articleUrl) continue;
-        if (sportsQuery && !/(?:egypt|مصر|malawi|مالاوي|الفراعنه|منتخب|football|soccer|fixture|match|تصفيات|افريقيا)/i.test(content)) continue;
+        if (sportsQuery && !isRelevantSportsSearchResult(content)) continue;
         addSource(title + (publisher ? " — " + publisher : ""), articleUrl);
         const section = [
           "نتيجة بحث: " + title,
@@ -2004,7 +2095,7 @@ async function executeAgentTool(name, args, env, user) {
         } catch { continue; }
         const nearby = cleanText(html.slice(match.index, match.index + 1500));
         const content = title + " " + nearby;
-        if (sportsQuery && !/(?:egypt|مصر|malawi|مالاوي|منتخب|football|soccer|fixture|match|schedule|تصفيات)/i.test(content)) continue;
+        if (sportsQuery && !isRelevantSportsSearchResult(content)) continue;
         addSource(title, articleUrl);
         sections.push("نتيجة بحث ويب: " + title + "\\nمقتطف: " + nearby.slice(0, 420) + "\\nالرابط: " + articleUrl);
         count++;
@@ -2378,6 +2469,11 @@ function isEgyptNationalTeamRequest(message) {
   const egypt = /(?:منتخب(?:\s+مصر)?|مصر(?:\s+(?:المنتخب|الوطني|القومي))?|الفراعنه|egypt(?:ian)?(?:\s+(?:national|football|soccer|team))?)/i.test(text);
   const fixture = /(?:موعد|مواعيد|ميعاد|معاد|متى|امتى|ماتش|ماتشات|مباراه|مباريات|جدول|القادم|القادمه|الجاي|الجايه|التالي|التاليه|موعده|fixtures|schedule|upcoming|next match)/i.test(text);
   return egypt && fixture;
+}
+
+function isRelevantSportsSearchResult(value) {
+  // Keep Egyptian club results even when publishers omit generic "football" keywords.
+  return /(?:egypt|مصر|malawi|مالاوي|الفراعنه|منتخب|الاهلي|الأهلي|al[\\s-]?ahly|الزمالك|zamalek|بيراميدز|pyramids|football|soccer|fixture|match|schedule|تصفيات|افريقيا)/i.test(String(value || ""));
 }
 
 function isSportsScheduleRequest(message) {
@@ -3002,16 +3098,46 @@ async function handleAgent(request, env, user, options = {}) {
     const liveSearch = await executeAgentTool("search_web", { query: searchQuery }, env, user);
     preSearchResult = liveSearch;
     searchResultCache.set(searchCacheKey(searchQuery), liveSearch);
-    const searchText = String(liveSearch?.results || "");
-    const hasSearchText = !liveSearch?.error && searchText.length >= 80;
+    let searchText = String(liveSearch?.results || "");
+    let hasSearchText = !liveSearch?.error && searchText.length >= 80;
     rememberSources(liveSearch);
-    const searchVerified = sportsScheduleRequest
+    let searchVerified = sportsScheduleRequest
       ? hasVerifiableSportsScheduleSources(liveSearch)
       : !liveDataRequest
         ? hasSearchText && sources.length > 0
         : goldPriceRequest
           ? hasVerifiableGoldPriceSources(liveSearch)
           : hasVerifiableLiveSources(liveSearch, 1);
+
+    // If the external search adapter is unavailable or returns weak evidence,
+    // use Responses API hosted web_search before refusing a current-information request.
+    if (!searchVerified && env.OPENAI_API_KEY) {
+      const fallbackSearch = await runOpenAIWebSearchFallback(env, searchQuery);
+      if (!fallbackSearch.error) {
+        searchText = String(fallbackSearch.results || "");
+        hasSearchText = searchText.length >= 80;
+        for (const source of (fallbackSearch.sources || [])) {
+          if (!sources.some(existing => existing.url === source.url)) sources.push(source);
+        }
+        const independentDomains = new Set((fallbackSearch.sources || []).map(source => source.domain));
+        const enoughIndependentSources = independentDomains.size >= 2;
+        searchVerified = sportsScheduleRequest
+          ? enoughIndependentSources && searchText.includes(getCurrentEgyptFootballSeason().full)
+          : goldPriceRequest || liveDataRequest
+            ? enoughIndependentSources
+            : hasSearchText && sources.length > 0;
+        if (searchVerified) {
+          preSearchResult = fallbackSearch;
+          searchResultCache.set(searchCacheKey(searchQuery), fallbackSearch);
+        }
+      } else {
+        activity.push({
+          label: "البحث الاحتياطي عبر OpenAI",
+          status: "failed",
+          detail: String(fallbackSearch.error).slice(0, 180)
+        });
+      }
+    }
     steps.push("البحث في المواقع الخارجية قبل صياغة الإجابة");
     activity.push({
       label: "البحث في المواقع الخارجية",
@@ -3034,7 +3160,7 @@ async function handleAgent(request, env, user, options = {}) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
-      return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
+      return json({ ok: true, model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"), steps, activity, sources, reply, generatedImages, generatedProjects });
     }
     if (explicitSearchRequest && !searchVerified) {
       const reply = "حاولت أبحث في المواقع الخارجية، لكن ما قدرتش أوصل لنتائج ومصادر قابلة للتحقق دلوقتي. مش هقدّم معلومات على إنها نتيجة بحث ناجح.";
@@ -3042,7 +3168,7 @@ async function handleAgent(request, env, user, options = {}) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
-      return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
+      return json({ ok: true, model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"), steps, activity, sources, reply, generatedImages, generatedProjects });
     }
     if (hasSearchText) {
       const verifiedResults = searchText.slice(0, 12000);
@@ -3071,7 +3197,7 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = useReasoningModel ? (env.WENS_REASONING_MODEL || "@cf/qwen/qwen3.8-27b") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+  const model = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : (useReasoningModel ? (env.WENS_REASONING_MODEL || "@cf/qwen/qwen3.8-27b") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
@@ -3119,6 +3245,9 @@ async function handleAgent(request, env, user, options = {}) {
         finalText = stripToolCallMarkup(rawAssistantText);
         break;
       }
+      // The agent executes at most six calls per turn. Trim before storing
+      // the assistant call list so every emitted call receives an output.
+      calls = calls.slice(0, 6);
       const nativeToolResponse = !parsedTextToolCalls &&
         Array.isArray(result?.tool_calls) && !Array.isArray(assistantMessage?.tool_calls);
       if (parsedTextToolCalls) {
@@ -3131,10 +3260,15 @@ async function handleAgent(request, env, user, options = {}) {
         let args = call.arguments ?? call.function?.arguments ?? {};
         if (typeof args === "string") { try { args = JSON.parse(args); } catch { args = {}; } }
         const allowed = ["get_current_time","calculate","search_web","open_webpage","browser_open","browser_inspect","browser_click","browser_fill","browser_close","save_task","list_tasks","update_task","set_task_status","archive_task","restore_task","search_my_messages","generate_image","edit_image","create_web_project","list_web_projects","edit_web_project","list_web_project_revisions","restore_web_project_revision","save_memory","list_memories","delete_memory"];
-        if (!allowed.includes(name)) { steps.push("تم رفض أداة غير مسموح بها."); continue; }
+        const toolAllowed = allowed.includes(name);
+        if (!toolAllowed) steps.push("تم رفض أداة غير مسموح بها.");
         let output;
         let reusedSearchResult = false;
-        if (name === "search_web") {
+        if (!toolAllowed) {
+          // Responses API requires one function_call_output for every call,
+          // including rejected calls, otherwise the next turn is invalid.
+          output = { error: "TOOL_NOT_ALLOWED" };
+        } else if (name === "search_web") {
           const requestedQuery = String(args?.query || buildExternalSearchQuery(message) || message).trim();
           const key = searchCacheKey(requestedQuery);
           if (preSearchResult) {
@@ -3453,7 +3587,7 @@ export default {
     }
     if (request.method === "GET" && path === "/api/health") {
       const workersAiBindingPresent = Boolean(env.AI);
-      const openAiConfigured = false;
+      const openAiConfigured = Boolean(env.OPENAI_API_KEY);
       return json({
         ok: true,
         service: "wens-ai",
@@ -3472,7 +3606,7 @@ export default {
         diagnostics: {
           workersAiBindingPresent,
           browserBindingPresent: Boolean(env.BROWSER),
-          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
+          model: openAiConfigured ? (env.WENS_OPENAI_MODEL || "gpt-6.2-astra") : workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
         }
       });
     }
