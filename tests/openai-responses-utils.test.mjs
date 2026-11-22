@@ -162,14 +162,14 @@ test("returns an empty source list when OpenAI search has no citations", async (
 test("worker imports every OpenAI Responses adapter used by its chat path", async () => {
   const { readFile } = await import("node:fs/promises");
   const worker = await readFile(new URL("../worker.js", import.meta.url), "utf8");
-  const importLine = worker.match(/import \\{([^}]+)\\} from "\\.\\/openai-responses-utils\\.mjs";/);
-  assert.ok(importLine, "worker.js must import the OpenAI Responses adapter module");
+  const adapterImport = worker.split("\n").find(line => line.includes('from "./openai-responses-utils.mjs"'));
+  assert.ok(adapterImport, "worker.js must import the OpenAI Responses adapter module");
   for (const name of [
     "extractResponsesWebSearch",
     "fromResponsesResponse",
     "toResponsesInput",
     "toResponsesTools"
   ]) {
-    assert.match(importLine[1], new RegExp("\\b" + name + "\\b"), name + " must be imported by worker.js");
+    assert.ok(adapterImport.includes(name), name + " must be imported by worker.js");
   }
 });
