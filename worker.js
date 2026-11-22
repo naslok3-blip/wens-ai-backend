@@ -1,6 +1,6 @@
 import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
-import { extractResponsesWebSearch } from "./openai-responses-utils.mjs";
+import { extractResponsesWebSearch, fromResponsesResponse, toResponsesInput, toResponsesTools } from "./openai-responses-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
 
