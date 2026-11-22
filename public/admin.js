@@ -86,7 +86,7 @@ async function refreshStatus() {
   try {
     const data = await request("/api/admin/status");
     const f = data.features || {};
-    setState("workersAiState", f.openAI ? "OpenAI متصل" : f.workersAI ? "Workers AI متصل" : "غير مربوط", !!(f.openAI || f.workersAI));
+    setState("workersAiState", f.workersAI ? "Workers AI متصل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
     setState("voiceState", "صوت الجهاز المجاني — يحتاج صوت ar-EG مثبت", false);
     setState("browserState", f.browserConfigured ? "الربط موجود" : "غير مربوط", !!f.browserConfigured);
@@ -243,9 +243,9 @@ async function refreshDiagnostics() {
     setMetric("metricMessages", counts.messages);
     setMetric("metricTasks", counts.activeAgentTasks);
     setMetric("metricTools", data.agent?.toolCount);
-    setDiagnostic("diagWorkersAI", features.openAI ? "OpenAI متصل" : features.workersAI ? "Workers AI متصل" : "غير مربوط", !!(features.openAI || features.workersAI));
+    setDiagnostic("diagWorkersAI", features.workersAI ? "Workers AI متصل" : "غير مربوط", !!features.workersAI);
     setDiagnostic("diagDatabase", features.databaseConnected ? "متصلة" : "غير متصلة", !!features.databaseConnected);
-    setDiagnostic("diagVoice", features.naturalVoiceConfigured ? "المفتاح موجود — يلزم سماع فعلي" : "غير مهيأ", !!features.naturalVoiceConfigured);
+    setDiagnostic("diagVoice", features.naturalVoiceConfigured ? "المفتاح موجود — يلزم سماع فعلي" : "غير مهيأ", !!features.deviceVoiceFallback);
     setDiagnostic("diagDocuments", features.documentReadingConfigured ? "المفتاح موجود — اختبر ملفًا" : "غير مهيأ", !!features.documentReadingConfigured);
     setDiagnostic("diagBrowser", features.browserConfigured ? "الربط موجود — لم يُختبر التصفح" : "غير مربوط", !!features.browserConfigured);
     setDiagnostic("diagTables", tables.missing?.length ? "جداول ناقصة: " + tables.missing.join("، ") : "الجداول الأساسية موجودة", !(tables.missing?.length));
