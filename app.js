@@ -1984,11 +1984,11 @@ async function loadSystemStatus() {
     const data = await response.json();
     const f = data.features || {};
     const labels = [
-      "محرك الدردشة " + (f.openAI ? "OpenAI جاهز" : f.workersAI ? "Workers AI جاهز" : "غير مربوط"),
+      "محرك الدردشة " + (f.workersAI ? "Workers AI جاهز" : "غير مربوط"),
       "قاعدة البيانات " + (f.database ? "جاهزة" : "غير مربوطة")
     ];
     $("systemStatus").textContent = labels.concat(f.workersAI ? "توليد الصور عبر Cloudflare جاهز" : "توليد الصور غير مربوط", f.browser ? "متصفح المواقع جاهز" : "متصفح المواقع غير مربوط").join(" · ");
-    $("systemStatus").classList.toggle("all-ready", !!((f.openAI || f.workersAI) && f.database));
+    $("systemStatus").classList.toggle("all-ready", !!(f.workersAI && f.database));
     return data;
   } catch {
     $("systemStatus").textContent = "تعذّر فحص حالة الخادم.";
