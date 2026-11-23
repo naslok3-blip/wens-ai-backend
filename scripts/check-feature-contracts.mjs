@@ -267,7 +267,7 @@ console.log("Wens live-data verification tests passed for gold, exchange rates, 
 console.log("Wens feature contracts passed: document reading, agent routing, project editing and rollback, reply deduplication, Egyptian voice handling and admin features.");
 
 const copyCatalogStart = worker.indexOf("const DEFAULT_APP_SETTINGS = {");
-const copyCatalogEnd = worker.indexOf("\\nconst APP_SETTING_LIMITS", copyCatalogStart);
+const copyCatalogEnd = worker.indexOf("const APP_SETTING_LIMITS", copyCatalogStart);
 if (copyCatalogStart < 0 || copyCatalogEnd < 0) throw new Error("Editable UI copy catalog could not be isolated.");
 const uiCopyDefaults = runInNewContext(worker.slice(copyCatalogStart, copyCatalogEnd) + "\\nDEFAULT_APP_SETTINGS.uiCopy");
 const uiCopyKeys = Object.keys(uiCopyDefaults || {});
