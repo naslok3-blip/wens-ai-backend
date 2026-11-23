@@ -187,7 +187,7 @@ const checks = [
   [worker, "async function handleRealtimeVoice(request, env, user)", "authenticated Realtime voice endpoint"],
   [worker, "OpenAI-Safety-Identifier", "hashed Realtime user safety identifier"],
   [worker, "consumeRealtimeVoiceQuota", "per-user D1 voice rate limit"],
-  [worker, "realtimeVoiceConfigured: Boolean(env.OPENAI_API_KEY)", "voice availability reflects server secret configuration"],
+  [worker, "realtimeVoiceConfigured: Boolean(env.OPENAI_API_KEY && env.DB)", "voice availability reflects server secret configuration"],
   [app, 'appSettings.voiceEngine === "realtime"', "Realtime voice is opt-in and falls back to device TTS"],
   [owner, '["device", "realtime"].includes(next.voiceEngine)', "owner can select the Realtime voice engine"],
   [adminHtml, 'value="realtime"', "owner panel labels the paid Realtime voice option"]
