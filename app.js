@@ -20,22 +20,96 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, theme: "purple",
-    enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device"
+    enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device",
+    uiCopy: {
+      "brandTagline": "رفيقة يومك الذكية",
+      "authEyebrow": "مساحتك الخاصة",
+      "authTitle": "أهلًا بيك في ونس",
+      "registerTitle": "إنشاء حساب ونس",
+      "backToLogin": "عندي حساب بالفعل",
+      "authDescription": "سجّل دخولك علشان محادثاتك تتحفظ بأمان وتقدر تكمل من أي جهاز.",
+      "nameLabel": "الاسم",
+      "emailLabel": "البريد الإلكتروني",
+      "passwordLabel": "كلمة المرور",
+      "loginButton": "تسجيل الدخول",
+      "registerButton": "إنشاء حساب جديد",
+      "chatSidebarTitle": "محادثاتك",
+      "newConversation": "＋ محادثة جديدة",
+      "conversationSearch": "ابحث في المحادثات...",
+      "archivedConversations": "المحادثات المؤرشفة",
+      "activeChatTitle": "الدردشة مع ونس",
+      "accountLabel": "محادثتك محفوظة في حسابك",
+      "newChatButton": "＋ جديد",
+      "notificationTitle": "مركز الإشعارات",
+      "markAllRead": "تحديد الكل كمقروء",
+      "noNotifications": "لا توجد إشعارات بعد.",
+      "attachmentMenu": "إضافة إلى المحادثة",
+      "cameraTitle": "الكاميرا",
+      "cameraDescription": "التقط صورة وأرسلها لونس",
+      "photosTitle": "الصور",
+      "photosDescription": "اختر صورة من هاتفك",
+      "filesTitle": "الملفات",
+      "filesDescription": "نصوص ومستندات وملفات أخرى",
+      "pluginsTitle": "المكونات الإضافية",
+      "pluginsDescription": "أدوات ونس المتصلة",
+      "deepThinkTitle": "فكّر بعمق أكبر",
+      "deepThinkDescription": "استدلال أعمق للمسائل الصعبة",
+      "pluginToolsTitle": "أدوات ونس المتاحة",
+      "searchWeb": "🌐 البحث في الإنترنت",
+      "browseWeb": "🌍 متصفح المواقع",
+      "manageTasks": "✅ إدارة المهام",
+      "calculator": "🧮 الحاسبة",
+      "searchConversations": "🗂️ البحث في المحادثات",
+      "saveMemory": "🧠 حفظ تفضيل في الذاكرة",
+      "viewMemory": "📚 عرض ذاكرتي",
+      "deleteMemory": "🧹 حذف معلومة من الذاكرة",
+      "createApp": "🧩 إنشاء تطبيق أو لعبة",
+      "backButton": "رجوع",
+      "deepThinkEnabled": "🧠 التفكير العميق مفعّل",
+      "stopButton": "إيقاف",
+      "correctionButton": "استخدم التصحيح",
+      "composerPlaceholder": "اكتب رسالتك أو أرفق ملفًا...",
+      "composerAria": "رسالتك",
+      "sendButton": "إرسال",
+      "privacyDisclaimer": "رسائلك ومرفقاتك تُعالج لإعداد الرد. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.",
+      "adminTitle": "لوحة إدارة ونس",
+      "adminDescription": "الإدارة داخل حسابك ومن نفس صفحة ونس",
+      "footerText": "ونس AI • نسخة تطويرية"
+    }
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return defaults;
-    return {
+    const merged = {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "device") && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || value === "device"))
+        key in defaults && key !== "uiCopy" && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "device") && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || value === "device"))
       ))
     };
+    const savedCopy = saved.uiCopy && typeof saved.uiCopy === "object" && !Array.isArray(saved.uiCopy) ? saved.uiCopy : {};
+    merged.uiCopy = { ...defaults.uiCopy, ...Object.fromEntries(Object.entries(savedCopy).filter(([key, value]) => key in defaults.uiCopy && typeof value === "string" && value.length <= 240)) };
+    return merged;
   } catch { return defaults; }
 }
 
+function applyUiCopy(copy = appSettings.uiCopy || {}) {
+  document.querySelectorAll("[data-wens-copy]").forEach(element => {
+    const key = element.dataset.wensCopy;
+    if (typeof copy[key] === "string") element.textContent = copy[key];
+  });
+  document.querySelectorAll("[data-wens-placeholder]").forEach(element => {
+    const value = copy[element.dataset.wensPlaceholder];
+    if (typeof value === "string") element.placeholder = value;
+  });
+  document.querySelectorAll("[data-wens-aria]").forEach(element => {
+    const value = copy[element.dataset.wensAria];
+    if (typeof value === "string") element.setAttribute("aria-label", value);
+  });
+}
+window.WensApplyCopyPreview = copy => { if (copy && typeof copy === "object") applyUiCopy(copy); };
 function applyLocalSettings() {
   document.title = appSettings.appName;
+  applyUiCopy();
   const brandName = $("brandName");
   if (brandName) brandName.textContent = appSettings.appName;
   const voiceButtonText = $("voiceButtonText");
@@ -84,7 +158,7 @@ async function refreshNotifications() {
     if (!notificationItems.length) {
       const empty = document.createElement("p");
       empty.className = "notification-empty";
-      empty.textContent = "لا توجد إشعارات بعد.";
+      empty.textContent = appSettings.uiCopy?.noNotifications || "لا توجد إشعارات بعد.";
       list.append(empty);
       return;
     }
@@ -232,9 +306,10 @@ document.addEventListener("click", event => {
 function updateAuthMode() {
   const registering = authMode === "register";
   $("nameField").hidden = !registering;
-  $("authTitle").textContent = registering ? "إنشاء حساب ونس" : "أهلًا بيك في ونس";
-  $("authSubmit").textContent = registering ? "إنشاء الحساب" : "تسجيل الدخول";
-  $("authToggle").textContent = registering ? "عندي حساب بالفعل" : "إنشاء حساب جديد";
+  const copy = appSettings.uiCopy || {};
+  $("authTitle").textContent = registering ? (copy.registerTitle || "إنشاء حساب ونس") : (copy.authTitle || "أهلًا بيك في ونس");
+  $("authSubmit").textContent = registering ? (copy.registerButton || "إنشاء الحساب") : (copy.loginButton || "تسجيل الدخول");
+  $("authToggle").textContent = registering ? (copy.backToLogin || "عندي حساب بالفعل") : (copy.registerButton || "إنشاء حساب جديد");
   $("passwordInput").autocomplete = registering ? "new-password" : "current-password";
 }
 $("authToggle").addEventListener("click", () => {
