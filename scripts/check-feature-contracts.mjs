@@ -269,7 +269,7 @@ console.log("Wens feature contracts passed: document reading, agent routing, pro
 const copyCatalogStart = worker.indexOf("const DEFAULT_APP_SETTINGS = {");
 const copyCatalogEnd = worker.indexOf("const APP_SETTING_LIMITS", copyCatalogStart);
 if (copyCatalogStart < 0 || copyCatalogEnd < 0) throw new Error("Editable UI copy catalog could not be isolated.");
-const uiCopyDefaults = runInNewContext(worker.slice(copyCatalogStart, copyCatalogEnd) + "\\nDEFAULT_APP_SETTINGS.uiCopy");
+const uiCopyDefaults = runInNewContext(worker.slice(copyCatalogStart, copyCatalogEnd) + String.fromCharCode(10) + "DEFAULT_APP_SETTINGS.uiCopy");
 const uiCopyKeys = Object.keys(uiCopyDefaults || {});
 if (uiCopyKeys.length < 50) throw new Error("Editable UI copy catalog unexpectedly lost keys.");
 for (const key of uiCopyKeys) {
