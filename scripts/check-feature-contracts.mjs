@@ -277,9 +277,10 @@ for (const key of uiCopyKeys) {
     throw new Error("UI copy key is missing from the server allowlist or owner editor: " + key);
   }
 }
-const editorLabelsMatch = owner.match(/const labels = (\\{[^\\n]*\\});/);
-if (!editorLabelsMatch) throw new Error("Owner UI copy editor labels could not be read.");
-const editorLabels = JSON.parse(editorLabelsMatch[1]);
+const editorLabelsStart = owner.indexOf("const labels = ");
+const editorLabelsEnd = owner.indexOf(";\\n", editorLabelsStart);
+if (editorLabelsStart < 0 || editorLabelsEnd < 0) throw new Error("Owner UI copy editor labels could not be read.");
+const editorLabels = JSON.parse(owner.slice(editorLabelsStart + "const labels = ".length, editorLabelsEnd));
 for (const key of uiCopyKeys) {
   if (!(key in editorLabels)) throw new Error("UI copy key is missing from the owner editor list: " + key);
 }
