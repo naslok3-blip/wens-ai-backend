@@ -470,6 +470,55 @@ $("resetBtn").addEventListener("click", async () => {
     $("backupStatus").textContent = "تمت استعادة الإعدادات الافتراضية على الخادم.";
   } catch (error) { $("backupStatus").textContent = error.message; }
 });
+async function refreshSettingsHistory() {
+  const list = $("settingsHistoryList");
+  const button = $("refreshSettingsHistoryBtn");
+  button.disabled = true;
+  list.textContent = "جاري تحميل سجل التعديلات...";
+  try {
+    const data = await request("/api/admin/settings/history");
+    list.replaceChildren();
+    const revisions = Array.isArray(data.revisions) ? data.revisions : [];
+    if (!revisions.length) {
+      list.textContent = "لا توجد نسخ سابقة محفوظة حتى الآن.";
+      return;
+    }
+    for (const revision of revisions) {
+      const row = document.createElement("div");
+      row.className = "actions left-actions";
+      row.style.cssText = "justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line,#ddd)";
+      const label = document.createElement("span");
+      label.textContent = new Date(revision.createdAt * 1000).toLocaleString("ar-EG") + " · " + (revision.actor || "مالك التطبيق");
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "btn secondary";
+      restore.textContent = "استرجاع هذه النسخة";
+      restore.addEventListener("click", async () => {
+        if (!confirm("استرجاع هذه النسخة سيستبدل الإعدادات الحالية لكل مستخدمي ونس. هل تريد المتابعة؟")) return;
+        restore.disabled = true;
+        try {
+          const result = await request("/api/admin/settings/restore", { revisionId: revision.id }, "POST");
+          config = normalize(result.settings);
+          fillSettingsForm();
+          const preview = $("avatarPreview");
+          if (preview) preview.src = config.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
+          $("backupStatus").textContent = "تم استرجاع النسخة المحددة، وحُفظت الحالة السابقة في السجل.";
+          await refreshSettingsHistory();
+        } catch (error) {
+          $("backupStatus").textContent = error.message || "تعذّر استرجاع النسخة.";
+          restore.disabled = false;
+        }
+      });
+      row.append(label, restore);
+      list.append(row);
+    }
+  } catch (error) {
+    list.textContent = error.message || "تعذّر تحميل سجل التعديلات.";
+  } finally {
+    button.disabled = false;
+  }
+}
+$("refreshSettingsHistoryBtn").addEventListener("click", refreshSettingsHistory);
 
 
 $("voicePreviewBtn").addEventListener("click", async () => {
