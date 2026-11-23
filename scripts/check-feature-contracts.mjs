@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
-const [app, admin, owner, worker, index, style] = await Promise.all([
+const [app, admin, owner, worker, index, style, adminHtml] = await Promise.all([
   readFile("app.js", "utf8"), readFile("admin.js", "utf8"),
   readFile("owner-panel.js", "utf8"), readFile("worker.js", "utf8"),
-  readFile("index.html", "utf8"), readFile("style.css", "utf8")
+  readFile("index.html", "utf8"), readFile("style.css", "utf8"),
+  readFile("admin.html", "utf8")
 ]);
 const checks = [
   [worker, "async function ensureChatSchema(db)", "per-account conversation schema with legacy message migration"],
@@ -182,7 +183,14 @@ const checks = [
   [app, 'api("/api/notifications"', "chat notification API integration"],
   [index, 'id="notificationsBtn"', "notification center control"],
   [index, 'id="notificationsPanel"', "notification center panel"],
-  [style, ".notification-center", "notification center styling"]
+  [style, ".notification-center", "notification center styling"],
+  [worker, "async function handleRealtimeVoice(request, env, user)", "authenticated Realtime voice endpoint"],
+  [worker, "OpenAI-Safety-Identifier", "hashed Realtime user safety identifier"],
+  [worker, "consumeRealtimeVoiceQuota", "per-user D1 voice rate limit"],
+  [worker, "realtimeVoiceConfigured: Boolean(env.OPENAI_API_KEY)", "voice availability reflects server secret configuration"],
+  [app, 'appSettings.voiceEngine === "realtime"', "Realtime voice is opt-in and falls back to device TTS"],
+  [owner, '["device", "realtime"].includes(next.voiceEngine)', "owner can select the Realtime voice engine"],
+  [adminHtml, 'value="realtime"', "owner panel labels the paid Realtime voice option"]
 ];
 for (const [source, token, label] of checks) {
   if (!source.includes(token)) throw new Error("Missing feature contract: " + label);
