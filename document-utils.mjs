@@ -357,8 +357,8 @@ async function extractPdfFontMaps(bytes, raw) {
 function pdfTextOperators(source, fontMaps = new Map()) {
   const blocks = String(source || "").match(/BT[\\s\\S]*?ET/g) || [];
   const output = [];
-  const operator = /(\\(((?:\\\\.|[^\\\\)])*)\\)|<([0-9a-f\\s]+)>|\\[([\\s\\S]*?)\\])\\s*(Tj|TJ)\\b/gi;
   for (const block of blocks) {
+    const operator = /(\\(((?:\\\\.|[^\\\\)])*)\\)|<([0-9a-f\\s]+)>|\\[([\\s\\S]*?)\\])\\s*(Tj|TJ)\\b/gi;
     let match;
     while ((match = operator.exec(block))) {
       const before = block.slice(0, match.index);
