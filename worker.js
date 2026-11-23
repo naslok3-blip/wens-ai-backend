@@ -2202,7 +2202,8 @@ async function executeAgentTool(name, args, env, user) {
       engines,
       diagnostics: diagnostics.slice(0, 3),
       searchedAt: new Date().toISOString(),
-      freeSearch: true
+      freeSearch: true,
+      reviewedPages
     };
   }
   if (name === "open_webpage") {
@@ -3067,7 +3068,7 @@ async function handleAgent(request, env, user, options = {}) {
     let searchVerified = sportsScheduleRequest
       ? hasVerifiableSportsScheduleSources(liveSearch)
       : !liveDataRequest
-        ? hasSearchText && new Set(sources.map(item => item.domain)).size >= 2 && reviewedPages >= 1
+        ? hasSearchText && new Set(sources.map(item => item.domain)).size >= 2 && Number(liveSearch?.reviewedPages) >= 1
         : goldPriceRequest
           ? hasVerifiableGoldPriceSources(liveSearch)
           : hasVerifiableLiveSources(liveSearch, 1);
