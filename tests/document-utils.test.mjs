@@ -121,6 +121,46 @@ test("extracts Arabic text from CIDFont PDFs through ToUnicode CMaps", async () 
   assert.match(result.text, /ه/);
 });
 
+test("extracts Arabic text from CIDFont PDFs through ToUnicode CMaps", async () => {
+  const cmap = [
+    "/CIDInit /ProcSet findresource begin",
+    "12 dict begin",
+    "begincmap",
+    "/CMapName /WensArabic def",
+    "/CMapType 2 def",
+    "1 begincodespacerange",
+    "<0000> <FFFF>",
+    "endcodespacerange",
+    "1 beginbfchar",
+    "<0001> <0648>",
+    "endbfchar",
+    "1 beginbfrange",
+    "<0002> <0003> <0646>",
+    "endbfrange",
+    "endcmap",
+    "CMapName currentdict /CMap defineresource pop",
+    "end",
+    "end"
+  ].join("\n");
+  const content = "BT /F1 12 Tf <0001> Tj ET\nBT /F1 12 Tf [<0002> -120 <0003>] TJ ET";
+  const pdf = [
+    "%PDF-1.4",
+    "2 0 obj << /Type /Font /Subtype /Type0 /ToUnicode 3 0 R >> endobj",
+    "3 0 obj << /Length " + cmap.length + " >> stream",
+    cmap,
+    "endstream endobj",
+    "4 0 obj << /Type /Page /Resources << /Font << /F1 2 0 R >> >> /Contents 5 0 R >> endobj",
+    "5 0 obj << /Length " + content.length + " >> stream",
+    content,
+    "endstream endobj",
+    "%%EOF"
+  ].join("\n");
+  const result = await extractDocumentText(asFile("arabic-cid.pdf", Buffer.from(pdf, "binary")));
+  assert.match(result.text, /و/);
+  assert.match(result.text, /ن/);
+  assert.match(result.text, /ه/);
+});
+
 test("reports scanned PDFs honestly when no text layer exists", async () => {
   const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n<< /Type /Page >>\nendobj\n%%EOF", "binary");
   await assert.rejects(
