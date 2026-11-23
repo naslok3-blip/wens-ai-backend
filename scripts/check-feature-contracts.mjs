@@ -271,12 +271,19 @@ const copyCatalogEnd = worker.indexOf("const APP_SETTING_LIMITS", copyCatalogSta
 if (copyCatalogStart < 0 || copyCatalogEnd < 0) throw new Error("Editable UI copy catalog could not be isolated.");
 const uiCopyDefaults = runInNewContext(worker.slice(copyCatalogStart, copyCatalogEnd) + String.fromCharCode(10) + "DEFAULT_APP_SETTINGS.uiCopy");
 const uiCopyKeys = Object.keys(uiCopyDefaults || {});
-if (uiCopyKeys.length < 50) throw new Error("Editable UI copy catalog unexpectedly lost keys.");
+if (uiCopyKeys.length < 90) throw new Error("Editable UI copy catalog unexpectedly lost keys.");
 for (const key of uiCopyKeys) {
   if (!worker.includes('"' + key + '"') || !owner.includes('"' + key + '"')) {
     throw new Error("UI copy key is missing from the server allowlist or owner editor: " + key);
   }
 }
+const editorLabelsMatch = owner.match(/const labels = (\\{[^\\n]*\\});/);
+if (!editorLabelsMatch) throw new Error("Owner UI copy editor labels could not be read.");
+const editorLabels = JSON.parse(editorLabelsMatch[1]);
+for (const key of uiCopyKeys) {
+  if (!(key in editorLabels)) throw new Error("UI copy key is missing from the owner editor list: " + key);
+}
+if (!app.includes("const uiText = (key, fallback)")) throw new Error("Dynamic app copy helper is missing.");
 if (!app.includes("window.WensApplyCopyPreview") || !owner.includes("copyPreviewBtn")) {
   throw new Error("UI copy draft preview wiring is missing.");
 }
