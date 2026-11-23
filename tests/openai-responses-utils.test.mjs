@@ -175,7 +175,7 @@ test("text inference stays on Workers AI while paid Realtime voice is isolated a
   assert.equal(agentSnippet.includes("OPENAI_API_KEY"), false, "text agent must not read an OpenAI key");
   assert.equal(agentSnippet.includes("api.openai.com"), false, "text agent must not call OpenAI endpoints");
 
-  const voiceEnd = worker.indexOf("\\n\\nconst WENS_HOTFIX_ASSETS", voiceStart);
+  const voiceEnd = worker.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + "const WENS_HOTFIX_ASSETS", voiceStart);
   assert.ok(voiceEnd > voiceStart, "Realtime voice handler must be isolated");
   const voiceSnippet = worker.slice(voiceStart, voiceEnd);
   assert.ok(voiceSnippet.includes("if (!env.OPENAI_API_KEY)"), "paid voice must remain disabled without a server secret");
