@@ -379,3 +379,12 @@ test("chat UI exposes edit and regenerate controls for the latest text-only turn
   assert.match(client, /تعديل سؤالي/);
   assert.ok(client.includes('!previousRow.querySelector(".message-attachments")'));
 });
+
+test("external research queries Google and Bing web results plus Yahoo News RSS", () => {
+  assert.match(worker, /Google Web Search/);
+  assert.match(worker, /Bing Web Search/);
+  assert.match(worker, /Yahoo News RSS/);
+  assert.match(worker, /www\\.google\\.com\\/search/);
+  assert.match(worker, /www\\.bing\\.com\\/search/);
+  assert.match(worker, /news\\.search\\.yahoo\\.com\\/rss/);
+});
