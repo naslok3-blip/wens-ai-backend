@@ -74,6 +74,7 @@
         <button class="nav-btn" data-tab="assistant">🔊 الصوت والمساعدة</button>
         <button class="nav-btn" data-tab="features">⚙ الميزات</button>
         <button class="nav-btn" data-tab="content">☷ رسائل البداية</button>
+          <button class="nav-btn" data-tab="copy">✎ محرر نصوص التطبيق</button>
         <button class="nav-btn" data-tab="backup">⇩ النسخ والاسترجاع</button>
       </nav>
       <div class="admin-content">
@@ -207,6 +208,14 @@
           <div class="field"><label for="welcomeText">الوصف الرئيسي</label><textarea id="welcomeText" rows="3" maxlength="240"></textarea></div>
           <div class="field"><label for="greeting">رسالة أول محادثة</label><textarea id="greeting" rows="3" maxlength="350"></textarea></div>
           <div class="field"><label for="voiceButton">نص زر الصوت</label><input id="voiceButton" maxlength="45"></div>
+        </section>
+        <section class="tab-page" id="tab-copy">
+          <h2>محرر نصوص التطبيق</h2>
+          <p class="muted">عدّل النصوص الظاهرة في واجهة ونس. التغييرات مسودة حتى تضغط «حفظ التعديلات». المعاينة داخل التطبيق لا تحفظها للمستخدمين.</p>
+          <div class="field"><label for="copySearch">ابحث عن نص</label><input id="copySearch" type="search" placeholder="ابحث بالاسم أو النص..."></div>
+          <div class="actions left-actions"><button id="copyPreviewBtn" class="btn secondary" type="button">معاينة المسودة في ونس</button><button id="copyResetDraftBtn" class="btn secondary" type="button">إرجاع نصوص المسودة للأصل</button></div>
+          <p id="copyEditorStatus" class="status-line" aria-live="polite">كتالوج النصوص الأساسية جاهز. الرسائل الديناميكية ورسائل الخادم ليست كلها ضمن هذا الإصدار.</p>
+          <div id="copyEditorList" class="copy-editor-list"></div>
         </section>
         <section class="tab-page" id="tab-backup">
           <h2>النسخ والاسترجاع</h2>
