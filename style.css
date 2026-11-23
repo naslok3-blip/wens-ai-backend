@@ -409,3 +409,119 @@ main.app{width:min(1120px,100%);max-width:100%;height:0;min-height:0;flex:1 1 au
 .message-retry-actions button{padding:6px 10px;border:1px solid #dbe3ef;border-radius:9px;background:#fff;color:#64748b;font:inherit;font-size:11px;cursor:pointer}
 .message-retry-actions button:hover{background:#f7f5fd;color:#49368f}
 .message-retry-actions button:disabled{opacity:.5;cursor:wait}
+
+
+/* Wens full-screen conversation workspace */
+@supports (height: 100dvh) {
+  body:has(#appRoot:not([hidden])) { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+}
+body:has(#appRoot:not([hidden])) { min-height:100vh; overflow:hidden; }
+body:has(#appRoot:not([hidden])) .topbar { position:relative; top:auto; flex:0 0 auto; }
+body:has(#appRoot:not([hidden])) .app {
+  display:flex; flex:1 1 auto; flex-direction:column; width:100%; max-width:none;
+  min-height:0; height:0; margin:0; padding:0;
+}
+#appRoot:not([hidden]) {
+  display:flex; flex:1 1 auto; flex-direction:row; align-items:stretch; gap:0;
+  width:100%; min-width:0; min-height:0; height:100%; overflow:hidden;
+}
+#appRoot>.conversation-sidebar {
+  flex:0 0 286px; width:286px; min-height:0; height:100%;
+  border:0; border-inline-start:1px solid #ffffff18; border-radius:0;
+  box-shadow:none; background:#11111f; color:#f7f5ff;
+}
+#appRoot .conversation-sidebar-head { border-bottom-color:#ffffff14; }
+#appRoot .conversation-sidebar-title,
+#appRoot .conversation-open-btn strong { color:#f7f5ff; }
+#appRoot .conversation-search { background:#ffffff08; border-color:#ffffff18; }
+#appRoot .conversation-search input { color:#f7f5ff; }
+#appRoot .conversation-item.active { background:#a28bff18; border-color:#a28bff35; }
+#appRoot .conversation-open-btn { color:#f7f5ff; }
+#appRoot .conversation-open-btn span,
+#appRoot .conversation-item-actions button { color:#aaa5c2; }
+#appRoot>.panel {
+  display:flex; flex:1 1 0; flex-direction:column; width:0; min-width:0;
+  min-height:0; height:100%; margin:0; padding:0 clamp(16px,3vw,42px);
+  border:0; border-radius:0; box-shadow:none; background:transparent;
+}
+#appRoot>.panel>.section-head {
+  flex:0 0 auto; width:100%; min-height:66px; margin:0 auto;
+  border-bottom:1px solid #ffffff12; padding:12px 0;
+}
+#appRoot>.panel>.section-head h2 { font-size:16px; }
+#appRoot>.panel>.section-head p { font-size:11px; }
+#appRoot .sidebar-toggle-btn,
+#appRoot .notification-toggle { background:#ffffff0b; border-color:#ffffff20; color:#e7ddff; }
+#appRoot #newConversationQuickBtn { color:#d6c8ff; }
+#appRoot .messages {
+  display:flex; flex:1 1 auto; flex-direction:column; gap:22px;
+  width:min(100%,900px); min-height:0; max-height:none; height:auto;
+  margin:0 auto; padding:28px 10px 24px; overflow-x:hidden; overflow-y:auto;
+  overscroll-behavior:contain; scroll-behavior:smooth;
+}
+#appRoot .message { width:100%; align-items:flex-start; gap:12px; }
+#appRoot .message .bubble { max-width:min(88%,780px); padding:13px 16px; font-size:14px; line-height:1.85; }
+#appRoot .message.user .bubble { margin-inline-start:auto; }
+#appRoot .mini-avatar { flex:0 0 34px; width:34px; height:34px; border-radius:50%; }
+#appRoot .chat-composer {
+  flex:0 0 auto; width:min(100%,900px); margin:0 auto;
+  padding:12px 0 max(12px,env(safe-area-inset-bottom));
+  background:transparent;
+}
+#appRoot .chat-form {
+  align-items:center; gap:9px; padding:8px 9px;
+  border:1px solid #ffffff25; border-radius:24px; background:#171725;
+  box-shadow:0 10px 32px #00000025;
+}
+#appRoot .chat-form input {
+  flex:1 1 auto; min-height:42px; padding:10px 12px; border:0;
+  border-radius:15px; background:transparent; color:#fbf9ff; font-size:14px;
+}
+#appRoot .chat-form input:focus { border:0; box-shadow:none; }
+#appRoot .chat-form input::placeholder { color:#9691aa; }
+#appRoot .send-btn { min-height:40px; min-width:66px; border-radius:15px; }
+#appRoot .attach-menu-btn,
+#appRoot .voice-input-btn {
+  flex:0 0 40px; width:40px; height:40px; border-radius:50%;
+  border:1px solid #ffffff20; background:#ffffff0a; color:#eee8ff;
+}
+#appRoot>.panel>.disclaimer {
+  flex:0 0 auto; width:min(100%,900px); margin:0 auto;
+  padding:0 0 9px; text-align:center; font-size:10px;
+}
+#appRoot .voice-status,
+#appRoot .voice-player-dock,
+#appRoot .attachment-status { width:min(100%,900px); margin-inline:auto; }
+body:has(#appRoot:not([hidden])) footer { display:none; }
+@media(max-width:760px) {
+  body:has(#appRoot:not([hidden])) .topbar { padding-top:max(9px,env(safe-area-inset-top)); padding-bottom:9px; }
+  body:has(#appRoot:not([hidden])) .app { padding:0; }
+  #appRoot:not([hidden]) { position:relative; flex-direction:row; }
+  #appRoot>.conversation-sidebar {
+    position:absolute; z-index:90; top:0; right:0; bottom:0;
+    width:min(86vw,310px); max-width:none; height:100%;
+    flex:0 0 min(86vw,310px); border:1px solid #ffffff1c;
+    border-radius:0 0 0 18px; transform:translateX(112%);
+    background:#151422; box-shadow:0 18px 55px #0008;
+  }
+  #appRoot>.conversation-sidebar.open { transform:translateX(0); }
+  #appRoot>.panel { width:100%; flex:1 1 auto; padding:0 12px; }
+  #appRoot>.panel>.section-head { min-height:58px; }
+  #appRoot .messages { padding:20px 2px 16px; gap:17px; }
+  #appRoot .message .bubble { max-width:calc(100% - 44px); padding:11px 13px; font-size:14px; }
+  #appRoot .chat-composer { padding-top:9px; padding-bottom:max(10px,env(safe-area-inset-bottom)); }
+  #appRoot .chat-form { gap:6px; padding:6px; border-radius:21px; }
+  #appRoot .chat-form input { font-size:16px; min-height:40px; }
+  #appRoot .send-btn { min-width:54px; padding:0 10px; }
+  #appRoot .attach-menu-btn,
+  #appRoot .voice-input-btn { flex-basis:36px; width:36px; height:36px; }
+  #appRoot>.panel>.disclaimer { font-size:9px; padding-bottom:6px; }
+}
+@media(max-width:380px) {
+  #appRoot>.panel { padding-inline:8px; }
+  #appRoot .chat-head-actions { gap:3px; }
+  #appRoot .messages { padding-inline:0; }
+}
+@supports not (height: 100dvh) {
+  body:has(#appRoot:not([hidden])) { height:100vh; }
+}
