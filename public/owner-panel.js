@@ -175,8 +175,8 @@ function normalize(data) {
   next.uiCopy = { ...defaults.uiCopy, ...Object.fromEntries(Object.entries(incomingCopy).filter(([key, value]) => key in defaults.uiCopy && typeof value === "string" && value.length <= 240)) };
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
   if (next.voiceLocale !== "ar-EG") next.voiceLocale = "ar-EG";
-  if (next.voiceEngine !== "device") next.voiceEngine = "device";
-  if (next.voiceName !== "device") next.voiceName = "device";
+  if (!["device", "realtime"].includes(next.voiceEngine)) next.voiceEngine = "device";
+  if (!["device", "marin", "cedar", "coral"].includes(next.voiceName)) next.voiceName = "device";
   return next;
 }
 function applyOwnerCopy() {
@@ -261,7 +261,7 @@ async function refreshStatus() {
     const f = data.features || {};
     setState("workersAiState", f.workersAI ? "متصل ويعمل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
-    setState("voiceState", "صوت الجهاز المجاني — يحتاج صوت ar-EG مثبت", false);
+    setState("voiceState", f.realtimeVoiceConfigured ? "صوت طبيعي عبر OpenAI Realtime — استخدام مدفوع" : "صوت الهاتف المحلي — يحتاج صوت ar-EG مثبت", !!f.realtimeVoiceConfigured);
     setState("browserState", f.browserConfigured ? "الربط موجود" : "غير مربوط", !!f.browserConfigured);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
     $("databaseDetail").textContent = !f.databaseConfigured ? "لم يتم ربط D1 بعد" : !f.databaseConnected ? "تعذّر الاتصال بقاعدة البيانات" : f.settingsStorageReady ? "الجداول وحفظ الإعدادات جاهزة" : "تخزين الإعدادات يحتاج مراجعة";
