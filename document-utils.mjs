@@ -221,23 +221,162 @@ function decodePdfLiteral(value) {
   return latinDecoder.decode(Uint8Array.from(output, char => char.charCodeAt(0)));
 }
 
-function pdfTextOperators(source) {
-  const blocks = source.match(/BT[\s\S]*?ET/g) || [];
-  const output = [];
-  const literal = /\(((?:\\.|[^\\)])*)\)\s*Tj\b/g;
-  const array = /\[((?:\\.|[^\]])*)\]\s*TJ\b/g;
-  for (const block of blocks) {
-    let match;
-    while ((match = literal.exec(block))) output.push(decodePdfLiteral(match[1]));
-    while ((match = array.exec(block))) {
-      const strings = [...match[1].matchAll(/\(((?:\\.|[^\\)])*)\)|<([0-9a-f\s]+)>/gi)]
-        .map(item => item[1] !== undefined ? decodePdfLiteral(item[1]) : decodePdfLiteral(
-          String.fromCharCode(...(item[2].replace(/\s/g, "").match(/.{2}/g) || []).map(pair => parseInt(pair,16)))
-        ));
-      output.push(strings.join(""));
+function decodePdfUtf16Hex(value) {
+  const hex = String(value || "").replace(/[^0-9a-f]/gi, "");
+  const units = [];
+  for (let index = 0; index + 3 < hex.length; index += 4) {
+    units.push(parseInt(hex.slice(index, index + 4), 16));
+  }
+  return String.fromCharCode(...units);
+}
+
+function decodePdfHexString(value, cmap) {
+  const hex = String(value || "").replace(/\\s/g, "").replace(/[^0-9a-f]/gi, "").toUpperCase();
+  if (!hex) return "";
+  if (cmap instanceof Map && cmap.size) {
+    const lengths = [...new Set([...cmap.keys()].map(key => key.length))].sort((a, b) => b - a);
+    let output = "";
+    for (let offset = 0; offset < hex.length;) {
+      let matched = false;
+      for (const length of lengths) {
+        const code = hex.slice(offset, offset + length);
+        if (cmap.has(code)) {
+          output += cmap.get(code);
+          offset += length;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        const fallbackLength = lengths[lengths.length - 1] || 2;
+        const code = hex.slice(offset, offset + fallbackLength);
+        output += decodePdfUtf16Hex(code);
+        offset += code.length;
+      }
+    }
+    return output;
+  }
+  if (hex.startsWith("FEFF")) return decodePdfUtf16Hex(hex.slice(4));
+  if (hex.length >= 4 && hex.length % 4 === 0 && /^(?:00[0-9A-F]{2})+/i.test(hex)) {
+    return decodePdfUtf16Hex(hex);
+  }
+  const bytes = [];
+  for (let offset = 0; offset + 1 < hex.length; offset += 2) bytes.push(parseInt(hex.slice(offset, offset + 2), 16));
+  return latinDecoder.decode(Uint8Array.from(bytes));
+}
+
+function parsePdfCMap(source) {
+  const cmap = new Map();
+  const text = String(source || "");
+  for (const section of text.matchAll(/\\d+\\s+beginbfchar([\\s\\S]*?)endbfchar/gi)) {
+    for (const pair of section[1].matchAll(/<([0-9a-f]+)>\\s*<([0-9a-f]+)>/gi)) {
+      cmap.set(pair[1].toUpperCase(), decodePdfUtf16Hex(pair[2]));
     }
   }
-  return output.join(" ").replace(/\s+/g, " ").trim();
+  for (const section of text.matchAll(/\\d+\\s+beginbfrange([\\s\\S]*?)endbfrange/gi)) {
+    const ranges = /<([0-9a-f]+)>\\s*<([0-9a-f]+)>\\s*(<([0-9a-f]+)>|\\[([\\s\\S]*?)\\])/gi;
+    for (const range of section[1].matchAll(ranges)) {
+      const first = parseInt(range[1], 16);
+      const last = parseInt(range[2], 16);
+      if (!Number.isFinite(first) || !Number.isFinite(last) || last < first || last - first > 4096) continue;
+      if (range[5] !== undefined) {
+        const destinations = [...range[5].matchAll(/<([0-9a-f]+)>/gi)].map(item => item[1]);
+        for (let offset = 0; offset <= last - first && offset < destinations.length; offset++) {
+          const sourceCode = (first + offset).toString(16).toUpperCase().padStart(range[1].length, "0");
+          cmap.set(sourceCode, decodePdfUtf16Hex(destinations[offset]));
+        }
+      } else {
+        const destinationStart = parseInt(range[4], 16);
+        for (let offset = 0; offset <= last - first; offset++) {
+          const sourceCode = (first + offset).toString(16).toUpperCase().padStart(range[1].length, "0");
+          const destination = (destinationStart + offset).toString(16).toUpperCase().padStart(range[4].length, "0");
+          cmap.set(sourceCode, decodePdfUtf16Hex(destination));
+        }
+      }
+    }
+  }
+  return cmap;
+}
+
+async function extractPdfFontMaps(bytes, raw) {
+  const objects = new Map();
+  const streams = new Map();
+  for (const match of raw.matchAll(/(\\d+)\\s+\\d+\\s+obj\\b([\\s\\S]*?)endobj/g)) {
+    const objectId = match[1];
+    const body = match[2];
+    objects.set(objectId, body);
+    const streamMarker = body.indexOf("stream");
+    if (streamMarker < 0) continue;
+    const absoluteMarker = match.index + match[0].indexOf("stream");
+    let streamStart = absoluteMarker + 6;
+    if (raw[streamStart] === "\\r") streamStart++;
+    if (raw[streamStart] === "\\n") streamStart++;
+    const streamEnd = raw.indexOf("endstream", streamStart);
+    if (streamEnd < 0 || streamEnd - streamStart > MAX_EXTRACTED_BYTES) continue;
+    let dataEnd = streamEnd;
+    if (raw[dataEnd - 1] === "\\n") dataEnd--;
+    if (raw[dataEnd - 1] === "\\r") dataEnd--;
+    let streamBytes = bytes.subarray(streamStart, dataEnd);
+    if (/\\/FlateDecode\\b/.test(body.slice(0, streamMarker))) {
+      try {
+        const stream = new Blob([streamBytes]).stream().pipeThrough(new DecompressionStream("deflate"));
+        streamBytes = new Uint8Array(await new Response(stream).arrayBuffer());
+      } catch {
+        continue;
+      }
+    }
+    if (streamBytes.length <= MAX_EXTRACTED_BYTES) streams.set(objectId, latinDecoder.decode(streamBytes));
+  }
+
+  const fontCmapIds = new Map();
+  for (const [objectId, body] of objects) {
+    const match = body.match(/\\/ToUnicode\\s+(\\d+)\\s+\\d+\\s+R/);
+    if (match) fontCmapIds.set(objectId, match[1]);
+  }
+  const cmaps = new Map();
+  for (const [fontId, cmapId] of fontCmapIds) {
+    const source = streams.get(cmapId);
+    if (source) cmaps.set(fontId, parsePdfCMap(source));
+  }
+
+  const fontMaps = new Map();
+  const registerFontEntries = dictionary => {
+    for (const entry of String(dictionary || "").matchAll(/\\/([A-Za-z0-9_.+-]+)\\s+(\\d+)\\s+\\d+\\s+R/g)) {
+      const cmap = cmaps.get(entry[2]);
+      if (cmap?.size && !fontMaps.has(entry[1])) fontMaps.set(entry[1], cmap);
+    }
+  };
+  for (const body of objects.values()) {
+    for (const fontDictionary of body.matchAll(/\\/Font\\s*<<([\\s\\S]*?)>>/g)) registerFontEntries(fontDictionary[1]);
+    const indirectFontDictionary = body.match(/\\/Font\\s+(\\d+)\\s+\\d+\\s+R/);
+    if (indirectFontDictionary) registerFontEntries(objects.get(indirectFontDictionary[1]));
+  }
+  return fontMaps;
+}
+
+function pdfTextOperators(source, fontMaps = new Map()) {
+  const blocks = String(source || "").match(/BT[\\s\\S]*?ET/g) || [];
+  const output = [];
+  const operator = /(\\(((?:\\\\.|[^\\\\)])*)\\)|<([0-9a-f\\s]+)>|\\[([\\s\\S]*?)\\])\\s*(Tj|TJ)\\b/gi;
+  for (const block of blocks) {
+    let match;
+    while ((match = operator.exec(block))) {
+      const before = block.slice(0, match.index);
+      const fontMatches = [...before.matchAll(/\\/([A-Za-z0-9_.+-]+)\\s+[\\d.]+\\s+Tf/gi)];
+      const fontName = fontMatches.at(-1)?.[1];
+      const cmap = fontMaps.get(fontName) || (fontMaps.size === 1 ? fontMaps.values().next().value : null);
+      if (match[2] !== undefined) {
+        output.push(decodePdfLiteral(match[2]));
+      } else if (match[3] !== undefined) {
+        output.push(decodePdfHexString(match[3], cmap));
+      } else {
+        const strings = [...match[4].matchAll(/\\(((?:\\\\.|[^\\\\)])*)\\)|<([0-9a-f\\s]+)>/gi)]
+          .map(item => item[1] !== undefined ? decodePdfLiteral(item[1]) : decodePdfHexString(item[2], cmap));
+        output.push(strings.join(""));
+      }
+    }
+  }
+  return output.join(" ").replace(/\\s+/g, " ").trim();
 }
 
 async function extractPdf(bytes) {
@@ -264,7 +403,8 @@ async function extractPdf(bytes) {
     } catch {}
     streamPattern.lastIndex = end + 9;
   }
-  const text = parts.map(pdfTextOperators).filter(Boolean).join("\n").slice(0, 50000);
+  const fontMaps = await extractPdfFontMaps(bytes, raw);
+  const text = parts.map(part => pdfTextOperators(part, fontMaps)).filter(Boolean).join("\n").slice(0, 50000);
   if (!text) {
     throw new Error("لم أجد طبقة نصية قابلة للاستخراج في PDF. قد يكون الملف ممسوحًا ضوئيًا أو يستخدم ترميزًا غير مدعوم؛ OCR غير مفعّل في النسخة المجانية.");
   }
