@@ -35,3 +35,7 @@ test("Realtime session uses the current supported model and a natural Egyptian v
   assert.match(session.instructions, /AI-generated voice/);
   assert.ok(REALTIME_VOICE_NAMES.includes(session.audio.output.voice));
 });
+
+test("Realtime voice names are normalized before allowlist selection", () => {
+  assert.equal(normalizeRealtimeVoiceRequest({ sdp: "v=0\\r\\no=- 1", voice: "MARIN" }).voice, "marin");
+});
