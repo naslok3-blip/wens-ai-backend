@@ -11,21 +11,21 @@
 </head>
 <body class="admin-page">
 <header class="topbar">
-  <a class="brand" href="/"><span class="logo">و</span><span><b>ونس AI</b><small>مركز الإدارة المحمي</small></span></a>
-  <div class="top-actions"><a class="admin-shortcut" href="index.html">العودة للتطبيق</a></div>
+  <a class="brand" href="/"><span class="logo">و</span><span><b>ونس AI</b><small data-wens-admin-copy="ownerBrandTagline">مركز الإدارة المحمي</small></span></a>
+  <div class="top-actions"><a class="admin-shortcut" href="index.html" data-wens-admin-copy="ownerReturnApp">العودة للتطبيق</a></div>
 </header>
 <main class="admin-wrap">
   <section id="adminGate" class="panel admin-gate">
     <div class="auth-mark">و</div>
-    <p class="eyebrow">PRIVATE CONTROL CENTER</p>
-    <h1>دخول المدير</h1>
-    <p class="muted">لوحة التحكم خاصة بمالك التطبيق. سجّل الدخول بكلمة مرور المدير المستقلة؛ وفي أول إعداد أو عند نسيانها، استخدم كلمة مرور حساب ونس الحالية للتحقق من ملكيتك.</p>
+    <p class="eyebrow" data-wens-admin-copy="ownerGateEyebrow">PRIVATE CONTROL CENTER</p>
+    <h1 data-wens-admin-copy="ownerGateTitle">دخول المدير</h1>
+    <p class="muted" data-wens-admin-copy="ownerGateIntro">لوحة التحكم خاصة بمالك التطبيق. سجّل الدخول بكلمة مرور المدير المستقلة؛ وفي أول إعداد أو عند نسيانها، استخدم كلمة مرور حساب ونس الحالية للتحقق من ملكيتك.</p>
     <form id="adminLoginForm" class="admin-login-form">
-      <label for="adminEmail">البريد الإلكتروني</label>
+      <label for="adminEmail"><span data-wens-admin-copy="ownerEmailLabel">البريد الإلكتروني</span></label>
       <input id="adminEmail" type="email" autocomplete="username" maxlength="190" value="" placeholder="البريد المرتبط بحساب المالك" required>
-      <label for="adminPassword">كلمة مرور المدير المستقلة</label>
+      <label for="adminPassword"><span data-wens-admin-copy="ownerPasswordLabel">كلمة مرور المدير المستقلة</span></label>
       <input id="adminPassword" type="password" autocomplete="current-password" minlength="20" maxlength="128" placeholder="كلمة مرور المدير" required>
-      <button id="adminLoginBtn" class="btn primary" type="submit">فتح لوحة التحكم</button>
+      <button id="adminLoginBtn" class="btn primary" type="submit" data-wens-admin-copy="ownerLoginButton">فتح لوحة التحكم</button>
     </form>
     <button id="showAdminResetBtn" class="text-btn auth-toggle" type="button" hidden>نسيت كلمة مرور المدير؟ إنشاء كلمة مرور جديدة</button>
     <form id="adminSetupForm" class="admin-login-form" hidden>
@@ -46,7 +46,7 @@
       <p>متابعة الخدمات وتخصيص تجربة التطبيق من مكان واحد.</p>
       <div class="admin-heading-actions">
         <button id="refreshStatusBtn" class="btn secondary">تحديث حالة الخدمات</button>
-        <button id="adminLogoutBtn" class="btn danger">تسجيل خروج المدير</button>
+        <button id="adminLogoutBtn" class="btn danger" data-wens-admin-copy="ownerLogoutButton">تسجيل خروج المدير</button>
       </div>
     </section>
     <section class="service-panel">
@@ -66,15 +66,16 @@
 
     <div class="admin-grid">
       <nav class="admin-nav" aria-label="أقسام لوحة الإدارة">
-        <button class="nav-btn active" data-tab="overview">▦ نظرة عامة</button>
-        <button class="nav-btn" data-tab="system">⌁ مركز التشغيل</button>
-        <button class="nav-btn" data-tab="agent">✧ الوكيل والأدوات</button>
-        <button class="nav-btn" data-tab="files">▤ اختبار الملفات</button>
-        <button class="nav-btn" data-tab="identity">◈ هوية التطبيق</button>
-        <button class="nav-btn" data-tab="assistant">🔊 الصوت والمساعدة</button>
-        <button class="nav-btn" data-tab="features">⚙ الميزات</button>
-        <button class="nav-btn" data-tab="content">☷ رسائل البداية</button>
-        <button class="nav-btn" data-tab="backup">⇩ النسخ والاسترجاع</button>
+        <button class="nav-btn active" data-tab="overview" data-wens-admin-copy="ownerOverviewTab">▦ نظرة عامة</button>
+        <button class="nav-btn" data-tab="system" data-wens-admin-copy="ownerSystemTab">⌁ مركز التشغيل</button>
+        <button class="nav-btn" data-tab="agent" data-wens-admin-copy="ownerAgentTab">✧ الوكيل والأدوات</button>
+        <button class="nav-btn" data-tab="files" data-wens-admin-copy="ownerFilesTab">▤ اختبار الملفات</button>
+        <button class="nav-btn" data-tab="identity" data-wens-admin-copy="ownerIdentityTab">◈ هوية التطبيق</button>
+        <button class="nav-btn" data-tab="assistant" data-wens-admin-copy="ownerVoiceTab">🔊 الصوت والمساعدة</button>
+        <button class="nav-btn" data-tab="features" data-wens-admin-copy="ownerFeaturesTab">⚙ الميزات</button>
+        <button class="nav-btn" data-tab="content" data-wens-admin-copy="ownerWelcomeTab">☷ رسائل البداية</button>
+          <button class="nav-btn" data-tab="copy" data-wens-admin-copy="ownerCopyTab">✎ محرر نصوص التطبيق</button>
+        <button class="nav-btn" data-tab="backup" data-wens-admin-copy="ownerBackupTab">⇩ النسخ والاسترجاع</button>
       </nav>
       <div class="admin-content">
         <section class="tab-page active" id="tab-overview">
@@ -184,9 +185,9 @@
           <h2>الصوت والمساعدة</h2>
           <div class="field"><label for="voiceLocale">لهجة الميكروفون</label><select id="voiceLocale"><option value="ar-EG">المصرية – مصر</option></select></div>
           <div class="field"><label for="voiceRate">سرعة الصوت: <output id="rateOut">0.96</output></label><input id="voiceRate" type="range" min="0.65" max="1.35" step="0.05" value="0.96"></div>
-          <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="device">صوت الهاتف المجاني — مصري فقط</option></select></div>
-          <div class="field"><label for="voiceName">اختيار نبرة ونس</label><select id="voiceName"><option value="device">اختيار الصوت المصري المثبّت تلقائيًا</option></select></div>
-          <div class="notice">ونس تستخدم صوت الهاتف مجانًا. هتختار صوت ar-EG المصري لو كان مثبتًا؛ ولو مش موجود مش هتشغّل صوت فصحى بديل. الصوت المصري البشري الطبيعي يحتاج محركًا مصريًا مخصصًا، وده مش متاح حاليًا ضمن المحركات المجانية المربوطة.</div>
+          <div class="field"><label for="voiceEngine">مصدر صوت ونس</label><select id="voiceEngine"><option value="device">صوت الهاتف المحلي المجاني</option><option value="realtime">صوت ونس الطبيعي عبر Realtime (استخدام مدفوع)</option></select></div>
+          <div class="field"><label for="voiceName">اختيار نبرة ونس</label><select id="voiceName"><option value="device">اختيار صوت الهاتف تلقائيًا</option><option value="marin">Marin — صوت Realtime</option><option value="cedar">Cedar — صوت Realtime</option><option value="coral">Coral — صوت Realtime</option></select></div>
+          <div class="notice">اختيار «صوت الهاتف» مجاني ويعتمد على الأصوات المثبتة على جهازك. اختيار «Realtime» يحتاج سر OPENAI_API_KEY على الخادم ويستهلك رصيد API مدفوعًا. المحرك يحاول التحدث باللهجة المصرية، لكن درجة اللهجة ونبرة الصوت لازم تتختبر فعليًا على الهاتف.</div>
           <div class="actions left-actions">
             <button id="voicePreviewBtn" class="btn secondary" type="button">بدء اختبار صوت ونس</button>
             <button id="voiceConfirmBtn" class="btn primary" type="button" hidden>تأكيد أنني سمعت الصوت</button>
@@ -208,13 +209,27 @@
           <div class="field"><label for="greeting">رسالة أول محادثة</label><textarea id="greeting" rows="3" maxlength="350"></textarea></div>
           <div class="field"><label for="voiceButton">نص زر الصوت</label><input id="voiceButton" maxlength="45"></div>
         </section>
+        <section class="tab-page" id="tab-copy">
+          <h2 data-wens-admin-copy="ownerCopyTitle">محرر نصوص التطبيق</h2>
+          <p class="muted" data-wens-admin-copy="ownerCopyDescription">عدّل النصوص الظاهرة في واجهة ونس. التغييرات مسودة حتى تضغط حفظ التعديلات. المعاينة داخل التطبيق لا تحفظها للمستخدمين.</p>
+          <div class="field"><label for="copySearch" data-wens-admin-copy="ownerCopySearchLabel">ابحث عن نص</label><input id="copySearch" type="search" placeholder="ابحث بالاسم أو النص..." data-wens-admin-placeholder="ownerCopySearchPlaceholder"></div>
+          <div class="actions left-actions"><button id="copyPreviewBtn" class="btn secondary" type="button" data-wens-admin-copy="ownerCopyPreview">معاينة المسودة في ونس</button><button id="copyResetDraftBtn" class="btn secondary" type="button" data-wens-admin-copy="ownerCopyResetDraft">إرجاع نصوص المسودة للأصل</button></div>
+          <p id="copyEditorStatus" class="status-line" aria-live="polite" data-wens-admin-copy="ownerCopyStatus">كتالوج النصوص الأساسية جاهز. الرسائل الديناميكية ورسائل الخادم ليست كلها ضمن هذا الإصدار.</p>
+          <div id="copyEditorList" class="copy-editor-list"></div>
+        </section>
         <section class="tab-page" id="tab-backup">
           <h2>النسخ والاسترجاع</h2>
           <p class="muted">احفظ نسخة JSON من تخصيص الواجهة أو استرجع نسخة سابقة.</p>
           <div class="actions left-actions"><button id="exportBtn" class="btn primary">تنزيل نسخة إعدادات</button><label class="btn secondary file-label">استرجاع ملف<input id="importFile" type="file" accept="application/json,.json" hidden></label><button id="resetBtn" class="btn secondary">إرجاع الافتراضي</button></div>
+          <div class="panel" style="margin-top:16px">
+            <h3>سجل التعديلات والاسترجاع</h3>
+            <p class="muted">يحتفظ الخادم بآخر 8 نسخ من الإعدادات قبل التغيير. الاسترجاع ينشئ نسخة احتياطية من الحالة الحالية أولًا.</p>
+            <button id="refreshSettingsHistoryBtn" class="btn secondary" type="button">عرض سجل التعديلات</button>
+            <div id="settingsHistoryList" class="status-line" aria-live="polite">لم يتم تحميل السجل بعد.</div>
+          </div>
           <p id="backupStatus" class="status-line"></p>
         </section>
-        <div class="save-bar"><span id="saveStatus" class="muted">التعديلات غير محفوظة حتى تضغط حفظ.</span><button id="saveBtn" class="btn primary">حفظ التعديلات</button></div>
+        <div class="save-bar"><span id="saveStatus" class="muted" data-wens-admin-copy="ownerSavePending">التعديلات غير محفوظة حتى تضغط حفظ.</span><button id="saveBtn" class="btn primary" data-wens-admin-copy="ownerSaveButton">حفظ التعديلات</button></div>
       </div>
     </div>
   </div>

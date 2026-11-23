@@ -159,16 +159,27 @@ test("returns an empty source list when OpenAI search has no citations", async (
 });
 
 
-test("worker routes all runtime text inference through Cloudflare Workers AI only", async () => {
+test("text inference stays on Workers AI while paid Realtime voice is isolated and opt-in", async () => {
   const { readFile } = await import("node:fs/promises");
   const worker = await readFile(new URL("../worker.js", import.meta.url), "utf8");
   const diagnosticsStart = worker.indexOf('path === "/api/admin/diagnostics" && request.method === "GET"');
   assert.ok(diagnosticsStart >= 0, "owner diagnostics route must exist");
   const diagnosticsSnippet = worker.slice(diagnosticsStart, diagnosticsStart + 5000);
-  assert.ok(diagnosticsSnippet.includes("openAI: false"));
   assert.ok(diagnosticsSnippet.includes("workersAI: Boolean(env.AI)"));
   assert.ok(worker.includes("return await env.AI.run("), "text inference must use the Cloudflare AI binding");
-  assert.equal(worker.includes("OPENAI_API_KEY"), false, "Worker runtime must not read an OpenAI API key");
-  assert.equal(worker.includes("api.openai.com"), false, "Worker runtime must not call OpenAI endpoints");
-  assert.equal(worker.includes('from "./openai-responses-utils.mjs"'), false, "OpenAI adapters must not be imported by the Worker runtime");
+
+  const agentStart = worker.indexOf("async function handleAgent");
+  const voiceStart = worker.indexOf("async function handleRealtimeVoice");
+  assert.ok(agentStart >= 0 && voiceStart > agentStart, "agent and voice handlers must exist");
+  const agentSnippet = worker.slice(agentStart, voiceStart);
+  assert.equal(agentSnippet.includes("OPENAI_API_KEY"), false, "text agent must not read an OpenAI key");
+  assert.equal(agentSnippet.includes("api.openai.com"), false, "text agent must not call OpenAI endpoints");
+
+  const voiceEnd = worker.indexOf(String.fromCharCode(10) + String.fromCharCode(10) + "const WENS_HOTFIX_ASSETS", voiceStart);
+  assert.ok(voiceEnd > voiceStart, "Realtime voice handler must be isolated");
+  const voiceSnippet = worker.slice(voiceStart, voiceEnd);
+  assert.ok(voiceSnippet.includes("if (!env.OPENAI_API_KEY)"), "paid voice must remain disabled without a server secret");
+  assert.ok(voiceSnippet.includes("https://api.openai.com/v1/realtime/calls"), "only the explicit voice route may call OpenAI Realtime");
+  assert.ok(voiceSnippet.includes("OpenAI-Safety-Identifier"), "Realtime calls must use a hashed safety identifier");
+  assert.equal(worker.includes('from "./openai-responses-utils.mjs"'), false, "OpenAI Responses adapters must not be imported by the Worker runtime");
 });

@@ -11,6 +11,10 @@ let showingArchivedConversations = false;
 let conversationFetchSequence = 0;
 let conversationSearchTimer = null;
 const appSettings = loadLocalSettings();
+const uiText = (key, fallback) => {
+  const value = appSettings.uiCopy?.[key];
+  return typeof value === "string" ? value : fallback;
+};
 
 function loadLocalSettings() {
   const defaults = {
@@ -20,22 +24,168 @@ function loadLocalSettings() {
     greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
     voiceButton: "اتكلم معايا",
     voiceRate: 0.96, theme: "purple",
-    enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device"
+    enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device",
+    uiCopy: {
+      "brandTagline": "رفيقة يومك الذكية",
+      "authEyebrow": "مساحتك الخاصة",
+      "authTitle": "أهلًا بيك في ونس",
+      "registerTitle": "إنشاء حساب ونس",
+      "backToLogin": "عندي حساب بالفعل",
+      "authDescription": "سجّل دخولك علشان محادثاتك تتحفظ بأمان وتقدر تكمل من أي جهاز.",
+      "nameLabel": "الاسم",
+      "emailLabel": "البريد الإلكتروني",
+      "passwordLabel": "كلمة المرور",
+      "loginButton": "تسجيل الدخول",
+      "registerButton": "إنشاء حساب جديد",
+      "chatSidebarTitle": "محادثاتك",
+      "newConversation": "＋ محادثة جديدة",
+      "conversationSearch": "ابحث في المحادثات...",
+      "archivedConversations": "المحادثات المؤرشفة",
+      "activeChatTitle": "الدردشة مع ونس",
+      "accountLabel": "محادثتك محفوظة في حسابك",
+      "newChatButton": "＋ جديد",
+      "notificationTitle": "مركز الإشعارات",
+      "markAllRead": "تحديد الكل كمقروء",
+      "noNotifications": "لا توجد إشعارات بعد.",
+      "attachmentMenu": "إضافة إلى المحادثة",
+      "cameraTitle": "الكاميرا",
+      "cameraDescription": "التقط صورة وأرسلها لونس",
+      "photosTitle": "الصور",
+      "photosDescription": "اختر صورة من هاتفك",
+      "filesTitle": "الملفات",
+      "filesDescription": "نصوص ومستندات وملفات أخرى",
+      "pluginsTitle": "المكونات الإضافية",
+      "pluginsDescription": "أدوات ونس المتصلة",
+      "deepThinkTitle": "فكّر بعمق أكبر",
+      "deepThinkDescription": "استدلال أعمق للمسائل الصعبة",
+      "pluginToolsTitle": "أدوات ونس المتاحة",
+      "searchWeb": "🌐 البحث في الإنترنت",
+      "browseWeb": "🌍 متصفح المواقع",
+      "manageTasks": "✅ إدارة المهام",
+      "calculator": "🧮 الحاسبة",
+      "searchConversations": "🗂️ البحث في المحادثات",
+      "saveMemory": "🧠 حفظ تفضيل في الذاكرة",
+      "viewMemory": "📚 عرض ذاكرتي",
+      "deleteMemory": "🧹 حذف معلومة من الذاكرة",
+      "createApp": "🧩 إنشاء تطبيق أو لعبة",
+      "backButton": "رجوع",
+      "deepThinkEnabled": "🧠 التفكير العميق مفعّل",
+      "stopButton": "إيقاف",
+      "correctionButton": "استخدم التصحيح",
+      "composerPlaceholder": "اكتب رسالتك أو أرفق ملفًا...",
+      "composerAria": "رسالتك",
+      "sendButton": "إرسال",
+      "privacyDisclaimer": "رسائلك ومرفقاتك تُعالج لإعداد الرد. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.",
+      "adminTitle": "لوحة إدارة ونس",
+      "adminDescription": "الإدارة داخل حسابك ومن نفس صفحة ونس",
+      "footerText": "ونس AI • نسخة تطويرية",
+    "genericError": "حصل خطأ في الاتصال بالخادم.",
+    "notificationFallbackTitle": "إشعار ونس",
+    "notificationLoadError": "تعذّر تحميل الإشعارات: ",
+    "guestAccountLabel": "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات",
+    "loggedInPrefix": "مسجّل الدخول: ",
+    "conversationsLoadError": "تعذّر تحميل المحادثات: ",
+    "logoutSuccess": "تم تسجيل الخروج.",
+    "noArchivedConversations": "لا توجد محادثات مؤرشفة.",
+    "noConversations": "لسه مفيش محادثات. ابدأ محادثة جديدة.",
+    "restoreAction": "استعادة",
+    "restoreConversationAria": "استعادة المحادثة",
+    "restoreConversationError": "تعذّرت استعادة المحادثة: ",
+    "renameAction": "تسمية",
+    "renameConversationAria": "إعادة تسمية المحادثة",
+    "renamePrompt": "اسم المحادثة",
+    "renameConversationError": "تعذّرت إعادة التسمية: ",
+    "archiveAction": "أرشفة",
+    "archiveConversationAria": "أرشفة المحادثة",
+    "archiveConversationError": "تعذّرت أرشفة المحادثة: ",
+    "deleteAction": "حذف",
+    "deleteConversationAria": "حذف المحادثة نهائيًا",
+    "deleteConversationConfirm": "حذف هذه المحادثة ورسائلها نهائيًا؟ لا يمكن التراجع عن الحذف.",
+    "deleteConversationError": "تعذّر حذف المحادثة: ",
+    "loadingConversation": "جاري تحميل المحادثة...",
+    "loadConversationError": "تعذّر تحميل المحادثة: ",
+    "createConversationError": "تعذّر إنشاء محادثة جديدة: ",
+    "searchConversationsError": "تعذّر البحث في المحادثات: ",
+    "copiedText": "تم نسخ النص.",
+    "copyTextError": "تعذّر النسخ تلقائيًا على الجهاز ده.",
+    "feedbackTitle": "تقييم رد ونس",
+    "feedbackQuestion": "هل كان الرد مفيدًا؟",
+    "feedbackHelpful": "👍 مفيد",
+    "feedbackHelpfulAria": "الرد مفيد",
+    "feedbackNotHelpful": "👎 مش مفيد",
+    "feedbackNotHelpfulAria": "الرد غير مفيد",
+    "feedbackThanks": "✓ شكرًا لتقييمك",
+    "feedbackSaved": "تم حفظ تقييمك",
+    "feedbackSaveError": "تعذّر حفظ التقييم",
+    "replayReply": "🔊 اسمع رد ونس",
+    "replayAria": "تشغيل رد ونس صوتيًا",
+    "voicePreparing": "جاري تجهيز الصوت…",
+    "voicePlaying": "🔊 الصوت يعمل",
+    "voiceUnavailable": "تعذّر تشغيل الصوت",
+    "assistantThinking": "ونس بتفكر…",
+    "ownerBrandTagline": "مركز الإدارة المحمي",
+    "ownerGateEyebrow": "PRIVATE CONTROL CENTER",
+    "ownerGateTitle": "دخول المدير",
+    "ownerGateIntro": "لوحة التحكم خاصة بمالك التطبيق. سجّل الدخول بكلمة مرور المدير المستقلة.",
+    "ownerEmailLabel": "البريد الإلكتروني",
+    "ownerPasswordLabel": "كلمة مرور المدير المستقلة",
+    "ownerLoginButton": "فتح لوحة التحكم",
+    "ownerReturnApp": "العودة للتطبيق",
+    "ownerLogoutButton": "تسجيل خروج المدير",
+    "ownerOverviewTab": "▦ نظرة عامة",
+    "ownerSystemTab": "⌁ مركز التشغيل",
+    "ownerAgentTab": "✧ الوكيل والأدوات",
+    "ownerFilesTab": "▤ اختبار الملفات",
+    "ownerIdentityTab": "◈ هوية التطبيق",
+    "ownerVoiceTab": "🔊 الصوت والمساعدة",
+    "ownerFeaturesTab": "⚙ الميزات",
+    "ownerWelcomeTab": "☷ رسائل البداية",
+    "ownerCopyTab": "✎ محرر نصوص التطبيق",
+    "ownerBackupTab": "⇩ النسخ والاسترجاع",
+    "ownerSaveButton": "حفظ التعديلات",
+    "ownerSavePending": "التعديلات غير محفوظة حتى تضغط حفظ.",
+    "ownerCopyTitle": "محرر نصوص التطبيق",
+    "ownerCopyDescription": "عدّل النصوص الظاهرة في واجهة ونس. التغييرات مسودة حتى تضغط حفظ التعديلات. المعاينة داخل التطبيق لا تحفظها للمستخدمين.",
+    "ownerCopySearchLabel": "ابحث عن نص",
+    "ownerCopySearchPlaceholder": "ابحث بالاسم أو النص...",
+    "ownerCopyPreview": "معاينة المسودة في ونس",
+    "ownerCopyResetDraft": "إرجاع نصوص المسودة للأصل",
+    "ownerCopyStatus": "كتالوج النصوص الأساسية جاهز. الرسائل الديناميكية ورسائل الخادم ليست كلها ضمن هذا الإصدار."
+    }
   };
   try {
     const saved = JSON.parse(localStorage.getItem("wensAISettings") || "{}");
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return defaults;
-    return {
+    const merged = {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "device") && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || value === "device"))
+        key in defaults && key !== "uiCopy" && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || ["device", "realtime"].includes(value)) && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || ["device", "marin", "cedar", "coral"].includes(value)))
       ))
     };
+    const savedCopy = saved.uiCopy && typeof saved.uiCopy === "object" && !Array.isArray(saved.uiCopy) ? saved.uiCopy : {};
+    merged.uiCopy = { ...defaults.uiCopy, ...Object.fromEntries(Object.entries(savedCopy).filter(([key, value]) => key in defaults.uiCopy && typeof value === "string" && value.length <= 240)) };
+    return merged;
   } catch { return defaults; }
 }
 
+function applyUiCopy(copy = appSettings.uiCopy || {}) {
+  document.querySelectorAll("[data-wens-copy]").forEach(element => {
+    const key = element.dataset.wensCopy;
+    if (typeof copy[key] === "string") element.textContent = copy[key];
+  });
+  document.querySelectorAll("[data-wens-placeholder]").forEach(element => {
+    const value = copy[element.dataset.wensPlaceholder];
+    if (typeof value === "string") element.placeholder = value;
+  });
+  document.querySelectorAll("[data-wens-aria]").forEach(element => {
+    const value = copy[element.dataset.wensAria];
+    if (typeof value === "string") element.setAttribute("aria-label", value);
+  });
+}
+window.WensApplyCopyPreview = copy => { if (copy && typeof copy === "object") applyUiCopy(copy); };
 function applyLocalSettings() {
   document.title = appSettings.appName;
+  applyUiCopy();
   const brandName = $("brandName");
   if (brandName) brandName.textContent = appSettings.appName;
   const voiceButtonText = $("voiceButtonText");
@@ -64,7 +214,7 @@ async function api(path, body, method = "POST") {
   });
   let data = {};
   try { data = await response.json(); } catch {}
-  if (!response.ok) throw new Error(data.error || "حصل خطأ في الاتصال بالخادم.");
+  if (!response.ok) throw new Error(data.error || uiText("genericError", "حصل خطأ في الاتصال بالخادم."));
   return data;
 }
 
@@ -84,7 +234,7 @@ async function refreshNotifications() {
     if (!notificationItems.length) {
       const empty = document.createElement("p");
       empty.className = "notification-empty";
-      empty.textContent = "لا توجد إشعارات بعد.";
+      empty.textContent = appSettings.uiCopy?.noNotifications || "لا توجد إشعارات بعد.";
       list.append(empty);
       return;
     }
@@ -92,7 +242,7 @@ async function refreshNotifications() {
       const card = document.createElement("article");
       card.className = "notification-item" + (item.read_at ? "" : " unread");
       const title = document.createElement("strong");
-      title.textContent = String(item.title || "إشعار ونس");
+      title.textContent = String(item.title || uiText("notificationFallbackTitle", "إشعار ونس"));
       const body = document.createElement("p");
       body.textContent = String(item.body || "");
       const time = document.createElement("small");
@@ -121,7 +271,7 @@ async function refreshNotifications() {
     }
   } catch (error) {
     const list = $("notificationList");
-    if (list) list.textContent = "تعذّر تحميل الإشعارات: " + error.message;
+    if (list) list.textContent = uiText("notificationLoadError", "تعذّر تحميل الإشعارات: ") + error.message;
   }
 }
 function setAuthMessage(message, error = false) {
@@ -166,13 +316,13 @@ function showApp(user) {
   $("openAdminBtn").hidden = true;
   $("backToAppBtn").hidden = true;
   $("accountLabel").textContent = user.id === "guest"
-    ? "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات"
-    : "مسجّل الدخول: " + user.name;
+    ? uiText("guestAccountLabel", "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات")
+    : uiText("loggedInPrefix", "مسجّل الدخول: ") + user.name;
   updateAdminShortcut();
   $("notificationsBtn").hidden = user.id === "guest";
   $("notificationsPanel").hidden = true;
   startPresenceHeartbeat();
-  if (user.id !== "guest") loadConversations().catch(error => setVoiceStatus("تعذّر تحميل المحادثات: " + error.message));
+  if (user.id !== "guest") loadConversations().catch(error => setVoiceStatus(uiText("conversationsLoadError", "تعذّر تحميل المحادثات: ") + error.message));
   else loadChatHistory(null);
   if (user.id !== "guest") refreshNotifications();
 }
@@ -232,9 +382,10 @@ document.addEventListener("click", event => {
 function updateAuthMode() {
   const registering = authMode === "register";
   $("nameField").hidden = !registering;
-  $("authTitle").textContent = registering ? "إنشاء حساب ونس" : "أهلًا بيك في ونس";
-  $("authSubmit").textContent = registering ? "إنشاء الحساب" : "تسجيل الدخول";
-  $("authToggle").textContent = registering ? "عندي حساب بالفعل" : "إنشاء حساب جديد";
+  const copy = appSettings.uiCopy || {};
+  $("authTitle").textContent = registering ? (copy.registerTitle || "إنشاء حساب ونس") : (copy.authTitle || "أهلًا بيك في ونس");
+  $("authSubmit").textContent = registering ? (copy.registerButton || "إنشاء الحساب") : (copy.loginButton || "تسجيل الدخول");
+  $("authToggle").textContent = registering ? (copy.backToLogin || "عندي حساب بالفعل") : (copy.registerButton || "إنشاء حساب جديد");
   $("passwordInput").autocomplete = registering ? "new-password" : "current-password";
 }
 $("authToggle").addEventListener("click", () => {
@@ -268,7 +419,7 @@ $("logoutBtn").addEventListener("click", async () => {
   $("notificationsBtn").hidden = true;
   $("notificationsPanel").hidden = true;
   showAuth();
-  setAuthMessage("تم تسجيل الخروج.");
+  setAuthMessage(uiText("logoutSuccess", "تم تسجيل الخروج."));
 });
 function setCurrentConversationTitle(title) {
   const heading = $("activeConversationTitle");
@@ -289,8 +440,8 @@ function renderConversationList(items) {
     const empty = document.createElement("p");
     empty.className = "conversation-list-empty";
     empty.textContent = showingArchivedConversations
-      ? "لا توجد محادثات مؤرشفة."
-      : "لسه مفيش محادثات. ابدأ محادثة جديدة.";
+      ? uiText("noArchivedConversations", "لا توجد محادثات مؤرشفة.")
+      : uiText("noConversations", "لسه مفيش محادثات. ابدأ محادثة جديدة.");
     list.append(empty);
     return;
   }
@@ -319,15 +470,15 @@ function renderConversationList(items) {
     if (showingArchivedConversations) {
       const restore = document.createElement("button");
       restore.type = "button";
-      restore.textContent = "استعادة";
-      restore.setAttribute("aria-label", "استعادة المحادثة");
+      restore.textContent = uiText("restoreAction", "استعادة");
+      restore.setAttribute("aria-label", uiText("restoreConversationAria", "استعادة المحادثة"));
       restore.addEventListener("click", async () => {
         restore.disabled = true;
         try {
           await api("/api/conversations/" + encodeURIComponent(conversation.id), { archived: false }, "PATCH");
           await loadConversations({ selectLatest: false });
         } catch (error) {
-          setVoiceStatus("تعذّرت استعادة المحادثة: " + error.message);
+          setVoiceStatus(uiText("restoreConversationError", "تعذّرت استعادة المحادثة: ") + error.message);
           restore.disabled = false;
         }
       });
@@ -335,10 +486,10 @@ function renderConversationList(items) {
     } else {
       const rename = document.createElement("button");
       rename.type = "button";
-      rename.textContent = "تسمية";
-      rename.setAttribute("aria-label", "إعادة تسمية المحادثة");
+      rename.textContent = uiText("renameAction", "تسمية");
+      rename.setAttribute("aria-label", uiText("renameConversationAria", "إعادة تسمية المحادثة"));
       rename.addEventListener("click", async () => {
-        const nextTitle = window.prompt("اسم المحادثة", conversation.title || "");
+        const nextTitle = window.prompt(uiText("renamePrompt", "اسم المحادثة"), conversation.title || "");
         if (nextTitle === null || !nextTitle.trim()) return;
         rename.disabled = true;
         try {
@@ -346,14 +497,14 @@ function renderConversationList(items) {
           await loadConversations({ selectLatest: false });
           if (conversation.id === currentConversationId) setCurrentConversationTitle(nextTitle.trim());
         } catch (error) {
-          setVoiceStatus("تعذّرت إعادة التسمية: " + error.message);
+          setVoiceStatus(uiText("renameConversationError", "تعذّرت إعادة التسمية: ") + error.message);
         } finally { rename.disabled = false; }
       });
 
       const archive = document.createElement("button");
       archive.type = "button";
-      archive.textContent = "أرشفة";
-      archive.setAttribute("aria-label", "أرشفة المحادثة");
+      archive.textContent = uiText("archiveAction", "أرشفة");
+      archive.setAttribute("aria-label", uiText("archiveConversationAria", "أرشفة المحادثة"));
       archive.addEventListener("click", async () => {
         archive.disabled = true;
         try {
@@ -363,7 +514,7 @@ function renderConversationList(items) {
             await loadConversations({ selectLatest: true });
           } else await loadConversations({ selectLatest: false });
         } catch (error) {
-          setVoiceStatus("تعذّرت أرشفة المحادثة: " + error.message);
+          setVoiceStatus(uiText("archiveConversationError", "تعذّرت أرشفة المحادثة: ") + error.message);
           archive.disabled = false;
         }
       });
@@ -372,17 +523,17 @@ function renderConversationList(items) {
 
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.textContent = "حذف";
-    remove.setAttribute("aria-label", "حذف المحادثة نهائيًا");
+    remove.textContent = uiText("deleteAction", "حذف");
+    remove.setAttribute("aria-label", uiText("deleteConversationAria", "حذف المحادثة نهائيًا"));
     remove.addEventListener("click", async () => {
-      if (!window.confirm("حذف هذه المحادثة ورسائلها نهائيًا؟ لا يمكن التراجع عن الحذف.")) return;
+      if (!window.confirm(uiText("deleteConversationConfirm", "حذف هذه المحادثة ورسائلها نهائيًا؟ لا يمكن التراجع عن الحذف."))) return;
       remove.disabled = true;
       try {
         await api("/api/conversations/" + encodeURIComponent(conversation.id), {}, "DELETE");
         if (conversation.id === currentConversationId) currentConversationId = null;
         await loadConversations({ selectLatest: true });
       } catch (error) {
-        setVoiceStatus("تعذّر حذف المحادثة: " + error.message);
+        setVoiceStatus(uiText("deleteConversationError", "تعذّر حذف المحادثة: ") + error.message);
         remove.disabled = false;
       }
     });
@@ -420,7 +571,7 @@ async function openConversation(id) {
   const requestedId = String(id);
   currentConversationId = requestedId;
   $("messages").replaceChildren();
-  const loading = addMessage("جاري تحميل المحادثة...", "assistant");
+  const loading = addMessage(uiText("loadingConversation", "جاري تحميل المحادثة..."), "assistant");
   try {
     const data = await api("/api/chat/history?conversationId=" + encodeURIComponent(requestedId), undefined, "GET");
     if (currentConversationId !== requestedId) return;
@@ -432,7 +583,7 @@ async function openConversation(id) {
     closeConversationSidebar();
   } catch (error) {
     loading.remove();
-    addMessage("تعذّر تحميل المحادثة: " + error.message);
+    addMessage(uiText("loadConversationError", "تعذّر تحميل المحادثة: ") + error.message);
     setVoiceStatus("تعذّر تحميل المحادثة: " + error.message);
   }
 }
@@ -460,7 +611,7 @@ async function createNewConversation() {
     await loadConversations({ selectLatest: false });
     closeConversationSidebar();
   } catch (error) {
-    setVoiceStatus("تعذّر إنشاء محادثة جديدة: " + error.message);
+    setVoiceStatus(uiText("createConversationError", "تعذّر إنشاء محادثة جديدة: ") + error.message);
   } finally { if (button) button.disabled = false; }
 }
 
@@ -496,7 +647,7 @@ $("toggleArchivedConversationsBtn")?.addEventListener("click", async () => {
 $("conversationSearchInput")?.addEventListener("input", () => {
   if (conversationSearchTimer) clearTimeout(conversationSearchTimer);
   conversationSearchTimer = setTimeout(() => {
-    loadConversations({ selectLatest: false }).catch(error => setVoiceStatus("تعذّر البحث في المحادثات: " + error.message));
+    loadConversations({ selectLatest: false }).catch(error => setVoiceStatus(uiText("searchConversationsError", "تعذّر البحث في المحادثات: ") + error.message));
   }, 220);
 });
 
@@ -628,10 +779,10 @@ async function copyChatText(value) {
       field.remove();
       if (!copied) throw new Error("clipboard unavailable");
     }
-    setVoiceStatus("تم نسخ النص.");
+    setVoiceStatus(uiText("copiedText", "تم نسخ النص."));
     return true;
   } catch {
-    setVoiceStatus("تعذّر النسخ تلقائيًا على الجهاز ده.");
+    setVoiceStatus(uiText("copyTextError", "تعذّر النسخ تلقائيًا على الجهاز ده."));
     return false;
   }
 }
@@ -990,30 +1141,30 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
   if (who === "assistant" && currentUser && currentUser.id !== "guest" && displayText.trim().length > 1) {
     const feedback = document.createElement("div");
     feedback.className = "reply-feedback";
-    feedback.setAttribute("aria-label", "تقييم رد ونس");
+    feedback.setAttribute("aria-label", uiText("feedbackTitle", "تقييم رد ونس"));
     const label = document.createElement("span");
-    label.textContent = "هل كان الرد مفيدًا؟";
+    label.textContent = uiText("feedbackQuestion", "هل كان الرد مفيدًا؟");
     const helpful = document.createElement("button");
     helpful.type = "button";
-    helpful.textContent = "👍 مفيد";
-    helpful.setAttribute("aria-label", "الرد مفيد");
+    helpful.textContent = uiText("feedbackHelpful", "👍 مفيد");
+    helpful.setAttribute("aria-label", uiText("feedbackHelpfulAria", "الرد مفيد"));
     const notHelpful = document.createElement("button");
     notHelpful.type = "button";
-    notHelpful.textContent = "👎 مش مفيد";
-    notHelpful.setAttribute("aria-label", "الرد غير مفيد");
+    notHelpful.textContent = uiText("feedbackNotHelpful", "👎 مش مفيد");
+    notHelpful.setAttribute("aria-label", uiText("feedbackNotHelpfulAria", "الرد غير مفيد"));
     const sendRating = async (rating, chosen, other) => {
       helpful.disabled = true;
       notHelpful.disabled = true;
       try {
         await api("/api/feedback", { reply: displayText, rating });
         chosen.classList.add("selected");
-        chosen.textContent = rating === "helpful" ? "✓ شكرًا لتقييمك" : "✓ تم تسجيل ملاحظتك";
+        chosen.textContent = rating === "helpful" ? uiText("feedbackThanks", "✓ شكرًا لتقييمك") : uiText("feedbackSaved", "✓ تم تسجيل ملاحظتك");
         other.hidden = true;
-        label.textContent = "تم حفظ تقييمك";
+        label.textContent = uiText("feedbackSaved", "تم حفظ تقييمك");
       } catch (error) {
         helpful.disabled = false;
         notHelpful.disabled = false;
-        label.textContent = error.message || "تعذّر حفظ التقييم";
+        label.textContent = error.message || uiText("feedbackSaveError", "تعذّر حفظ التقييم");
       }
     };
     helpful.addEventListener("click", () => sendRating("helpful", helpful, notHelpful));
@@ -1039,17 +1190,17 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
     const replay = document.createElement("button");
     replay.type = "button";
     replay.className = "voice-replay-btn";
-    replay.textContent = "🔊 اسمع رد ونس";
-    replay.setAttribute("aria-label", "تشغيل رد ونس صوتيًا");
+    replay.textContent = uiText("replayReply", "🔊 اسمع رد ونس");
+    replay.setAttribute("aria-label", uiText("replayAria", "تشغيل رد ونس صوتيًا"));
     replay.addEventListener("click", async () => {
       replay.disabled = true;
-      replay.textContent = "جاري تجهيز الصوت…";
+      replay.textContent = uiText("voicePreparing", "جاري تجهيز الصوت…");
       try {
         const started = await speak(displayText, null, bubble);
-        replay.textContent = started ? "🔊 الصوت يعمل" : "تعذّر تشغيل الصوت";
+        replay.textContent = started ? uiText("voicePlaying", "🔊 الصوت يعمل") : uiText("voiceUnavailable", "تعذّر تشغيل الصوت");
         replay.disabled = false;
         setTimeout(() => {
-          if (replay.isConnected) replay.textContent = "🔊 اسمع رد ونس";
+          if (replay.isConnected) replay.textContent = uiText("replayReply", "🔊 اسمع رد ونس");
         }, started ? 1800 : 3500);
       } catch (error) {
         replay.disabled = false;
@@ -1072,7 +1223,7 @@ function setBusy(busy) {
   document.querySelector(".send-btn").disabled = busy;
   $("messageInput").disabled = busy;
   $("attachMenuBtn").disabled = busy;
-  document.querySelector(".send-btn").textContent = busy ? "ونس بتفكر…" : "إرسال";
+  document.querySelector(".send-btn").textContent = busy ? uiText("assistantThinking", "ونس بتفكر…") : uiText("sendButton", "إرسال");
 }
 const ARABIC_SPELLING_ALIASES = new Map([
   ["مبارة", "مباراة"],
@@ -1578,7 +1729,7 @@ async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = fa
   shell.className = "voice-player-shell";
   const label = document.createElement("span");
   label.className = "voice-player-label";
-  label.textContent = "صوت ونس — استخدم زر التشغيل لو ما بدأش تلقائيًا";
+  label.textContent = "صوت ونس مولّد بالذكاء الاصطناعي — استخدم زر التشغيل لو ما بدأش تلقائيًا";
   const player = document.createElement("audio");
   player.className = "voice-audio-player";
   player.controls = true;
@@ -1929,6 +2080,16 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
 async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
+  if (appSettings.voiceEngine === "realtime") {
+    try {
+      const selectedVoice = voiceOverride || (["marin", "cedar", "coral"].includes(appSettings.voiceName) ? appSettings.voiceName : "marin");
+      await speakRealtime(message, selectedVoice, playerTarget, waitForPlayback);
+      return true;
+    } catch (error) {
+      stopRealtimeVoice();
+      setVoiceStatus("الصوت الطبيعي غير متاح حاليًا؛ هستخدم صوت الهاتف بدلًا منه.");
+    }
+  }
   setVoiceStatus("بدور على صوت مصري مثبت على الموبايل…");
   try {
     await speakOnDevice(message, playerTarget, waitForPlayback);
