@@ -2136,9 +2136,9 @@ async function executeAgentTool(name, args, env, user) {
     const rankSource = item => {
       const host = String(item.domain || "").toLowerCase();
       let score = 0;
-      if (/\\.(?:gov|edu|int)$/.test(host)) score += 5;
-      if (/\\.org$/.test(host)) score += 2;
-      if (/(?:cafonline\\.com|efa\\.eg|who\\.int|un\\.org|europa\\.eu|bbc\\.com|reuters\\.com|apnews\\.com)$/.test(host)) score += 3;
+      if (/\.(?:gov|edu|int)$/.test(host)) score += 5;
+      if (/\.org$/.test(host)) score += 2;
+      if (/(?:cafonline\.com|efa\.eg|who\.int|un\.org|europa\.eu|bbc\.com|reuters\.com|apnews\.com)$/.test(host)) score += 3;
       return score;
     };
     const candidates = [...sourceLinks]
@@ -2149,8 +2149,8 @@ async function executeAgentTool(name, args, env, user) {
     await Promise.allSettled(candidates.map(async source => {
       try {
         const html = await fetchText(source.url, "text/html,application/xhtml+xml,*/*");
-        const titleMatch = html.match(/<title\\b[^>]*>([\\s\\S]*?)<\\/title>/i);
-        const meta = [...html.matchAll(/<meta\\b[^>]*>/gi)].map(match => match[0]);
+        const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+        const meta = [...html.matchAll(/<meta\b[^>]*>/gi)].map(match => match[0]);
         const metaValue = names => {
           for (const tag of meta) {
             const key = (tag.match(/(?:property|name)=["']([^"']+)["']/i)?.[1] || "").toLowerCase();
@@ -2164,7 +2164,7 @@ async function executeAgentTool(name, args, env, user) {
         const modified = metaValue(["article:modified_time","datemodified","lastmod"]);
         const description = metaValue(["og:description","description","twitter:description"]);
         const bodyText = cleanText(html
-          .replace(/<(script|style|svg|noscript|nav|footer|header|form)\\b[^>]*>[\\s\\S]*?<\\/\\1>/gi, " ")
+          .replace(/<(script|style|svg|noscript|nav|footer|header|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
           .replace(/<[^>]+>/g, " "));
         if (bodyText.length < 220) return;
         sections.push([
@@ -2175,14 +2175,14 @@ async function executeAgentTool(name, args, env, user) {
           description ? "وصف الصفحة: " + description : "",
           "محتوى الصفحة المستخرج: " + bodyText.slice(0, 2200),
           "الرابط: " + source.url
-        ].filter(Boolean).join("\\n"));
+        ].filter(Boolean).join("\n"));
         reviewedPages++;
       } catch (error) {
         diagnostics.push("تعذرت قراءة " + source.domain + ": " + String(error?.message || error).slice(0, 80));
       }
     }));
     if (reviewedPages) engines.push("قراءة الصفحات الأصلية (" + reviewedPages + ")");
-    const results = sections.join("\\n\\n").slice(0, 18000);
+    const results = sections.join("\n\n").slice(0, 18000);
     if (!results || sourceLinks.length === 0) {
       return {
         error: "جربت مصادر بحث مجانية، لكن مفيش نتائج موثوقة متاحة للطلب ده دلوقتي. مش هألف نتائج.",
