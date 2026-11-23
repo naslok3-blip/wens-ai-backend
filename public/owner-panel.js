@@ -104,7 +104,35 @@ const defaults = {
     "voicePreparing": "جاري تجهيز الصوت…",
     "voicePlaying": "🔊 الصوت يعمل",
     "voiceUnavailable": "تعذّر تشغيل الصوت",
-    "assistantThinking": "ونس بتفكر…"
+    "assistantThinking": "ونس بتفكر…",
+    "ownerBrandTagline": "مركز الإدارة المحمي",
+    "ownerGateEyebrow": "PRIVATE CONTROL CENTER",
+    "ownerGateTitle": "دخول المدير",
+    "ownerGateIntro": "لوحة التحكم خاصة بمالك التطبيق. سجّل الدخول بكلمة مرور المدير المستقلة.",
+    "ownerEmailLabel": "البريد الإلكتروني",
+    "ownerPasswordLabel": "كلمة مرور المدير المستقلة",
+    "ownerLoginButton": "فتح لوحة التحكم",
+    "ownerReturnApp": "العودة للتطبيق",
+    "ownerLogoutButton": "تسجيل خروج المدير",
+    "ownerOverviewTab": "▦ نظرة عامة",
+    "ownerSystemTab": "⌁ مركز التشغيل",
+    "ownerAgentTab": "✧ الوكيل والأدوات",
+    "ownerFilesTab": "▤ اختبار الملفات",
+    "ownerIdentityTab": "◈ هوية التطبيق",
+    "ownerVoiceTab": "🔊 الصوت والمساعدة",
+    "ownerFeaturesTab": "⚙ الميزات",
+    "ownerWelcomeTab": "☷ رسائل البداية",
+    "ownerCopyTab": "✎ محرر نصوص التطبيق",
+    "ownerBackupTab": "⇩ النسخ والاسترجاع",
+    "ownerSaveButton": "حفظ التعديلات",
+    "ownerSavePending": "التعديلات غير محفوظة حتى تضغط حفظ.",
+    "ownerCopyTitle": "محرر نصوص التطبيق",
+    "ownerCopyDescription": "عدّل النصوص الظاهرة في واجهة ونس. التغييرات مسودة حتى تضغط حفظ التعديلات. المعاينة داخل التطبيق لا تحفظها للمستخدمين.",
+    "ownerCopySearchLabel": "ابحث عن نص",
+    "ownerCopySearchPlaceholder": "ابحث بالاسم أو النص...",
+    "ownerCopyPreview": "معاينة المسودة في ونس",
+    "ownerCopyResetDraft": "إرجاع نصوص المسودة للأصل",
+    "ownerCopyStatus": "كتالوج النصوص الأساسية جاهز. الرسائل الديناميكية ورسائل الخادم ليست كلها ضمن هذا الإصدار."
   }
 };
 const keys = Object.keys(defaults);
@@ -151,7 +179,18 @@ function normalize(data) {
   if (next.voiceName !== "device") next.voiceName = "device";
   return next;
 }
+function applyOwnerCopy() {
+  document.querySelectorAll("[data-wens-admin-copy]").forEach(element => {
+    const value = config.uiCopy?.[element.dataset.wensAdminCopy];
+    if (typeof value === "string") element.textContent = value;
+  });
+  document.querySelectorAll("[data-wens-admin-placeholder]").forEach(element => {
+    const value = config.uiCopy?.[element.dataset.wensAdminPlaceholder];
+    if (typeof value === "string") element.placeholder = value;
+  });
+}
 function fillSettingsForm() {
+  applyOwnerCopy();
   for (const key of keys) {
     const element = $(key);
     if (!element) continue;
@@ -164,7 +203,7 @@ function fillSettingsForm() {
 function renderCopyEditor(filter = "") {
   const host = $("copyEditorList");
   if (!host) return;
-  const labels = {"brandTagline":"وصف العلامة أعلى الصفحة","authEyebrow":"عبارة شاشة الدخول","authTitle":"عنوان شاشة الدخول","registerTitle":"عنوان إنشاء الحساب","backToLogin":"العودة لتسجيل الدخول","authDescription":"وصف شاشة الدخول","nameLabel":"حقل الاسم","emailLabel":"حقل البريد الإلكتروني","passwordLabel":"حقل كلمة المرور","loginButton":"زر تسجيل الدخول","registerButton":"زر إنشاء الحساب","chatSidebarTitle":"عنوان قائمة المحادثات","newConversation":"زر محادثة جديدة","conversationSearch":"تلميح البحث في المحادثات","archivedConversations":"زر المحادثات المؤرشفة","activeChatTitle":"عنوان المحادثة","accountLabel":"وصف الحساب","newChatButton":"زر محادثة جديدة السريع","notificationTitle":"عنوان الإشعارات","markAllRead":"زر تحديد الكل كمقروء","noNotifications":"حالة عدم وجود إشعارات","attachmentMenu":"اسم قائمة المرفقات","cameraTitle":"عنوان الكاميرا","cameraDescription":"وصف الكاميرا","photosTitle":"عنوان الصور","photosDescription":"وصف الصور","filesTitle":"عنوان الملفات","filesDescription":"وصف الملفات","pluginsTitle":"عنوان المكونات الإضافية","pluginsDescription":"وصف المكونات الإضافية","deepThinkTitle":"عنوان التفكير العميق","deepThinkDescription":"وصف التفكير العميق","pluginToolsTitle":"عنوان أدوات ونس","searchWeb":"أداة البحث في الإنترنت","browseWeb":"أداة متصفح المواقع","manageTasks":"أداة إدارة المهام","calculator":"أداة الحاسبة","searchConversations":"أداة البحث في المحادثات","saveMemory":"أداة حفظ الذاكرة","viewMemory":"أداة عرض الذاكرة","deleteMemory":"أداة حذف الذاكرة","createApp":"أداة إنشاء تطبيق","backButton":"زر الرجوع","deepThinkEnabled":"شارة التفكير العميق","stopButton":"زر الإيقاف","correctionButton":"زر التصحيح","composerPlaceholder":"تلميح مربع الكتابة","composerAria":"وصف مربع الكتابة لقارئ الشاشة","sendButton":"زر الإرسال","privacyDisclaimer":"تنبيه الخصوصية","adminTitle":"عنوان قسم الإدارة","adminDescription":"وصف قسم الإدارة","footerText":"نص أسفل الصفحة","genericError":"رسالة خطأ الاتصال","notificationFallbackTitle":"عنوان الإشعار الافتراضي","notificationLoadError":"بادئة خطأ تحميل الإشعارات","guestAccountLabel":"وصف وضع التجربة","loggedInPrefix":"بادئة الحساب المسجل","conversationsLoadError":"بادئة خطأ تحميل المحادثات","logoutSuccess":"رسالة تسجيل الخروج","noArchivedConversations":"حالة الأرشيف الفارغ","noConversations":"حالة المحادثات الفارغة","restoreAction":"زر استعادة المحادثة","restoreConversationAria":"وصف زر الاستعادة","restoreConversationError":"بادئة خطأ الاستعادة","renameAction":"زر تسمية المحادثة","renameConversationAria":"وصف زر التسمية","renamePrompt":"عنوان نافذة التسمية","renameConversationError":"بادئة خطأ التسمية","archiveAction":"زر أرشفة المحادثة","archiveConversationAria":"وصف زر الأرشفة","archiveConversationError":"بادئة خطأ الأرشفة","deleteAction":"زر حذف المحادثة","deleteConversationAria":"وصف زر الحذف","deleteConversationConfirm":"رسالة تأكيد الحذف","deleteConversationError":"بادئة خطأ الحذف","loadingConversation":"حالة تحميل المحادثة","loadConversationError":"بادئة خطأ تحميل المحادثة","createConversationError":"بادئة خطأ إنشاء محادثة","searchConversationsError":"بادئة خطأ البحث","copiedText":"رسالة نجاح النسخ","copyTextError":"رسالة فشل النسخ","feedbackTitle":"وصف تقييم الرد","feedbackQuestion":"سؤال تقييم الرد","feedbackHelpful":"زر التقييم الإيجابي","feedbackHelpfulAria":"وصف التقييم الإيجابي","feedbackNotHelpful":"زر التقييم السلبي","feedbackNotHelpfulAria":"وصف التقييم السلبي","feedbackThanks":"شكر التقييم الإيجابي","feedbackSaved":"رسالة حفظ التقييم","feedbackSaveError":"رسالة خطأ حفظ التقييم","replayReply":"زر تشغيل الرد صوتيًا","replayAria":"وصف زر تشغيل الرد","voicePreparing":"حالة تجهيز الصوت","voicePlaying":"حالة تشغيل الصوت","voiceUnavailable":"حالة تعذر تشغيل الصوت","assistantThinking":"حالة تفكير ونس"};
+  const labels = {"brandTagline":"وصف العلامة أعلى الصفحة","authEyebrow":"عبارة شاشة الدخول","authTitle":"عنوان شاشة الدخول","registerTitle":"عنوان إنشاء الحساب","backToLogin":"العودة لتسجيل الدخول","authDescription":"وصف شاشة الدخول","nameLabel":"حقل الاسم","emailLabel":"حقل البريد الإلكتروني","passwordLabel":"حقل كلمة المرور","loginButton":"زر تسجيل الدخول","registerButton":"زر إنشاء الحساب","chatSidebarTitle":"عنوان قائمة المحادثات","newConversation":"زر محادثة جديدة","conversationSearch":"تلميح البحث في المحادثات","archivedConversations":"زر المحادثات المؤرشفة","activeChatTitle":"عنوان المحادثة","accountLabel":"وصف الحساب","newChatButton":"زر محادثة جديدة السريع","notificationTitle":"عنوان الإشعارات","markAllRead":"زر تحديد الكل كمقروء","noNotifications":"حالة عدم وجود إشعارات","attachmentMenu":"اسم قائمة المرفقات","cameraTitle":"عنوان الكاميرا","cameraDescription":"وصف الكاميرا","photosTitle":"عنوان الصور","photosDescription":"وصف الصور","filesTitle":"عنوان الملفات","filesDescription":"وصف الملفات","pluginsTitle":"عنوان المكونات الإضافية","pluginsDescription":"وصف المكونات الإضافية","deepThinkTitle":"عنوان التفكير العميق","deepThinkDescription":"وصف التفكير العميق","pluginToolsTitle":"عنوان أدوات ونس","searchWeb":"أداة البحث في الإنترنت","browseWeb":"أداة متصفح المواقع","manageTasks":"أداة إدارة المهام","calculator":"أداة الحاسبة","searchConversations":"أداة البحث في المحادثات","saveMemory":"أداة حفظ الذاكرة","viewMemory":"أداة عرض الذاكرة","deleteMemory":"أداة حذف الذاكرة","createApp":"أداة إنشاء تطبيق","backButton":"زر الرجوع","deepThinkEnabled":"شارة التفكير العميق","stopButton":"زر الإيقاف","correctionButton":"زر التصحيح","composerPlaceholder":"تلميح مربع الكتابة","composerAria":"وصف مربع الكتابة لقارئ الشاشة","sendButton":"زر الإرسال","privacyDisclaimer":"تنبيه الخصوصية","adminTitle":"عنوان قسم الإدارة","adminDescription":"وصف قسم الإدارة","footerText":"نص أسفل الصفحة","genericError":"رسالة خطأ الاتصال","notificationFallbackTitle":"عنوان الإشعار الافتراضي","notificationLoadError":"بادئة خطأ تحميل الإشعارات","guestAccountLabel":"وصف وضع التجربة","loggedInPrefix":"بادئة الحساب المسجل","conversationsLoadError":"بادئة خطأ تحميل المحادثات","logoutSuccess":"رسالة تسجيل الخروج","noArchivedConversations":"حالة الأرشيف الفارغ","noConversations":"حالة المحادثات الفارغة","restoreAction":"زر استعادة المحادثة","restoreConversationAria":"وصف زر الاستعادة","restoreConversationError":"بادئة خطأ الاستعادة","renameAction":"زر تسمية المحادثة","renameConversationAria":"وصف زر التسمية","renamePrompt":"عنوان نافذة التسمية","renameConversationError":"بادئة خطأ التسمية","archiveAction":"زر أرشفة المحادثة","archiveConversationAria":"وصف زر الأرشفة","archiveConversationError":"بادئة خطأ الأرشفة","deleteAction":"زر حذف المحادثة","deleteConversationAria":"وصف زر الحذف","deleteConversationConfirm":"رسالة تأكيد الحذف","deleteConversationError":"بادئة خطأ الحذف","loadingConversation":"حالة تحميل المحادثة","loadConversationError":"بادئة خطأ تحميل المحادثة","createConversationError":"بادئة خطأ إنشاء محادثة","searchConversationsError":"بادئة خطأ البحث","copiedText":"رسالة نجاح النسخ","copyTextError":"رسالة فشل النسخ","feedbackTitle":"وصف تقييم الرد","feedbackQuestion":"سؤال تقييم الرد","feedbackHelpful":"زر التقييم الإيجابي","feedbackHelpfulAria":"وصف التقييم الإيجابي","feedbackNotHelpful":"زر التقييم السلبي","feedbackNotHelpfulAria":"وصف التقييم السلبي","feedbackThanks":"شكر التقييم الإيجابي","feedbackSaved":"رسالة حفظ التقييم","feedbackSaveError":"رسالة خطأ حفظ التقييم","replayReply":"زر تشغيل الرد صوتيًا","replayAria":"وصف زر تشغيل الرد","voicePreparing":"حالة تجهيز الصوت","voicePlaying":"حالة تشغيل الصوت","voiceUnavailable":"حالة تعذر تشغيل الصوت","assistantThinking":"حالة تفكير ونس","ownerBrandTagline":"وصف أعلى لوحة المالك","ownerGateEyebrow":"عبارة بوابة المالك","ownerGateTitle":"عنوان دخول المالك","ownerGateIntro":"وصف دخول المالك","ownerEmailLabel":"تسمية بريد المالك","ownerPasswordLabel":"تسمية كلمة مرور المالك","ownerLoginButton":"زر دخول المالك","ownerReturnApp":"زر العودة للتطبيق","ownerLogoutButton":"زر خروج المالك","ownerOverviewTab":"تبويب النظرة العامة","ownerSystemTab":"تبويب مركز التشغيل","ownerAgentTab":"تبويب الوكيل","ownerFilesTab":"تبويب اختبار الملفات","ownerIdentityTab":"تبويب الهوية","ownerVoiceTab":"تبويب الصوت","ownerFeaturesTab":"تبويب الميزات","ownerWelcomeTab":"تبويب رسائل البداية","ownerCopyTab":"تبويب محرر النصوص","ownerBackupTab":"تبويب النسخ والاسترجاع","ownerSaveButton":"زر حفظ الإعدادات","ownerSavePending":"حالة التعديلات غير المحفوظة","ownerCopyTitle":"عنوان محرر النصوص","ownerCopyDescription":"وصف محرر النصوص","ownerCopySearchLabel":"عنوان البحث في النصوص","ownerCopySearchPlaceholder":"تلميح البحث في النصوص","ownerCopyPreview":"زر معاينة المسودة","ownerCopyResetDraft":"زر إعادة النصوص للأصل","ownerCopyStatus":"حالة محرر النصوص"};
   const query = String(filter || "").trim().toLocaleLowerCase("ar");
   host.replaceChildren();
   for (const [key, label] of Object.entries(labels)) {
