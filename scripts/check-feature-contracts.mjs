@@ -265,3 +265,23 @@ if (liveHelpers.hasVerifiableLiveSources(staleResults, 1)) throw new Error("Resu
 console.log("Wens live-data verification tests passed for gold, exchange rates, weather, and stale/missing sources.");
 
 console.log("Wens feature contracts passed: document reading, agent routing, project editing and rollback, reply deduplication, Egyptian voice handling and admin features.");
+
+const copyCatalogStart = worker.indexOf("const DEFAULT_APP_SETTINGS = {");
+const copyCatalogEnd = worker.indexOf("\\nconst APP_SETTING_LIMITS", copyCatalogStart);
+if (copyCatalogStart < 0 || copyCatalogEnd < 0) throw new Error("Editable UI copy catalog could not be isolated.");
+const uiCopyDefaults = runInNewContext(worker.slice(copyCatalogStart, copyCatalogEnd) + "\\nDEFAULT_APP_SETTINGS.uiCopy");
+const uiCopyKeys = Object.keys(uiCopyDefaults || {});
+if (uiCopyKeys.length < 50) throw new Error("Editable UI copy catalog unexpectedly lost keys.");
+for (const key of uiCopyKeys) {
+  if (!worker.includes('"' + key + '"') || !owner.includes('"' + key + '"')) {
+    throw new Error("UI copy key is missing from the server allowlist or owner editor: " + key);
+  }
+}
+if (!app.includes("window.WensApplyCopyPreview") || !owner.includes("copyPreviewBtn")) {
+  throw new Error("UI copy draft preview wiring is missing.");
+}
+if (!index.includes('data-wens-copy="authTitle"') || !index.includes('data-wens-placeholder="composerPlaceholder"')) {
+  throw new Error("Main chat UI copy bindings are incomplete.");
+}
+console.log("Wens owner UI copy editor contracts passed for " + uiCopyKeys.length + " allowlisted strings.");
+
