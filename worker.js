@@ -2,6 +2,7 @@ import { scrypt } from "node:crypto";
 import { extractDocumentText } from "./document-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
+import { buildRealtimeVoiceSession, normalizeRealtimeVoiceRequest } from "./realtime-voice-utils.mjs";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
 
@@ -739,8 +740,8 @@ function normalizeAppSettings(input) {
   if (Number.isFinite(Number(input.voiceRate))) next.voiceRate = Math.min(1.35, Math.max(0.65, Number(input.voiceRate)));
   if (["purple", "blue", "green", "rose"].includes(input.theme)) next.theme = input.theme;
   if (input.voiceLocale === "ar-EG") next.voiceLocale = "ar-EG";
-  if (input.voiceEngine === "device") next.voiceEngine = "device";
-  if (input.voiceName === "device") next.voiceName = "device";
+  if (["device", "realtime"].includes(input.voiceEngine)) next.voiceEngine = input.voiceEngine;
+  if (["device", "marin", "cedar", "coral"].includes(input.voiceName)) next.voiceName = input.voiceName;
   if (typeof input.avatarDataUrl === "string") {
     const avatar = input.avatarDataUrl.trim();
     if (!avatar) next.avatarDataUrl = "";
@@ -1208,9 +1209,10 @@ async function adminRoute(request, env, path) {
       ok: true, checkedAt: new Date().toISOString(),
       model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
       features: {
-        openAI: false, workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
+        openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
-        naturalVoiceConfigured: false, deviceVoiceFallback: true, realtimeVoiceConfigured: false,
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), deviceVoiceFallback: true,
+        realtimeVoiceConfigured: Boolean(env.OPENAI_API_KEY),
         browserConfigured: Boolean(env.BROWSER)
       }
     });
@@ -3694,11 +3696,97 @@ async function handleChat(request, env, user) {
   }
 }
 
-async function handleRealtimeVoice() {
-  return json({
-    error: "المحادثة الصوتية المباشرة غير متاحة في وضع Workers AI الحالي. استخدم زر الميكروفون وصوت الهاتف؛ لا يلزم مفتاح OpenAI.",
-    code: "REALTIME_VOICE_NOT_CONFIGURED"
-  }, 503);
+let realtimeVoiceUsageTableReady;
+async function ensureRealtimeVoiceUsageTable(db) {
+  if (!realtimeVoiceUsageTableReady) {
+    realtimeVoiceUsageTableReady = db.prepare(
+      "CREATE TABLE IF NOT EXISTS realtime_voice_usage (user_id TEXT NOT NULL, window_start INTEGER NOT NULL, request_count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(user_id,window_start))"
+    ).run().catch(error => { realtimeVoiceUsageTableReady = null; throw error; });
+  }
+  await realtimeVoiceUsageTableReady;
+}
+async function consumeRealtimeVoiceQuota(db, userId) {
+  await ensureRealtimeVoiceUsageTable(db);
+  const windowStart = Math.floor(Date.now() / 60000);
+  await db.prepare(
+    "INSERT INTO realtime_voice_usage (user_id,window_start,request_count) VALUES (?,?,1) " +
+    "ON CONFLICT(user_id,window_start) DO UPDATE SET request_count=request_count+1"
+  ).bind(userId, windowStart).run();
+  const row = await db.prepare(
+    "SELECT request_count FROM realtime_voice_usage WHERE user_id=? AND window_start=? LIMIT 1"
+  ).bind(userId, windowStart).first();
+  if (windowStart % 5 === 0) {
+    await db.prepare("DELETE FROM realtime_voice_usage WHERE window_start < ?").bind(windowStart - 5).run().catch(() => {});
+  }
+  return Number(row?.request_count || 0) <= 12;
+}
+async function handleRealtimeVoice(request, env, user) {
+  if (!user || !env.DB) return json({ error: "سجّل الدخول لاستخدام الصوت الطبيعي." }, 401);
+  if (!env.OPENAI_API_KEY) {
+    return json({
+      error: "الصوت الطبيعي غير مهيأ على الخادم بعد. استخدم صوت الهاتف أو اربط مفتاح OpenAI من إعدادات Cloudflare.",
+      code: "REALTIME_VOICE_NOT_CONFIGURED"
+    }, 503);
+  }
+  const origin = request.headers.get("Origin");
+  if (origin) {
+    try {
+      if (new URL(origin).origin !== new URL(request.url).origin) {
+        return json({ error: "مصدر طلب الصوت غير مسموح." }, 403);
+      }
+    } catch {
+      return json({ error: "مصدر طلب الصوت غير صالح." }, 403);
+    }
+  }
+  const contentLength = Number(request.headers.get("Content-Length") || 0);
+  if (contentLength > 140000) return json({ error: "بيانات اتصال الصوت أكبر من الحد المسموح." }, 413);
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "طلب تشغيل الصوت غير صالح." }, 400); }
+  let voiceRequest;
+  try { voiceRequest = normalizeRealtimeVoiceRequest(body); }
+  catch { return json({ error: "بيانات اتصال الصوت غير صالحة." }, 400); }
+  try {
+    if (!(await consumeRealtimeVoiceQuota(env.DB, user.id))) {
+      return json({ error: "وصلت للحد المؤقت لطلبات الصوت. استنى دقيقة وجرب تاني.", code: "VOICE_RATE_LIMITED" }, 429);
+    }
+    const session = buildRealtimeVoiceSession(voiceRequest.voice);
+    const form = new FormData();
+    form.append("sdp", voiceRequest.sdp);
+    form.append("session", JSON.stringify(session));
+    const safetyDigest = await crypto.subtle.digest("SHA-256", enc.encode(String(user.id)));
+    const safetyIdentifier = Array.from(new Uint8Array(safetyDigest), byte => byte.toString(16).padStart(2, "0")).join("");
+    const upstream = await fetch("https://api.openai.com/v1/realtime/calls", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + env.OPENAI_API_KEY,
+        "OpenAI-Safety-Identifier": safetyIdentifier
+      },
+      body: form
+    });
+    if (!upstream.ok) {
+      console.error("[WENS_REALTIME_VOICE_FAILURE]", JSON.stringify({ status: upstream.status }));
+      return json({
+        error: "تعذّر تشغيل الصوت الطبيعي حاليًا. هنجرب صوت الهاتف بدلًا منه.",
+        code: "REALTIME_UPSTREAM_ERROR"
+      }, 502);
+    }
+    const answer = await upstream.text();
+    if (!answer.startsWith("v=0")) {
+      return json({ error: "رد خدمة الصوت غير صالح.", code: "REALTIME_SDP_INVALID" }, 502);
+    }
+    return new Response(answer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/sdp",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff"
+      }
+    });
+  } catch (error) {
+    console.error("[WENS_REALTIME_VOICE_FAILURE]", String(error?.message || error).slice(0, 180));
+    return json({ error: "حصلت مشكلة أثناء تجهيز الصوت الطبيعي. هنجرب صوت الهاتف.", code: "REALTIME_VOICE_FAILED" }, 502);
+  }
 }
 
 
@@ -3769,7 +3857,11 @@ export default {
         if (!feedbackUser) return json({ error: "سجّل الدخول لتقييم الرد." }, 401);
         return await replyFeedbackRoute(request, env, feedbackUser);
       }
-      if (path === "/api/voice/connect" && request.method === "POST") return await handleRealtimeVoice(request, env);
+      if (path === "/api/voice/connect" && request.method === "POST") {
+        const voiceUser = env.DB ? await currentUser(request, env) : null;
+        if (!voiceUser) return json({ error: "سجّل الدخول لاستخدام الصوت الطبيعي." }, 401);
+        return await handleRealtimeVoice(request, env, voiceUser);
+      }
       if (path.startsWith("/api/admin/")) return await adminRoute(request, env, path);
       if (path.startsWith("/api/auth/")) return await authRoute(request, env, path, requestId);
       if (path === "/api/chat/history" && request.method === "GET") {
