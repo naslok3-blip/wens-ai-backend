@@ -60,7 +60,51 @@ const defaults = {
     "privacyDisclaimer": "رسائلك ومرفقاتك تُعالج لإعداد الرد. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.",
     "adminTitle": "لوحة إدارة ونس",
     "adminDescription": "الإدارة داخل حسابك ومن نفس صفحة ونس",
-    "footerText": "ونس AI • نسخة تطويرية"
+    "footerText": "ونس AI • نسخة تطويرية",
+    "genericError": "حصل خطأ في الاتصال بالخادم.",
+    "notificationFallbackTitle": "إشعار ونس",
+    "notificationLoadError": "تعذّر تحميل الإشعارات: ",
+    "guestAccountLabel": "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات",
+    "loggedInPrefix": "مسجّل الدخول: ",
+    "conversationsLoadError": "تعذّر تحميل المحادثات: ",
+    "logoutSuccess": "تم تسجيل الخروج.",
+    "noArchivedConversations": "لا توجد محادثات مؤرشفة.",
+    "noConversations": "لسه مفيش محادثات. ابدأ محادثة جديدة.",
+    "restoreAction": "استعادة",
+    "restoreConversationAria": "استعادة المحادثة",
+    "restoreConversationError": "تعذّرت استعادة المحادثة: ",
+    "renameAction": "تسمية",
+    "renameConversationAria": "إعادة تسمية المحادثة",
+    "renamePrompt": "اسم المحادثة",
+    "renameConversationError": "تعذّرت إعادة التسمية: ",
+    "archiveAction": "أرشفة",
+    "archiveConversationAria": "أرشفة المحادثة",
+    "archiveConversationError": "تعذّرت أرشفة المحادثة: ",
+    "deleteAction": "حذف",
+    "deleteConversationAria": "حذف المحادثة نهائيًا",
+    "deleteConversationConfirm": "حذف هذه المحادثة ورسائلها نهائيًا؟ لا يمكن التراجع عن الحذف.",
+    "deleteConversationError": "تعذّر حذف المحادثة: ",
+    "loadingConversation": "جاري تحميل المحادثة...",
+    "loadConversationError": "تعذّر تحميل المحادثة: ",
+    "createConversationError": "تعذّر إنشاء محادثة جديدة: ",
+    "searchConversationsError": "تعذّر البحث في المحادثات: ",
+    "copiedText": "تم نسخ النص.",
+    "copyTextError": "تعذّر النسخ تلقائيًا على الجهاز ده.",
+    "feedbackTitle": "تقييم رد ونس",
+    "feedbackQuestion": "هل كان الرد مفيدًا؟",
+    "feedbackHelpful": "👍 مفيد",
+    "feedbackHelpfulAria": "الرد مفيد",
+    "feedbackNotHelpful": "👎 مش مفيد",
+    "feedbackNotHelpfulAria": "الرد غير مفيد",
+    "feedbackThanks": "✓ شكرًا لتقييمك",
+    "feedbackSaved": "تم حفظ تقييمك",
+    "feedbackSaveError": "تعذّر حفظ التقييم",
+    "replayReply": "🔊 اسمع رد ونس",
+    "replayAria": "تشغيل رد ونس صوتيًا",
+    "voicePreparing": "جاري تجهيز الصوت…",
+    "voicePlaying": "🔊 الصوت يعمل",
+    "voiceUnavailable": "تعذّر تشغيل الصوت",
+    "assistantThinking": "ونس بتفكر…"
   }
 };
 const keys = Object.keys(defaults);
@@ -120,7 +164,7 @@ function fillSettingsForm() {
 function renderCopyEditor(filter = "") {
   const host = $("copyEditorList");
   if (!host) return;
-  const labels = {"brandTagline":"وصف العلامة أعلى الصفحة","authEyebrow":"عبارة شاشة الدخول","authTitle":"عنوان شاشة الدخول","registerTitle":"عنوان إنشاء الحساب","backToLogin":"العودة لتسجيل الدخول","authDescription":"وصف شاشة الدخول","nameLabel":"حقل الاسم","emailLabel":"حقل البريد الإلكتروني","passwordLabel":"حقل كلمة المرور","loginButton":"زر تسجيل الدخول","registerButton":"زر إنشاء الحساب","chatSidebarTitle":"عنوان قائمة المحادثات","newConversation":"زر محادثة جديدة","conversationSearch":"تلميح البحث في المحادثات","archivedConversations":"زر المحادثات المؤرشفة","activeChatTitle":"عنوان المحادثة","accountLabel":"وصف الحساب","newChatButton":"زر محادثة جديدة السريع","notificationTitle":"عنوان الإشعارات","markAllRead":"زر تحديد الكل كمقروء","noNotifications":"حالة عدم وجود إشعارات","attachmentMenu":"اسم قائمة المرفقات","cameraTitle":"عنوان الكاميرا","cameraDescription":"وصف الكاميرا","photosTitle":"عنوان الصور","photosDescription":"وصف الصور","filesTitle":"عنوان الملفات","filesDescription":"وصف الملفات","pluginsTitle":"عنوان المكونات الإضافية","pluginsDescription":"وصف المكونات الإضافية","deepThinkTitle":"عنوان التفكير العميق","deepThinkDescription":"وصف التفكير العميق","pluginToolsTitle":"عنوان أدوات ونس","searchWeb":"أداة البحث في الإنترنت","browseWeb":"أداة متصفح المواقع","manageTasks":"أداة إدارة المهام","calculator":"أداة الحاسبة","searchConversations":"أداة البحث في المحادثات","saveMemory":"أداة حفظ الذاكرة","viewMemory":"أداة عرض الذاكرة","deleteMemory":"أداة حذف الذاكرة","createApp":"أداة إنشاء تطبيق","backButton":"زر الرجوع","deepThinkEnabled":"شارة التفكير العميق","stopButton":"زر الإيقاف","correctionButton":"زر التصحيح","composerPlaceholder":"تلميح مربع الكتابة","composerAria":"وصف مربع الكتابة لقارئ الشاشة","sendButton":"زر الإرسال","privacyDisclaimer":"تنبيه الخصوصية","adminTitle":"عنوان قسم الإدارة","adminDescription":"وصف قسم الإدارة","footerText":"نص أسفل الصفحة"};
+  const labels = {"brandTagline":"وصف العلامة أعلى الصفحة","authEyebrow":"عبارة شاشة الدخول","authTitle":"عنوان شاشة الدخول","registerTitle":"عنوان إنشاء الحساب","backToLogin":"العودة لتسجيل الدخول","authDescription":"وصف شاشة الدخول","nameLabel":"حقل الاسم","emailLabel":"حقل البريد الإلكتروني","passwordLabel":"حقل كلمة المرور","loginButton":"زر تسجيل الدخول","registerButton":"زر إنشاء الحساب","chatSidebarTitle":"عنوان قائمة المحادثات","newConversation":"زر محادثة جديدة","conversationSearch":"تلميح البحث في المحادثات","archivedConversations":"زر المحادثات المؤرشفة","activeChatTitle":"عنوان المحادثة","accountLabel":"وصف الحساب","newChatButton":"زر محادثة جديدة السريع","notificationTitle":"عنوان الإشعارات","markAllRead":"زر تحديد الكل كمقروء","noNotifications":"حالة عدم وجود إشعارات","attachmentMenu":"اسم قائمة المرفقات","cameraTitle":"عنوان الكاميرا","cameraDescription":"وصف الكاميرا","photosTitle":"عنوان الصور","photosDescription":"وصف الصور","filesTitle":"عنوان الملفات","filesDescription":"وصف الملفات","pluginsTitle":"عنوان المكونات الإضافية","pluginsDescription":"وصف المكونات الإضافية","deepThinkTitle":"عنوان التفكير العميق","deepThinkDescription":"وصف التفكير العميق","pluginToolsTitle":"عنوان أدوات ونس","searchWeb":"أداة البحث في الإنترنت","browseWeb":"أداة متصفح المواقع","manageTasks":"أداة إدارة المهام","calculator":"أداة الحاسبة","searchConversations":"أداة البحث في المحادثات","saveMemory":"أداة حفظ الذاكرة","viewMemory":"أداة عرض الذاكرة","deleteMemory":"أداة حذف الذاكرة","createApp":"أداة إنشاء تطبيق","backButton":"زر الرجوع","deepThinkEnabled":"شارة التفكير العميق","stopButton":"زر الإيقاف","correctionButton":"زر التصحيح","composerPlaceholder":"تلميح مربع الكتابة","composerAria":"وصف مربع الكتابة لقارئ الشاشة","sendButton":"زر الإرسال","privacyDisclaimer":"تنبيه الخصوصية","adminTitle":"عنوان قسم الإدارة","adminDescription":"وصف قسم الإدارة","footerText":"نص أسفل الصفحة","genericError":"رسالة خطأ الاتصال","notificationFallbackTitle":"عنوان الإشعار الافتراضي","notificationLoadError":"بادئة خطأ تحميل الإشعارات","guestAccountLabel":"وصف وضع التجربة","loggedInPrefix":"بادئة الحساب المسجل","conversationsLoadError":"بادئة خطأ تحميل المحادثات","logoutSuccess":"رسالة تسجيل الخروج","noArchivedConversations":"حالة الأرشيف الفارغ","noConversations":"حالة المحادثات الفارغة","restoreAction":"زر استعادة المحادثة","restoreConversationAria":"وصف زر الاستعادة","restoreConversationError":"بادئة خطأ الاستعادة","renameAction":"زر تسمية المحادثة","renameConversationAria":"وصف زر التسمية","renamePrompt":"عنوان نافذة التسمية","renameConversationError":"بادئة خطأ التسمية","archiveAction":"زر أرشفة المحادثة","archiveConversationAria":"وصف زر الأرشفة","archiveConversationError":"بادئة خطأ الأرشفة","deleteAction":"زر حذف المحادثة","deleteConversationAria":"وصف زر الحذف","deleteConversationConfirm":"رسالة تأكيد الحذف","deleteConversationError":"بادئة خطأ الحذف","loadingConversation":"حالة تحميل المحادثة","loadConversationError":"بادئة خطأ تحميل المحادثة","createConversationError":"بادئة خطأ إنشاء محادثة","searchConversationsError":"بادئة خطأ البحث","copiedText":"رسالة نجاح النسخ","copyTextError":"رسالة فشل النسخ","feedbackTitle":"وصف تقييم الرد","feedbackQuestion":"سؤال تقييم الرد","feedbackHelpful":"زر التقييم الإيجابي","feedbackHelpfulAria":"وصف التقييم الإيجابي","feedbackNotHelpful":"زر التقييم السلبي","feedbackNotHelpfulAria":"وصف التقييم السلبي","feedbackThanks":"شكر التقييم الإيجابي","feedbackSaved":"رسالة حفظ التقييم","feedbackSaveError":"رسالة خطأ حفظ التقييم","replayReply":"زر تشغيل الرد صوتيًا","replayAria":"وصف زر تشغيل الرد","voicePreparing":"حالة تجهيز الصوت","voicePlaying":"حالة تشغيل الصوت","voiceUnavailable":"حالة تعذر تشغيل الصوت","assistantThinking":"حالة تفكير ونس"};
   const query = String(filter || "").trim().toLocaleLowerCase("ar");
   host.replaceChildren();
   for (const [key, label] of Object.entries(labels)) {
