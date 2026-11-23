@@ -1211,8 +1211,8 @@ async function adminRoute(request, env, path) {
       features: {
         openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
-        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY), deviceVoiceFallback: true,
-        realtimeVoiceConfigured: Boolean(env.OPENAI_API_KEY),
+        naturalVoiceConfigured: Boolean(env.OPENAI_API_KEY && env.DB), deviceVoiceFallback: true,
+        realtimeVoiceConfigured: Boolean(env.OPENAI_API_KEY && env.DB),
         browserConfigured: Boolean(env.BROWSER)
       }
     });
@@ -3738,10 +3738,15 @@ async function handleRealtimeVoice(request, env, user) {
       return json({ error: "مصدر طلب الصوت غير صالح." }, 403);
     }
   }
-  const contentLength = Number(request.headers.get("Content-Length") || 0);
-  if (contentLength > 140000) return json({ error: "بيانات اتصال الصوت أكبر من الحد المسموح." }, 413);
+  if (!String(request.headers.get("Content-Type") || "").toLowerCase().includes("application/json")) {
+    return json({ error: "نوع طلب تشغيل الصوت غير مدعوم." }, 415);
+  }
+  let rawBody;
+  try { rawBody = await request.text(); }
+  catch { return json({ error: "تعذّر قراءة طلب تشغيل الصوت." }, 400); }
+  if (rawBody.length > 140000) return json({ error: "بيانات اتصال الصوت أكبر من الحد المسموح." }, 413);
   let body;
-  try { body = await request.json(); }
+  try { body = JSON.parse(rawBody); }
   catch { return json({ error: "طلب تشغيل الصوت غير صالح." }, 400); }
   let voiceRequest;
   try { voiceRequest = normalizeRealtimeVoiceRequest(body); }
