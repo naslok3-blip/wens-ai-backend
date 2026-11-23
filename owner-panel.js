@@ -605,12 +605,13 @@ document.querySelectorAll(".nav-btn").forEach(button => button.addEventListener(
 $("copySearch").addEventListener("input", () => renderCopyEditor($("copySearch").value));
 $("copyPreviewBtn").addEventListener("click", () => {
   readForm();
-  if (!window.parent || window.parent === window || typeof window.parent.WensApplyCopyPreview !== "function") {
-    $("copyEditorStatus").textContent = "للمعاينة، افتح لوحة المالك من داخل صفحة ونس نفسها.";
-    return;
-  }
-  window.parent.WensApplyCopyPreview(config.uiCopy);
-  $("copyEditorStatus").textContent = "تم تطبيق المعاينة على صفحة ونس الحالية فقط. لم يتم الحفظ على الخادم.";
+  applyOwnerCopy();
+  const parentPreviewReady = window.parent && window.parent !== window &&
+    typeof window.parent.WensApplyCopyPreview === "function";
+  if (parentPreviewReady) window.parent.WensApplyCopyPreview(config.uiCopy);
+  $("copyEditorStatus").textContent = parentPreviewReady
+    ? "تمت معاينة المسودة في واجهة ونس ولوحة المالك الحالية فقط. لم يتم الحفظ على الخادم."
+    : "تمت معاينة نصوص لوحة المالك الحالية. افتح اللوحة من داخل ونس لمعاينة الواجهة الرئيسية أيضًا.";
 });
 $("copyResetDraftBtn").addEventListener("click", () => {
   if (!confirm("إرجاع جميع نصوص المحرر إلى القيم الأصلية في المسودة؟")) return;
