@@ -6,7 +6,134 @@ const defaults = {
   greeting: "أهلًا بيك! أنا ونس 💜 اسألني أو احكيلي اللي في بالك.",
   voiceButton: "اتكلم معايا",
   voiceRate: 0.96, theme: "purple",
-  enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device"
+  enableVoice: true, autoSpeak: true, voiceLocale: "ar-EG", avatarDataUrl: "", voiceEngine: "device", voiceName: "device",
+  uiCopy: {
+    "brandTagline": "رفيقة يومك الذكية",
+    "authEyebrow": "مساحتك الخاصة",
+    "authTitle": "أهلًا بيك في ونس",
+    "registerTitle": "إنشاء حساب ونس",
+    "backToLogin": "عندي حساب بالفعل",
+    "authDescription": "سجّل دخولك علشان محادثاتك تتحفظ بأمان وتقدر تكمل من أي جهاز.",
+    "nameLabel": "الاسم",
+    "emailLabel": "البريد الإلكتروني",
+    "passwordLabel": "كلمة المرور",
+    "loginButton": "تسجيل الدخول",
+    "registerButton": "إنشاء حساب جديد",
+    "chatSidebarTitle": "محادثاتك",
+    "newConversation": "＋ محادثة جديدة",
+    "conversationSearch": "ابحث في المحادثات...",
+    "archivedConversations": "المحادثات المؤرشفة",
+    "activeChatTitle": "الدردشة مع ونس",
+    "accountLabel": "محادثتك محفوظة في حسابك",
+    "newChatButton": "＋ جديد",
+    "notificationTitle": "مركز الإشعارات",
+    "markAllRead": "تحديد الكل كمقروء",
+    "noNotifications": "لا توجد إشعارات بعد.",
+    "attachmentMenu": "إضافة إلى المحادثة",
+    "cameraTitle": "الكاميرا",
+    "cameraDescription": "التقط صورة وأرسلها لونس",
+    "photosTitle": "الصور",
+    "photosDescription": "اختر صورة من هاتفك",
+    "filesTitle": "الملفات",
+    "filesDescription": "نصوص ومستندات وملفات أخرى",
+    "pluginsTitle": "المكونات الإضافية",
+    "pluginsDescription": "أدوات ونس المتصلة",
+    "deepThinkTitle": "فكّر بعمق أكبر",
+    "deepThinkDescription": "استدلال أعمق للمسائل الصعبة",
+    "pluginToolsTitle": "أدوات ونس المتاحة",
+    "searchWeb": "🌐 البحث في الإنترنت",
+    "browseWeb": "🌍 متصفح المواقع",
+    "manageTasks": "✅ إدارة المهام",
+    "calculator": "🧮 الحاسبة",
+    "searchConversations": "🗂️ البحث في المحادثات",
+    "saveMemory": "🧠 حفظ تفضيل في الذاكرة",
+    "viewMemory": "📚 عرض ذاكرتي",
+    "deleteMemory": "🧹 حذف معلومة من الذاكرة",
+    "createApp": "🧩 إنشاء تطبيق أو لعبة",
+    "backButton": "رجوع",
+    "deepThinkEnabled": "🧠 التفكير العميق مفعّل",
+    "stopButton": "إيقاف",
+    "correctionButton": "استخدم التصحيح",
+    "composerPlaceholder": "اكتب رسالتك أو أرفق ملفًا...",
+    "composerAria": "رسالتك",
+    "sendButton": "إرسال",
+    "privacyDisclaimer": "رسائلك ومرفقاتك تُعالج لإعداد الرد. لا ترسل كلمات مرور أو بيانات شديدة الخصوصية.",
+    "adminTitle": "لوحة إدارة ونس",
+    "adminDescription": "الإدارة داخل حسابك ومن نفس صفحة ونس",
+    "footerText": "ونس AI • نسخة تطويرية",
+    "genericError": "حصل خطأ في الاتصال بالخادم.",
+    "notificationFallbackTitle": "إشعار ونس",
+    "notificationLoadError": "تعذّر تحميل الإشعارات: ",
+    "guestAccountLabel": "وضع تجربة مؤقت — المحادثات لن تُحفظ قبل ربط قاعدة البيانات",
+    "loggedInPrefix": "مسجّل الدخول: ",
+    "conversationsLoadError": "تعذّر تحميل المحادثات: ",
+    "logoutSuccess": "تم تسجيل الخروج.",
+    "noArchivedConversations": "لا توجد محادثات مؤرشفة.",
+    "noConversations": "لسه مفيش محادثات. ابدأ محادثة جديدة.",
+    "restoreAction": "استعادة",
+    "restoreConversationAria": "استعادة المحادثة",
+    "restoreConversationError": "تعذّرت استعادة المحادثة: ",
+    "renameAction": "تسمية",
+    "renameConversationAria": "إعادة تسمية المحادثة",
+    "renamePrompt": "اسم المحادثة",
+    "renameConversationError": "تعذّرت إعادة التسمية: ",
+    "archiveAction": "أرشفة",
+    "archiveConversationAria": "أرشفة المحادثة",
+    "archiveConversationError": "تعذّرت أرشفة المحادثة: ",
+    "deleteAction": "حذف",
+    "deleteConversationAria": "حذف المحادثة نهائيًا",
+    "deleteConversationConfirm": "حذف هذه المحادثة ورسائلها نهائيًا؟ لا يمكن التراجع عن الحذف.",
+    "deleteConversationError": "تعذّر حذف المحادثة: ",
+    "loadingConversation": "جاري تحميل المحادثة...",
+    "loadConversationError": "تعذّر تحميل المحادثة: ",
+    "createConversationError": "تعذّر إنشاء محادثة جديدة: ",
+    "searchConversationsError": "تعذّر البحث في المحادثات: ",
+    "copiedText": "تم نسخ النص.",
+    "copyTextError": "تعذّر النسخ تلقائيًا على الجهاز ده.",
+    "feedbackTitle": "تقييم رد ونس",
+    "feedbackQuestion": "هل كان الرد مفيدًا؟",
+    "feedbackHelpful": "👍 مفيد",
+    "feedbackHelpfulAria": "الرد مفيد",
+    "feedbackNotHelpful": "👎 مش مفيد",
+    "feedbackNotHelpfulAria": "الرد غير مفيد",
+    "feedbackThanks": "✓ شكرًا لتقييمك",
+    "feedbackSaved": "تم حفظ تقييمك",
+    "feedbackSaveError": "تعذّر حفظ التقييم",
+    "replayReply": "🔊 اسمع رد ونس",
+    "replayAria": "تشغيل رد ونس صوتيًا",
+    "voicePreparing": "جاري تجهيز الصوت…",
+    "voicePlaying": "🔊 الصوت يعمل",
+    "voiceUnavailable": "تعذّر تشغيل الصوت",
+    "assistantThinking": "ونس بتفكر…",
+    "ownerBrandTagline": "مركز الإدارة المحمي",
+    "ownerGateEyebrow": "PRIVATE CONTROL CENTER",
+    "ownerGateTitle": "دخول المدير",
+    "ownerGateIntro": "لوحة التحكم خاصة بمالك التطبيق. سجّل الدخول بكلمة مرور المدير المستقلة.",
+    "ownerEmailLabel": "البريد الإلكتروني",
+    "ownerPasswordLabel": "كلمة مرور المدير المستقلة",
+    "ownerLoginButton": "فتح لوحة التحكم",
+    "ownerReturnApp": "العودة للتطبيق",
+    "ownerLogoutButton": "تسجيل خروج المدير",
+    "ownerOverviewTab": "▦ نظرة عامة",
+    "ownerSystemTab": "⌁ مركز التشغيل",
+    "ownerAgentTab": "✧ الوكيل والأدوات",
+    "ownerFilesTab": "▤ اختبار الملفات",
+    "ownerIdentityTab": "◈ هوية التطبيق",
+    "ownerVoiceTab": "🔊 الصوت والمساعدة",
+    "ownerFeaturesTab": "⚙ الميزات",
+    "ownerWelcomeTab": "☷ رسائل البداية",
+    "ownerCopyTab": "✎ محرر نصوص التطبيق",
+    "ownerBackupTab": "⇩ النسخ والاسترجاع",
+    "ownerSaveButton": "حفظ التعديلات",
+    "ownerSavePending": "التعديلات غير محفوظة حتى تضغط حفظ.",
+    "ownerCopyTitle": "محرر نصوص التطبيق",
+    "ownerCopyDescription": "عدّل النصوص الظاهرة في واجهة ونس. التغييرات مسودة حتى تضغط حفظ التعديلات. المعاينة داخل التطبيق لا تحفظها للمستخدمين.",
+    "ownerCopySearchLabel": "ابحث عن نص",
+    "ownerCopySearchPlaceholder": "ابحث بالاسم أو النص...",
+    "ownerCopyPreview": "معاينة المسودة في ونس",
+    "ownerCopyResetDraft": "إرجاع نصوص المسودة للأصل",
+    "ownerCopyStatus": "كتالوج النصوص الأساسية جاهز. الرسائل الديناميكية ورسائل الخادم ليست كلها ضمن هذا الإصدار."
+  }
 };
 const keys = Object.keys(defaults);
 let config = { ...defaults };
@@ -44,20 +171,63 @@ function normalize(data) {
       next[key] = value.slice(0, key === "avatarDataUrl" ? 700000 : key === "welcomeText" ? 240 : key === "greeting" ? 350 : 120);
     }
   }
+  const incomingCopy = data.uiCopy && typeof data.uiCopy === "object" && !Array.isArray(data.uiCopy) ? data.uiCopy : {};
+  next.uiCopy = { ...defaults.uiCopy, ...Object.fromEntries(Object.entries(incomingCopy).filter(([key, value]) => key in defaults.uiCopy && typeof value === "string" && value.length <= 240)) };
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
   if (next.voiceLocale !== "ar-EG") next.voiceLocale = "ar-EG";
   if (next.voiceEngine !== "device") next.voiceEngine = "device";
   if (next.voiceName !== "device") next.voiceName = "device";
   return next;
 }
+function applyOwnerCopy() {
+  document.querySelectorAll("[data-wens-admin-copy]").forEach(element => {
+    const value = config.uiCopy?.[element.dataset.wensAdminCopy];
+    if (typeof value === "string") element.textContent = value;
+  });
+  document.querySelectorAll("[data-wens-admin-placeholder]").forEach(element => {
+    const value = config.uiCopy?.[element.dataset.wensAdminPlaceholder];
+    if (typeof value === "string") element.placeholder = value;
+  });
+}
 function fillSettingsForm() {
+  applyOwnerCopy();
   for (const key of keys) {
     const element = $(key);
     if (!element) continue;
     if (element.type === "checkbox") element.checked = !!config[key];
     else element.value = config[key];
   }
+  renderCopyEditor();
   updateRanges();
+}
+function renderCopyEditor(filter = "") {
+  const host = $("copyEditorList");
+  if (!host) return;
+  const labels = {"brandTagline":"وصف العلامة أعلى الصفحة","authEyebrow":"عبارة شاشة الدخول","authTitle":"عنوان شاشة الدخول","registerTitle":"عنوان إنشاء الحساب","backToLogin":"العودة لتسجيل الدخول","authDescription":"وصف شاشة الدخول","nameLabel":"حقل الاسم","emailLabel":"حقل البريد الإلكتروني","passwordLabel":"حقل كلمة المرور","loginButton":"زر تسجيل الدخول","registerButton":"زر إنشاء الحساب","chatSidebarTitle":"عنوان قائمة المحادثات","newConversation":"زر محادثة جديدة","conversationSearch":"تلميح البحث في المحادثات","archivedConversations":"زر المحادثات المؤرشفة","activeChatTitle":"عنوان المحادثة","accountLabel":"وصف الحساب","newChatButton":"زر محادثة جديدة السريع","notificationTitle":"عنوان الإشعارات","markAllRead":"زر تحديد الكل كمقروء","noNotifications":"حالة عدم وجود إشعارات","attachmentMenu":"اسم قائمة المرفقات","cameraTitle":"عنوان الكاميرا","cameraDescription":"وصف الكاميرا","photosTitle":"عنوان الصور","photosDescription":"وصف الصور","filesTitle":"عنوان الملفات","filesDescription":"وصف الملفات","pluginsTitle":"عنوان المكونات الإضافية","pluginsDescription":"وصف المكونات الإضافية","deepThinkTitle":"عنوان التفكير العميق","deepThinkDescription":"وصف التفكير العميق","pluginToolsTitle":"عنوان أدوات ونس","searchWeb":"أداة البحث في الإنترنت","browseWeb":"أداة متصفح المواقع","manageTasks":"أداة إدارة المهام","calculator":"أداة الحاسبة","searchConversations":"أداة البحث في المحادثات","saveMemory":"أداة حفظ الذاكرة","viewMemory":"أداة عرض الذاكرة","deleteMemory":"أداة حذف الذاكرة","createApp":"أداة إنشاء تطبيق","backButton":"زر الرجوع","deepThinkEnabled":"شارة التفكير العميق","stopButton":"زر الإيقاف","correctionButton":"زر التصحيح","composerPlaceholder":"تلميح مربع الكتابة","composerAria":"وصف مربع الكتابة لقارئ الشاشة","sendButton":"زر الإرسال","privacyDisclaimer":"تنبيه الخصوصية","adminTitle":"عنوان قسم الإدارة","adminDescription":"وصف قسم الإدارة","footerText":"نص أسفل الصفحة","genericError":"رسالة خطأ الاتصال","notificationFallbackTitle":"عنوان الإشعار الافتراضي","notificationLoadError":"بادئة خطأ تحميل الإشعارات","guestAccountLabel":"وصف وضع التجربة","loggedInPrefix":"بادئة الحساب المسجل","conversationsLoadError":"بادئة خطأ تحميل المحادثات","logoutSuccess":"رسالة تسجيل الخروج","noArchivedConversations":"حالة الأرشيف الفارغ","noConversations":"حالة المحادثات الفارغة","restoreAction":"زر استعادة المحادثة","restoreConversationAria":"وصف زر الاستعادة","restoreConversationError":"بادئة خطأ الاستعادة","renameAction":"زر تسمية المحادثة","renameConversationAria":"وصف زر التسمية","renamePrompt":"عنوان نافذة التسمية","renameConversationError":"بادئة خطأ التسمية","archiveAction":"زر أرشفة المحادثة","archiveConversationAria":"وصف زر الأرشفة","archiveConversationError":"بادئة خطأ الأرشفة","deleteAction":"زر حذف المحادثة","deleteConversationAria":"وصف زر الحذف","deleteConversationConfirm":"رسالة تأكيد الحذف","deleteConversationError":"بادئة خطأ الحذف","loadingConversation":"حالة تحميل المحادثة","loadConversationError":"بادئة خطأ تحميل المحادثة","createConversationError":"بادئة خطأ إنشاء محادثة","searchConversationsError":"بادئة خطأ البحث","copiedText":"رسالة نجاح النسخ","copyTextError":"رسالة فشل النسخ","feedbackTitle":"وصف تقييم الرد","feedbackQuestion":"سؤال تقييم الرد","feedbackHelpful":"زر التقييم الإيجابي","feedbackHelpfulAria":"وصف التقييم الإيجابي","feedbackNotHelpful":"زر التقييم السلبي","feedbackNotHelpfulAria":"وصف التقييم السلبي","feedbackThanks":"شكر التقييم الإيجابي","feedbackSaved":"رسالة حفظ التقييم","feedbackSaveError":"رسالة خطأ حفظ التقييم","replayReply":"زر تشغيل الرد صوتيًا","replayAria":"وصف زر تشغيل الرد","voicePreparing":"حالة تجهيز الصوت","voicePlaying":"حالة تشغيل الصوت","voiceUnavailable":"حالة تعذر تشغيل الصوت","assistantThinking":"حالة تفكير ونس","ownerBrandTagline":"وصف أعلى لوحة المالك","ownerGateEyebrow":"عبارة بوابة المالك","ownerGateTitle":"عنوان دخول المالك","ownerGateIntro":"وصف دخول المالك","ownerEmailLabel":"تسمية بريد المالك","ownerPasswordLabel":"تسمية كلمة مرور المالك","ownerLoginButton":"زر دخول المالك","ownerReturnApp":"زر العودة للتطبيق","ownerLogoutButton":"زر خروج المالك","ownerOverviewTab":"تبويب النظرة العامة","ownerSystemTab":"تبويب مركز التشغيل","ownerAgentTab":"تبويب الوكيل","ownerFilesTab":"تبويب اختبار الملفات","ownerIdentityTab":"تبويب الهوية","ownerVoiceTab":"تبويب الصوت","ownerFeaturesTab":"تبويب الميزات","ownerWelcomeTab":"تبويب رسائل البداية","ownerCopyTab":"تبويب محرر النصوص","ownerBackupTab":"تبويب النسخ والاسترجاع","ownerSaveButton":"زر حفظ الإعدادات","ownerSavePending":"حالة التعديلات غير المحفوظة","ownerCopyTitle":"عنوان محرر النصوص","ownerCopyDescription":"وصف محرر النصوص","ownerCopySearchLabel":"عنوان البحث في النصوص","ownerCopySearchPlaceholder":"تلميح البحث في النصوص","ownerCopyPreview":"زر معاينة المسودة","ownerCopyResetDraft":"زر إعادة النصوص للأصل","ownerCopyStatus":"حالة محرر النصوص"};
+  const query = String(filter || "").trim().toLocaleLowerCase("ar");
+  host.replaceChildren();
+  for (const [key, label] of Object.entries(labels)) {
+    const value = String(config.uiCopy?.[key] ?? defaults.uiCopy[key] ?? "");
+    if (query && !(label + " " + value + " " + key).toLocaleLowerCase("ar").includes(query)) continue;
+    const field = document.createElement("div");
+    field.className = "field copy-editor-field";
+    const title = document.createElement("label");
+    title.htmlFor = "copy-" + key;
+    title.textContent = label;
+    const area = document.createElement("textarea");
+    area.id = "copy-" + key;
+    area.rows = value.length > 85 ? 3 : 2;
+    area.maxLength = 240;
+    area.value = value;
+    area.dataset.copyKey = key;
+    area.addEventListener("input", () => {
+      config.uiCopy[key] = area.value;
+      $("copyEditorStatus").textContent = "مسودة غير محفوظة — يمكنك معاينتها داخل التطبيق أو حفظها من زر الحفظ العام.";
+    });
+    field.append(title, area);
+    host.append(field);
+  }
+  if (!host.childElementCount) host.textContent = "لا توجد نصوص مطابقة للبحث.";
 }
 async function loadSettings() {
   const data = await request("/api/admin/settings");
@@ -72,6 +242,9 @@ function readForm() {
     if (element) config[key] = element.type === "checkbox" ? element.checked :
       element.type === "range" ? Number(element.value) : element.value;
   }
+  document.querySelectorAll("[data-copy-key]").forEach(element => {
+    config.uiCopy[element.dataset.copyKey] = element.value.slice(0, 240);
+  });
 }
 function updateRanges() {
   $("rateOut").value = Number($("voiceRate").value).toFixed(2);
@@ -429,6 +602,23 @@ document.querySelectorAll(".nav-btn").forEach(button => button.addEventListener(
   document.querySelectorAll(".tab-page").forEach(page => page.classList.toggle("active", page.id === "tab-" + button.dataset.tab));
 }));
 ["voiceRate"].forEach(id => $(id).addEventListener("input", updateRanges));
+$("copySearch").addEventListener("input", () => renderCopyEditor($("copySearch").value));
+$("copyPreviewBtn").addEventListener("click", () => {
+  readForm();
+  applyOwnerCopy();
+  const parentPreviewReady = window.parent && window.parent !== window &&
+    typeof window.parent.WensApplyCopyPreview === "function";
+  if (parentPreviewReady) window.parent.WensApplyCopyPreview(config.uiCopy);
+  $("copyEditorStatus").textContent = parentPreviewReady
+    ? "تمت معاينة المسودة في واجهة ونس ولوحة المالك الحالية فقط. لم يتم الحفظ على الخادم."
+    : "تمت معاينة نصوص لوحة المالك الحالية. افتح اللوحة من داخل ونس لمعاينة الواجهة الرئيسية أيضًا.";
+});
+$("copyResetDraftBtn").addEventListener("click", () => {
+  if (!confirm("إرجاع جميع نصوص المحرر إلى القيم الأصلية في المسودة؟")) return;
+  config.uiCopy = { ...defaults.uiCopy };
+  renderCopyEditor($("copySearch").value);
+  $("copyEditorStatus").textContent = "تم إرجاع المسودة للقيم الأصلية. اضغط حفظ التعديلات لاعتمادها.";
+});
 $("saveBtn").addEventListener("click", async () => {
   readForm();
   $("saveBtn").disabled = true;
@@ -470,6 +660,55 @@ $("resetBtn").addEventListener("click", async () => {
     $("backupStatus").textContent = "تمت استعادة الإعدادات الافتراضية على الخادم.";
   } catch (error) { $("backupStatus").textContent = error.message; }
 });
+async function refreshSettingsHistory() {
+  const list = $("settingsHistoryList");
+  const button = $("refreshSettingsHistoryBtn");
+  button.disabled = true;
+  list.textContent = "جاري تحميل سجل التعديلات...";
+  try {
+    const data = await request("/api/admin/settings/history");
+    list.replaceChildren();
+    const revisions = Array.isArray(data.revisions) ? data.revisions : [];
+    if (!revisions.length) {
+      list.textContent = "لا توجد نسخ سابقة محفوظة حتى الآن.";
+      return;
+    }
+    for (const revision of revisions) {
+      const row = document.createElement("div");
+      row.className = "actions left-actions";
+      row.style.cssText = "justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line,#ddd)";
+      const label = document.createElement("span");
+      label.textContent = new Date(revision.createdAt * 1000).toLocaleString("ar-EG") + " · " + (revision.actor || "مالك التطبيق");
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.className = "btn secondary";
+      restore.textContent = "استرجاع هذه النسخة";
+      restore.addEventListener("click", async () => {
+        if (!confirm("استرجاع هذه النسخة سيستبدل الإعدادات الحالية لكل مستخدمي ونس. هل تريد المتابعة؟")) return;
+        restore.disabled = true;
+        try {
+          const result = await request("/api/admin/settings/restore", { revisionId: revision.id }, "POST");
+          config = normalize(result.settings);
+          fillSettingsForm();
+          const preview = $("avatarPreview");
+          if (preview) preview.src = config.avatarDataUrl || "/avatar.jpg?v=real-jpg-20261105";
+          $("backupStatus").textContent = "تم استرجاع النسخة المحددة، وحُفظت الحالة السابقة في السجل.";
+          await refreshSettingsHistory();
+        } catch (error) {
+          $("backupStatus").textContent = error.message || "تعذّر استرجاع النسخة.";
+          restore.disabled = false;
+        }
+      });
+      row.append(label, restore);
+      list.append(row);
+    }
+  } catch (error) {
+    list.textContent = error.message || "تعذّر تحميل سجل التعديلات.";
+  } finally {
+    button.disabled = false;
+  }
+}
+$("refreshSettingsHistoryBtn").addEventListener("click", refreshSettingsHistory);
 
 
 $("voicePreviewBtn").addEventListener("click", async () => {

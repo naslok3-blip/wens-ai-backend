@@ -110,3 +110,6 @@ body.admin-page{
 .users-pagination{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}
 .users-pagination .btn{min-height:38px;padding:8px 13px}
 @media(max-width:480px){.registered-users-section{padding:12px}.registered-user-card{padding:11px}.registered-user-details{grid-template-columns:1fr 1fr}.users-search-row .btn{padding-inline:12px}}
+
+/* Mobile-friendly owner copy editor */
+.copy-editor-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.copy-editor-field{margin:0;min-width:0}.copy-editor-field textarea{width:100%;min-height:64px;resize:vertical;box-sizing:border-box}@media(max-width:620px){.copy-editor-list{grid-template-columns:1fr}.copy-editor-field textarea{font-size:16px}}

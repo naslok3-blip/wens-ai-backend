@@ -42,7 +42,16 @@ const checks = [
   [index, "حفظ تفضيل في الذاكرة", "explicit save-memory chat shortcut"],
   [index, "اعرضي المعلومات غير الحساسة", "private memory listing shortcut"],
   [index, "احذفي من ذاكرتي الخاصة", "private memory deletion shortcut"],
-  [worker, "replyFeedbackRoute", "authenticated hash-only reply feedback endpoint"],
+  [worker, 'path === "/api/admin/settings/history"', "owner-only settings revision history endpoint"],
+  [worker, 'path === "/api/admin/settings/restore"', "owner-only settings rollback endpoint"],
+  [worker, "APP_UI_COPY_KEYS", "server-side allowlist for editable interface copy"],
+  [app, "function applyUiCopy", "runtime renderer for owner-managed interface copy"],
+  [owner, "renderCopyEditor", "owner UI text editor"],
+  [index, 'data-wens-copy="authTitle"', "login copy bound to owner-editable content"],
+  [owner, "copyPreviewBtn", "owner panel exposes a draft preview action"],
+  [owner, 'request("/api/admin/settings/history")', "owner panel can view saved settings revisions"],
+  [owner, 'request("/api/admin/settings/restore"', "owner panel can restore a saved settings revision"],
+  [index, "حفظ تفضيل في الذاكرة", "explicit save-memory chat shortcut"],
   [app, 'utterance.lang = preferredVoice?.lang || "ar-EG"', "Egyptian-first device locale with Arabic fallback"],
   [app, "synth.getVoices()", "selects installed device voices"],
   [app, "femaleVoice(egyptianVoices)", "prefers installed Egyptian voices before Arabic fallback"],
@@ -256,3 +265,31 @@ if (liveHelpers.hasVerifiableLiveSources(staleResults, 1)) throw new Error("Resu
 console.log("Wens live-data verification tests passed for gold, exchange rates, weather, and stale/missing sources.");
 
 console.log("Wens feature contracts passed: document reading, agent routing, project editing and rollback, reply deduplication, Egyptian voice handling and admin features.");
+
+const copyCatalogStart = worker.indexOf("const DEFAULT_APP_SETTINGS = {");
+const copyCatalogEnd = worker.indexOf("const APP_SETTING_LIMITS", copyCatalogStart);
+if (copyCatalogStart < 0 || copyCatalogEnd < 0) throw new Error("Editable UI copy catalog could not be isolated.");
+const uiCopyDefaults = runInNewContext(worker.slice(copyCatalogStart, copyCatalogEnd) + String.fromCharCode(10) + "DEFAULT_APP_SETTINGS.uiCopy");
+const uiCopyKeys = Object.keys(uiCopyDefaults || {});
+if (uiCopyKeys.length < 90) throw new Error("Editable UI copy catalog unexpectedly lost keys.");
+for (const key of uiCopyKeys) {
+  if (!worker.includes('"' + key + '"') || !owner.includes('"' + key + '"')) {
+    throw new Error("UI copy key is missing from the server allowlist or owner editor: " + key);
+  }
+}
+const editorLabelsStart = owner.indexOf("const labels = ");
+const editorLabelsEnd = owner.indexOf(";", editorLabelsStart);
+if (editorLabelsStart < 0 || editorLabelsEnd < 0) throw new Error("Owner UI copy editor labels could not be read.");
+const editorLabels = JSON.parse(owner.slice(editorLabelsStart + "const labels = ".length, editorLabelsEnd));
+for (const key of uiCopyKeys) {
+  if (!(key in editorLabels)) throw new Error("UI copy key is missing from the owner editor list: " + key);
+}
+if (!app.includes("const uiText = (key, fallback)")) throw new Error("Dynamic app copy helper is missing.");
+if (!app.includes("window.WensApplyCopyPreview") || !owner.includes("copyPreviewBtn")) {
+  throw new Error("UI copy draft preview wiring is missing.");
+}
+if (!index.includes('data-wens-copy="authTitle"') || !index.includes('data-wens-placeholder="composerPlaceholder"')) {
+  throw new Error("Main chat UI copy bindings are incomplete.");
+}
+console.log("Wens owner UI copy editor contracts passed for " + uiCopyKeys.length + " allowlisted strings.");
+
