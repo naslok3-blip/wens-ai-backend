@@ -159,7 +159,7 @@ function loadLocalSettings() {
     const merged = {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && key !== "uiCopy" && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "device") && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || value === "device"))
+        key in defaults && key !== "uiCopy" && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || ["device", "realtime"].includes(value)) && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || ["device", "marin", "cedar", "coral"].includes(value)))
       ))
     };
     const savedCopy = saved.uiCopy && typeof saved.uiCopy === "object" && !Array.isArray(saved.uiCopy) ? saved.uiCopy : {};
@@ -1729,7 +1729,7 @@ async function speakRealtime(text, voiceName, playerTarget, waitForPlayback = fa
   shell.className = "voice-player-shell";
   const label = document.createElement("span");
   label.className = "voice-player-label";
-  label.textContent = "صوت ونس — استخدم زر التشغيل لو ما بدأش تلقائيًا";
+  label.textContent = "صوت ونس مولّد بالذكاء الاصطناعي — استخدم زر التشغيل لو ما بدأش تلقائيًا";
   const player = document.createElement("audio");
   player.className = "voice-audio-player";
   player.controls = true;
@@ -2080,6 +2080,16 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
 async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
+  if (appSettings.voiceEngine === "realtime") {
+    try {
+      const selectedVoice = voiceOverride || (["marin", "cedar", "coral"].includes(appSettings.voiceName) ? appSettings.voiceName : "marin");
+      await speakRealtime(message, selectedVoice, playerTarget, waitForPlayback);
+      return true;
+    } catch (error) {
+      stopRealtimeVoice();
+      setVoiceStatus("الصوت الطبيعي غير متاح حاليًا؛ هستخدم صوت الهاتف بدلًا منه.");
+    }
+  }
   setVoiceStatus("بدور على صوت مصري مثبت على الموبايل…");
   try {
     await speakOnDevice(message, playerTarget, waitForPlayback);
