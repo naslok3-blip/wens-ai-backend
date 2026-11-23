@@ -212,6 +212,12 @@
           <h2>النسخ والاسترجاع</h2>
           <p class="muted">احفظ نسخة JSON من تخصيص الواجهة أو استرجع نسخة سابقة.</p>
           <div class="actions left-actions"><button id="exportBtn" class="btn primary">تنزيل نسخة إعدادات</button><label class="btn secondary file-label">استرجاع ملف<input id="importFile" type="file" accept="application/json,.json" hidden></label><button id="resetBtn" class="btn secondary">إرجاع الافتراضي</button></div>
+          <div class="panel" style="margin-top:16px">
+            <h3>سجل التعديلات والاسترجاع</h3>
+            <p class="muted">يحتفظ الخادم بآخر 8 نسخ من الإعدادات قبل التغيير. الاسترجاع ينشئ نسخة احتياطية من الحالة الحالية أولًا.</p>
+            <button id="refreshSettingsHistoryBtn" class="btn secondary" type="button">عرض سجل التعديلات</button>
+            <div id="settingsHistoryList" class="status-line" aria-live="polite">لم يتم تحميل السجل بعد.</div>
+          </div>
           <p id="backupStatus" class="status-line"></p>
         </section>
         <div class="save-bar"><span id="saveStatus" class="muted">التعديلات غير محفوظة حتى تضغط حفظ.</span><button id="saveBtn" class="btn primary">حفظ التعديلات</button></div>
