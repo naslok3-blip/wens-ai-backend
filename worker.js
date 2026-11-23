@@ -2000,7 +2000,7 @@ async function executeAgentTool(name, args, env, user) {
         "https://www.google.com/search?q=" + encodeURIComponent(query) + "&num=10",
         "text/html,application/xhtml+xml,*/*"
       );
-      const anchors = [...html.matchAll(/<a\\b[^>]*href=["'](https?:\\/\\/[^"'#]+)["'][^>]*>[\\s\\S]*?<h3\\b[^>]*>([\\s\\S]*?)<\\/h3>[\\s\\S]*?<\\/a>/gi)].slice(0, 8);
+      const anchors = [...html.matchAll(/<a\b[^>]*href=["'](https?:\/\/[^"'#]+)["'][^>]*>[\s\S]*?<h3\b[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi)].slice(0, 8);
       let count = 0;
       for (const match of anchors) {
         const articleUrl = match[1];
@@ -2021,16 +2021,16 @@ async function executeAgentTool(name, args, env, user) {
         "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=10",
         "text/html,application/xhtml+xml,*/*"
       );
-      const cards = [...html.matchAll(/<li\\b[^>]*class=["'][^"']*b_algo[^"']*["'][^>]*>([\\s\\S]*?)<\\/li>/gi)].slice(0, 8);
+      const cards = [...html.matchAll(/<li\b[^>]*class=["'][^"']*b_algo[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi)].slice(0, 8);
       let count = 0;
       for (const card of cards) {
-        const anchor = card[1].match(/<h2\\b[^>]*>[\\s\\S]*?<a\\b[^>]*href=["'](https?:\\/\\/[^"'#]+)["'][^>]*>([\\s\\S]*?)<\\/a>[\\s\\S]*?<\\/h2>/i);
+        const anchor = card[1].match(/<h2\b[^>]*>[\s\S]*?<a\b[^>]*href=["'](https?:\/\/[^"'#]+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>/i);
         if (!anchor) continue;
         const articleUrl = anchor[1];
         const title = cleanText(anchor[2]);
         if (!title || !articleUrl) continue;
         if (sportsQuery && !isRelevantSportsSearchResult(title)) continue;
-        const excerpt = cleanText(card[1].replace(/<h2\\b[\\s\\S]*?<\\/h2>/i, " ")).slice(0, 360);
+        const excerpt = cleanText(card[1].replace(/<h2\b[\s\S]*?<\/h2>/i, " ")).slice(0, 360);
         addSource(title, articleUrl);
         sections.push("نتيجة بحث ويب — Bing: " + title + (excerpt ? "\\nمقتطف: " + excerpt : "") + "\\nالرابط: " + articleUrl);
         count++;
