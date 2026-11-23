@@ -278,7 +278,7 @@ for (const key of uiCopyKeys) {
   }
 }
 const editorLabelsStart = owner.indexOf("const labels = ");
-const editorLabelsEnd = owner.indexOf(";\\n", editorLabelsStart);
+const editorLabelsEnd = owner.indexOf(";", editorLabelsStart);
 if (editorLabelsStart < 0 || editorLabelsEnd < 0) throw new Error("Owner UI copy editor labels could not be read.");
 const editorLabels = JSON.parse(owner.slice(editorLabelsStart + "const labels = ".length, editorLabelsEnd));
 for (const key of uiCopyKeys) {
