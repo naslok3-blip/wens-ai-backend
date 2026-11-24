@@ -525,3 +525,24 @@ body:has(#appRoot:not([hidden])) footer { display:none; }
 @supports not (height: 100dvh) {
   body:has(#appRoot:not([hidden])) { height:100vh; }
 }
+
+
+/* Keep search and execution details readable in the light chat theme. */
+#appRoot .research-trace,
+#appRoot .source-trace{
+  background:#f8fafc;
+  border-color:#dbe3ef;
+  color:#334155;
+}
+#appRoot .research-trace summary,
+#appRoot .source-trace summary{
+  color:#5b43ac;
+}
+#appRoot .research-trace ul,
+#appRoot .source-trace ul{
+  color:#475569;
+}
+#appRoot .research-trace .trace-completed{color:#166534}
+#appRoot .research-trace .trace-failed{color:#b42318}
+#appRoot .research-trace .trace-pending{color:#475569}
+#appRoot .source-trace li{color:#334155}
