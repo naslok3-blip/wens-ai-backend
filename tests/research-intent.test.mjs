@@ -427,3 +427,17 @@ test("keeps casual greetings and direct app actions out of external research", (
   assert.equal(isExternalResearchIntent("عامل ايه يا ونس"), false);
   assert.equal(isExternalResearchIntent("اعمللي تطبيق للمحل"), false);
 });
+
+
+test("matches Arabic question openers when the user omits punctuation", () => {
+  for (const message of [
+    "كام عدد سكان اليابان",
+    "كم عدد سكان اليابان",
+    "بكام الذهب",
+    "قد ايه المسافة بين القاهرة والاسكندرية",
+    "ما سبب تعاقب الليل والنهار",
+    "ما معنى الذكاء الاصطناعي"
+  ]) {
+    assert.equal(isExternalResearchIntent(message), true, message);
+  }
+});
