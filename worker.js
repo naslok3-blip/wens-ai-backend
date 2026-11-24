@@ -2476,7 +2476,7 @@ function isLiveDataRequest(message) {
   const dynamicTopic = /(?:سعر|اسعار|ثمن|تكلفه|ذهب|دهب|gold|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|عملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|امطار|مباراه|مباريات|نتيجه|نتائج|نتايج|ترتيب|فاز|كسب|خسر|تعادل|score|result|weather|forecast|exchange rate|currency|stock price|bitcoin|crypto|live score)/i.test(text);
   const explicitCurrent = /(?:اليوم|النهارده|دلوقتي|حاليا|الان|مباشر|اخر|احدث|القادم|القادمه|الجاي|الجايه|التالي|التاليه|المقبل|المقبله|today|current|now|latest|upcoming|live)/i.test(text);
   // Scores and results are inherently time-sensitive, even without "today" or "now".
-  const intrinsicallyLive = /(?:سعر|اسعار|ثمن|تكلفه|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|مباراه|مباريات|نتيجه|نتائج|نتايج|ترتيب|score|result|weather|forecast|exchange rate|stock price|bitcoin|crypto|live score)/i.test(text);
+  const intrinsicallyLive = /(?:سعر|اسعار|ثمن|تكلفه|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|مباراه|مباريات|فاز|كسب|خسر|تعادل|نتيجه|نتائج|نتايج|ترتيب|score|result|weather|forecast|exchange rate|stock price|bitcoin|crypto|live score)/i.test(text);
   return dynamicTopic && (explicitCurrent || intrinsicallyLive);
 }
 
