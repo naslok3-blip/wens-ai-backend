@@ -174,7 +174,7 @@ test("worker uses the server-side Responses API for main chat when configured", 
   assert.ok(worker.includes("useWebSearch: requiresExternalSearch"), "external questions must enable hosted web search");
   assert.ok(worker.includes("محرك البحث الخارجي متعدد المصادر لم يثبت"), "hosted web search must be used before refusing unverified current information");
   assert.ok(worker.includes('reasoning: { effort: options.deepThink ? "high" : "medium" }'), "standard and deep requests must set supported reasoning effort");
-  assert.ok(worker.includes("const useReasoningModel = deepThink;"), "image understanding alone must not force the more expensive Astra model");
+  assert.ok(worker.includes("const useReasoningModel = deepThink || (!env.OPENAI_API_KEY && Boolean(imageBase64));"), "image understanding alone must not force the more expensive Astra model");
   assert.ok(worker.includes("Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)"), "Responses output budget must leave room for reasoning and complete answers");
   assert.ok(worker.includes("openAIChatConfigured: Boolean(env.OPENAI_API_KEY)"), "health diagnostics must expose server-side API readiness");
   assert.ok(worker.includes("return await env.AI.run("), "Workers AI remains available for image and project tasks");
