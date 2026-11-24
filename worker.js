@@ -3351,7 +3351,7 @@ async function handleAgent(request, env, user, options = {}) {
     }
   }
 
-  const useReasoningModel = deepThink;
+  const useReasoningModel = deepThink || (!env.OPENAI_API_KEY && Boolean(imageBase64));
   const useOpenAi = Boolean(env.OPENAI_API_KEY);
   const model = useOpenAi
     ? (useReasoningModel
