@@ -46,8 +46,8 @@ function normalize(data) {
   }
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
   if (next.voiceLocale !== "ar-EG") next.voiceLocale = "ar-EG";
-  if (next.voiceEngine !== "device") next.voiceEngine = "device";
-  if (next.voiceName !== "device") next.voiceName = "device";
+  if (!["device", "realtime"].includes(next.voiceEngine)) next.voiceEngine = "device";
+  if (!["device", "marin", "cedar", "coral"].includes(next.voiceName)) next.voiceName = "device";
   return next;
 }
 function fillSettingsForm() {
@@ -88,7 +88,7 @@ async function refreshStatus() {
     const f = data.features || {};
     setState("workersAiState", f.workersAI ? "متصل ويعمل" : "غير مربوط", !!f.workersAI);
     setState("databaseState", !f.databaseConfigured ? "غير مربوطة" : !f.databaseConnected ? "فشل الاتصال" : f.databaseSchemaReady ? "جاهزة" : "تحتاج مراجعة", !!(f.databaseConfigured && f.databaseConnected && f.databaseSchemaReady));
-    setState("voiceState", "صوت الجهاز المجاني — يحتاج صوت ar-EG مثبت", false);
+    setState("voiceState", f.realtimeVoiceConfigured ? "مفتاح OpenAI Realtime موجود — استخدام مدفوع" : "صوت الهاتف المجاني — يحتاج صوت ar-EG مثبت", !!f.realtimeVoiceConfigured);
     setState("browserState", f.browserConfigured ? "الربط موجود" : "غير مربوط", !!f.browserConfigured);
     $("modelName").textContent = "النموذج: " + (data.model || "غير محدد");
     $("databaseDetail").textContent = !f.databaseConfigured ? "لم يتم ربط D1 بعد" : !f.databaseConnected ? "تعذّر الاتصال بقاعدة البيانات" : f.settingsStorageReady ? "الجداول وحفظ الإعدادات جاهزة" : "تخزين الإعدادات يحتاج مراجعة";
@@ -475,14 +475,14 @@ $("resetBtn").addEventListener("click", async () => {
 $("voicePreviewBtn").addEventListener("click", async () => {
   $("voicePreviewBtn").disabled = true;
   $("voiceConfirmBtn").hidden = true;
-  $("voicePreviewStatus").textContent = "جاري البحث عن صوت مصري مثبت على الهاتف...";
+  $("voicePreviewStatus").textContent = "جاري اختبار صوت ونس المحدد...";
   try {
     const play = window.parent && window.parent.WensPlayVoicePreview;
     if (typeof play !== "function") throw new Error("افتح لوحة الإدارة من داخل صفحة ونس لتشغيل العينة.");
     const started = await play("أهلًا بيك، أنا ونس. سعيدة إني أكون معاك النهارده.");
-    if (!started) throw new Error("صوت مصري ar-EG مش مثبت على الهاتف أو تعذّر تشغيله.");
+    if (!started) throw new Error("تعذّر تشغيل صوت ونس المحدد.");
     $("voiceConfirmBtn").hidden = false;
-    $("voicePreviewStatus").textContent = "تم تشغيل عينة صوت الهاتف. اسمعها فعلًا ثم أكّد السماع هنا.";
+    $("voicePreviewStatus").textContent = "تم تشغيل عينة صوت ونس. اسمعها فعلًا ثم أكّد السماع هنا.";
     $("voicePreviewStatus").style.color = "#ffcf8f";
   } catch (error) {
     $("voicePreviewStatus").textContent = error.message || "تعذّر اختبار الصوت.";
@@ -492,7 +492,7 @@ $("voicePreviewBtn").addEventListener("click", async () => {
   }
 });
 $("voiceConfirmBtn").addEventListener("click", () => {
-  $("voicePreviewStatus").textContent = "أكّدت سماع صوت ونس المصري من الهاتف فعليًا.";
+  $("voicePreviewStatus").textContent = "أكّدت سماع صوت ونس المحدد فعليًا.";
   $("voicePreviewStatus").style.color = "#9be7c1";
   $("voiceConfirmBtn").hidden = true;
 });
