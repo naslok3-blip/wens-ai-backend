@@ -46,8 +46,8 @@ function normalize(data) {
   }
   if (!["purple", "blue", "green", "rose"].includes(next.theme)) next.theme = defaults.theme;
   if (next.voiceLocale !== "ar-EG") next.voiceLocale = "ar-EG";
-  if (next.voiceEngine !== "device") next.voiceEngine = "device";
-  if (next.voiceName !== "device") next.voiceName = "device";
+  if (!["device", "realtime"].includes(next.voiceEngine)) next.voiceEngine = "device";
+  if (!["device", "marin", "cedar", "coral"].includes(next.voiceName)) next.voiceName = "device";
   return next;
 }
 function fillSettingsForm() {
@@ -475,7 +475,7 @@ $("resetBtn").addEventListener("click", async () => {
 $("voicePreviewBtn").addEventListener("click", async () => {
   $("voicePreviewBtn").disabled = true;
   $("voiceConfirmBtn").hidden = true;
-  $("voicePreviewStatus").textContent = "جاري البحث عن صوت مصري مثبت على الهاتف...";
+  $("voicePreviewStatus").textContent = "جاري اختبار صوت ونس المحدد...";
   try {
     const play = window.parent && window.parent.WensPlayVoicePreview;
     if (typeof play !== "function") throw new Error("افتح لوحة الإدارة من داخل صفحة ونس لتشغيل العينة.");
