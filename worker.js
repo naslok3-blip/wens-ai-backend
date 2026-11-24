@@ -1497,7 +1497,7 @@ async function ensureGeneratedProjects(db) {
 }
 async function createWebProject(env, user, args, options = {}) {
   if (!env.DB || !user) return { error: "سجّل الدخول أولًا لحفظ التطبيقات والألعاب في حسابك." };
-  if (!env.AI) return { error: "خدمة Cloudflare Workers AI غير متاحة حاليًا." };
+  if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." };
   const kind = args.kind === "game" ? "game" : "app";
   const title = String(args.title || (kind === "game" ? "لعبة ونس" : "تطبيق ونس")).replace(/[\\r\\n<>]/g, " ").trim().slice(0, 80);
   const prompt = String(args.prompt || "").trim().slice(0, 3200);
@@ -3621,7 +3621,7 @@ async function agentTasksRoute(request, env, user) {
 }
 
 async function handleChat(request, env, user) {
-  if (!env.AI) {
+  if (!env.AI && !env.OPENAI_API_KEY) {
     return json({ error: "خدمة Cloudflare Workers AI غير مربوطة على الخادم." }, 503);
   }
   const db = env.DB || null;
