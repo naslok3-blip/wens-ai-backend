@@ -170,6 +170,9 @@ test("worker uses the server-side Responses API for main chat when configured", 
   assert.ok(worker.includes('env.WENS_OPENAI_MODEL || "gpt-6.2-sol"'), "default chat model must be a supported GPT-6 Sol model");
   assert.ok(worker.includes('env.WENS_OPENAI_REASONING_MODEL || "gpt-6.2-astra"'), "deep reasoning must use the GPT-6 Astra model");
   assert.ok(worker.includes("store: false"), "Responses requests must not be stored by the API");
+  assert.ok(worker.includes('reasoning: { effort: options.deepThink ? "high" : "medium" }'), "standard and deep requests must set supported reasoning effort");
+  assert.ok(worker.includes("const useReasoningModel = deepThink;"), "image understanding alone must not force the more expensive Astra model");
+  assert.ok(worker.includes("Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)"), "Responses output budget must leave room for reasoning and complete answers");
   assert.ok(worker.includes("openAIChatConfigured: Boolean(env.OPENAI_API_KEY)"), "health diagnostics must expose server-side API readiness");
   assert.ok(worker.includes("return await env.AI.run("), "Workers AI remains available for image and project tasks");
   assert.equal(client.includes("OPENAI_API_KEY"), false, "the API key must never be sent to browser code");
