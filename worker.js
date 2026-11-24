@@ -2004,7 +2004,7 @@ async function executeAgentTool(name, args, env, user) {
       /(?:\bfootball\b|\bsoccer\b).{0,50}(?:fixture|schedule|match|upcoming)|(?:fixture|schedule|upcoming).{0,50}(?:\bfootball\b|\bsoccer\b)/i.test(query);
     const egyptNationalTeamQuery = isEgyptNationalTeamRequest(query) ||
       /egypt national (?:football|soccer) team/i.test(query);
-    const mentionsAhly = /(?:الاهلي|الأهلي|al[\\s-]?ahly|ahly)/i.test(normalizedSearchQuery);
+    const mentionsAhly = /(?:الاهلي|الأهلي|al[\s-]?ahly|ahly)/i.test(normalizedSearchQuery);
     const mentionsPyramids = /(?:بيراميدز|pyramids)/i.test(normalizedSearchQuery);
     const egyptClubScheduleQuery = sportsQuery && (mentionsAhly || mentionsPyramids);
     const egyptClubResultQuery = (mentionsAhly && mentionsPyramids) &&
@@ -2290,7 +2290,7 @@ async function executeAgentTool(name, args, env, user) {
       await Promise.allSettled(sourcesToRead.map(async source => {
         try {
           const html = await fetchText(source.url, "text/html,application/xhtml+xml,*/*");
-          const meta = [...html.matchAll(/<meta\\b[^>]*>/gi)].map(item => item[0]);
+          const meta = [...html.matchAll(/<meta\b[^>]*>/gi)].map(item => item[0]);
           const metaValue = names => {
             for (const tag of meta) {
               const key = (tag.match(/(?:property|name)=["']([^"']+)["']/i)?.[1] || "").toLowerCase();
@@ -2302,17 +2302,17 @@ async function executeAgentTool(name, args, env, user) {
           const published = metaValue(["article:published_time","datepublished","publishdate","date"]);
           const modified = metaValue(["article:modified_time","datemodified","lastmod"]);
           const plain = cleanText(html
-            .replace(/<(script|style|svg|noscript|nav|footer|header|form)\\b[^>]*>[\\s\\S]*?<\\/\\1>/gi, " ")
+            .replace(/<(script|style|svg|noscript|nav|footer|header|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
             .replace(/<[^>]+>/g, " "));
           if (plain.length < 180) return;
           if (egyptClubScheduleQuery) {
             const hasScheduleText = /(?:fixtures|fixture|schedule|matches|matchday|مواعيد|جدول|مباريات)/i.test(plain);
-            const hasRelevantClub = /(?:al\\s*ahly|ahly|pyramids|بيراميدز|الاهلي|الأهلي)/i.test(plain);
+            const hasRelevantClub = /(?:al\s*ahly|ahly|pyramids|بيراميدز|الاهلي|الأهلي)/i.test(plain);
             if (!seasonPattern.test(plain) || !hasScheduleText || !hasRelevantClub || !hasUpcomingFootballDate(plain)) return;
           } else {
-            const hasBothClubs = /(?:al\\s*ahly|ahly|الاهلي|الأهلي)/i.test(plain) &&
+            const hasBothClubs = /(?:al\s*ahly|ahly|الاهلي|الأهلي)/i.test(plain) &&
               /(?:pyramids|بيراميدز)/i.test(plain);
-            const hasScore = /(?:0\\s*[-–:]\\s*2|2\\s*[-–:]\\s*0)/i.test(plain);
+            const hasScore = /(?:0\s*[-–:]\s*2|2\s*[-–:]\s*0)/i.test(plain);
             if (!hasBothClubs || !hasScore) return;
           }
           addSource(source.label, source.url);
