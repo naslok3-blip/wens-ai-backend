@@ -3557,14 +3557,6 @@ async function handleChat(request, env, user) {
   }
 }
 
-async function handleRealtimeVoice() {
-  return json({
-    error: "المحادثة الصوتية المباشرة غير متاحة في وضع Workers AI الحالي. استخدم زر الميكروفون وصوت الهاتف؛ لا يلزم مفتاح OpenAI.",
-    code: "REALTIME_VOICE_NOT_CONFIGURED"
-  }, 503);
-}
-
-
 let realtimeVoiceUsageTableReady;
 async function ensureRealtimeVoiceUsageTable(db) {
   if (!realtimeVoiceUsageTableReady) {
