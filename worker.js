@@ -1988,6 +1988,57 @@ async function executeAgentTool(name, args, env, user) {
       "Bing News RSS"
     ).catch(error => diagnostics.push("Bing News RSS: " + String(error?.message || error).slice(0, 100))));
 
+    // Yahoo News RSS adds an independent publisher index when other feeds are unavailable.
+    jobs.push(readRss(
+      "https://news.search.yahoo.com/rss?p=" + encodeURIComponent(query),
+      "Yahoo News RSS"
+    ).catch(error => diagnostics.push("Yahoo News RSS: " + String(error?.message || error).slice(0, 100))));
+
+    // Google Web Search: collect organic result links (not Google redirect or knowledge-panel links).
+    jobs.push((async () => {
+      const html = await fetchText(
+        "https://www.google.com/search?q=" + encodeURIComponent(query) + "&num=10",
+        "text/html,application/xhtml+xml,*/*"
+      );
+      const anchors = [...html.matchAll(/<a\b[^>]*href=["'](https?:\/\/[^"'#]+)["'][^>]*>[\s\S]*?<h3\b[^>]*>([\s\S]*?)<\/h3>[\s\S]*?<\/a>/gi)].slice(0, 8);
+      let count = 0;
+      for (const match of anchors) {
+        const articleUrl = match[1];
+        const title = cleanText(match[2]);
+        if (!title || !articleUrl) continue;
+        if (sportsQuery && !isRelevantSportsSearchResult(title)) continue;
+        addSource(title, articleUrl);
+        sections.push("نتيجة بحث ويب — Google: " + title + "\\nالرابط: " + articleUrl);
+        count++;
+      }
+      if (count) engines.push("Google Web Search");
+      else diagnostics.push("Google Web Search: no organic results");
+    })().catch(error => diagnostics.push("Google Web Search: " + String(error?.message || error).slice(0, 100))));
+
+    // Bing Web Search: parse organic result cards independently from Bing News RSS.
+    jobs.push((async () => {
+      const html = await fetchText(
+        "https://www.bing.com/search?q=" + encodeURIComponent(query) + "&count=10",
+        "text/html,application/xhtml+xml,*/*"
+      );
+      const cards = [...html.matchAll(/<li\b[^>]*class=["'][^"']*b_algo[^"']*["'][^>]*>([\s\S]*?)<\/li>/gi)].slice(0, 8);
+      let count = 0;
+      for (const card of cards) {
+        const anchor = card[1].match(/<h2\b[^>]*>[\s\S]*?<a\b[^>]*href=["'](https?:\/\/[^"'#]+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/h2>/i);
+        if (!anchor) continue;
+        const articleUrl = anchor[1];
+        const title = cleanText(anchor[2]);
+        if (!title || !articleUrl) continue;
+        if (sportsQuery && !isRelevantSportsSearchResult(title)) continue;
+        const excerpt = cleanText(card[1].replace(/<h2\b[\s\S]*?<\/h2>/i, " ")).slice(0, 360);
+        addSource(title, articleUrl);
+        sections.push("نتيجة بحث ويب — Bing: " + title + (excerpt ? "\\nمقتطف: " + excerpt : "") + "\\nالرابط: " + articleUrl);
+        count++;
+      }
+      if (count) engines.push("Bing Web Search");
+      else diagnostics.push("Bing Web Search: no organic results");
+    })().catch(error => diagnostics.push("Bing Web Search: " + String(error?.message || error).slice(0, 100))));
+
     // DuckDuckGo HTML search supplies real result links; Instant Answer alone is not a web search.
     jobs.push((async () => {
       const url = "https://html.duckduckgo.com/html/?q=" + encodeURIComponent(query);
