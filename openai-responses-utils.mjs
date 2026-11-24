@@ -110,10 +110,12 @@ export function fromResponsesResponse(response) {
     }))
     .filter(call => call.function.name);
 
+  const webSearch = extractResponsesWebSearch(response);
   return {
     id: response?.id,
     model: response?.model,
     output_text: text,
+    sources: webSearch.sources,
     choices: [{
       message: {
         role: "assistant",
