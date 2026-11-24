@@ -90,7 +90,7 @@ function classifyWorkersAiFailure(error) {
   if (/model_not_found|does not exist|not have access to model/i.test(raw)) {
     return { code: "OPENAI_MODEL_UNAVAILABLE", status: 503, message: "نموذج OpenAI المحدد غير متاح لهذا المشروع. راجع اسم النموذج وصلاحياته." };
   }
-  if (/OPENAI_API_HTTP_5\\d\\d|OPENAI_API_RESPONSE_FAILED|OPENAI_API_INVALID_RESPONSE/i.test(raw)) {
+  if (/OPENAI_API_HTTP_5\d\d|OPENAI_API_RESPONSE_FAILED|OPENAI_API_INVALID_RESPONSE/i.test(raw)) {
     return { code: "OPENAI_API_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مش متاحة مؤقتًا. جرّب تاني بعد قليل." };
   }
 
@@ -778,7 +778,10 @@ async function adminRoute(request, env, path) {
       ok: true,
       checkedAt: new Date().toISOString(),
       features: {
-        openAI: false,
+        openAI: Boolean(env.OPENAI_API_KEY),
+        openAIChatConfigured: Boolean(env.OPENAI_API_KEY),
+        chatProvider: env.OPENAI_API_KEY ? "OpenAI Responses API" : "Cloudflare Workers AI",
+        chatModel: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
         workersAI: Boolean(env.AI),
         databaseConfigured: Boolean(env.DB),
         databaseConnected,
@@ -787,9 +790,9 @@ async function adminRoute(request, env, path) {
         realtimeVoiceConfigured: false,
         documentReadingConfigured: true,
         freeDocumentParsing: true,
-        documentAIConfigured: Boolean(env.AI),
+        documentAIConfigured: Boolean(env.OPENAI_API_KEY || env.AI),
         browserConfigured: Boolean(env.BROWSER),
-        agentToolingConfigured: Boolean(env.AI && tools.length)
+        agentToolingConfigured: Boolean((env.OPENAI_API_KEY || env.AI) && tools.length)
       },
       counts,
       onlineUsers: databaseConnected && tableNames.has("sessions") && tableNames.has("users") && tableNames.has("messages")
@@ -952,10 +955,12 @@ async function adminRoute(request, env, path) {
     }
     return json({
       ok: true, checkedAt: new Date().toISOString(),
-      model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash",
+      model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"),
       features: {
-        openAI: false, workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
+        openAI: Boolean(env.OPENAI_API_KEY), workersAI: Boolean(env.AI), databaseConfigured: Boolean(env.DB),
         databaseConnected, databaseSchemaReady, settingsStorageReady,
+        openAIChatConfigured: Boolean(env.OPENAI_API_KEY),
+        chatProvider: env.OPENAI_API_KEY ? "OpenAI Responses API" : "Cloudflare Workers AI",
         naturalVoiceConfigured: false, deviceVoiceFallback: true, realtimeVoiceConfigured: false,
         browserConfigured: Boolean(env.BROWSER)
       }
@@ -3588,9 +3593,11 @@ export default {
       return json({
         ok: true,
         service: "wens-ai",
-        configured: workersAiBindingPresent,
+        configured: Boolean(env.OPENAI_API_KEY || workersAiBindingPresent),
         features: {
-          openAI: false,
+          openAI: Boolean(env.OPENAI_API_KEY),
+          openAIChatConfigured: Boolean(env.OPENAI_API_KEY),
+          chatProvider: env.OPENAI_API_KEY ? "OpenAI Responses API" : "Cloudflare Workers AI",
           workersAI: workersAiBindingPresent,
           database: Boolean(env.DB),
           browser: Boolean(env.BROWSER),
@@ -3599,13 +3606,14 @@ export default {
           realtimeVoiceConfigured: false,
           documentReadingConfigured: true,
           freeDocumentParsing: true,
-          documentAIConfigured: workersAiBindingPresent,
+          documentAIConfigured: Boolean(env.OPENAI_API_KEY || workersAiBindingPresent),
           adminProtectionConfigured: Boolean(env.DB)
         },
         diagnostics: {
           workersAiBindingPresent,
+          openAiApiKeyPresent: Boolean(env.OPENAI_API_KEY),
           browserBindingPresent: Boolean(env.BROWSER),
-          model: workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null
+          model: env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : (workersAiBindingPresent ? (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash") : null)
         }
       });
     }
