@@ -5,6 +5,9 @@ import vm from "node:vm";
 
 const worker = await readFile(new URL("../worker.js", import.meta.url), "utf8");
 const client = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+const futureFixtureDate = (offsetDays = 1) => new Date(Date.now() + offsetDays * 86400000)
+  .toLocaleDateString("en-GB", { timeZone: "Africa/Cairo", day: "numeric", month: "short", year: "numeric" });
+const recentPublicationDate = () => new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
 function extractFunction(name, nextName) {
   const start = worker.indexOf(`function ${name}(`);
@@ -184,10 +187,11 @@ test("upcoming fixture date parser rejects past dates and accepts future CAF dat
 });
 
 test("Egypt national-team fixtures require two recent independent sources with future dates", () => {
+  const published = recentPublicationDate();
   const result = {
     results:
-      "جدول منتخب مصر — CAF\\nPublished: 2026-11-10\\nEgypt v Malawi (23/11, 19h00) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
-      "جدول منتخب مصر — EFA\\nتاريخ النشر: 2026-11-10\\nEgypt v Malawi (23 Nov 2026, 21:00 Cairo) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
+      "جدول منتخب مصر — CAF\\nPublished: " + published + "\\nEgypt v Malawi (" + futureFixtureDate(1) + ", 19h00) — AFCON qualification\\nالرابط: https://caf.example/fixtures\\n\\n" +
+      "جدول منتخب مصر — EFA\\nتاريخ النشر: " + published + "\\nEgypt v Malawi (" + futureFixtureDate(2) + ", 21:00 Cairo) — AFCON qualification\\nالرابط: https://efa.example/fixtures"
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
   const oneSource = { results: result.results.split("\\n\\n")[0] };
@@ -277,10 +281,11 @@ test("current-season validator accepts the short season notation only with sched
 
 
 test("accepts Al Ahly club fixtures without requiring an Egypt national-team fixture or season label", () => {
+  const published = recentPublicationDate();
   const result = {
     results:
-      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: 23 Nov 2026 الساعة 19:00. آخر تحديث: 2026-11-18 10:30\n\n" +
-      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: 25 Nov 2026 الساعة 21:00. Published: 2026-11-18"
+      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: " + futureFixtureDate(1) + " الساعة 19:00. آخر تحديث: " + published + " 10:30\\n\\n" +
+      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: " + futureFixtureDate(2) + " الساعة 21:00. Published: " + published
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
 });
