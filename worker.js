@@ -27,7 +27,7 @@ async function runWensAgentTextModel(env, model, options = {}) {
   const payload = {
     model,
     input: toResponsesInput(options.messages),
-    max_output_tokens: Math.min(4096, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)),
+    max_output_tokens: Math.min(8192, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)),
     reasoning: { effort: options.deepThink ? "high" : "medium" },
     store: false
   };
@@ -1526,7 +1526,8 @@ async function createWebProject(env, user, args, options = {}) {
       max_tokens: 4200,
       chat_template_kwargs: { enable_thinking: false }
     };
-    const result = await runWensTextModel(env, model, runOptions);
+    const projectModel = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : model;
+    const result = await runWensAgentTextModel(env, projectModel, runOptions);
     const message = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
     let source = typeof message?.content === "string"
       ? message.content.trim()
@@ -3644,7 +3645,9 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+    const model = env.OPENAI_API_KEY
+      ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol")
+      : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
     const runOptions = {
       messages,
       temperature: 0.7,
@@ -3653,7 +3656,7 @@ async function handleChat(request, env, user) {
     if (model === "@cf/zai-org/glm-4.7-flash") {
       runOptions.chat_template_kwargs = { enable_thinking: false };
     }
-    const result = await runWensTextModel(env, model, runOptions);
+    const result = await runWensAgentTextModel(env, model, runOptions);
     const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const reply = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
