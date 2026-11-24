@@ -281,10 +281,11 @@ test("current-season validator accepts the short season notation only with sched
 
 
 test("accepts Al Ahly club fixtures without requiring an Egypt national-team fixture or season label", () => {
+  const published = recentPublicationDate();
   const result = {
     results:
-      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: 23 Nov 2026 الساعة 19:00. آخر تحديث: 2026-11-18 10:30\n\n" +
-      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: 25 Nov 2026 الساعة 21:00. Published: 2026-11-18"
+      "[Al Ahly fixtures](https://one.example/alahly) جدول مباريات الأهلي القادمة: " + futureFixtureDate(1) + " الساعة 19:00. آخر تحديث: " + published + " 10:30\\n\\n" +
+      "[Al Ahly schedule](https://two.example/club) مواعيد مباراة الأهلي القادمة: " + futureFixtureDate(2) + " الساعة 21:00. Published: " + published
   };
   assert.equal(hasVerifiableSportsScheduleSources(result), true);
 });
