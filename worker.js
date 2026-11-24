@@ -23,10 +23,12 @@ async function runWensAgentTextModel(env, model, options = {}) {
   // Use the server-side OpenAI Responses API for the main conversational agent
   // when its secret is configured. Keep the API key entirely on the Worker.
   if (!env.OPENAI_API_KEY) return runWensTextModel(env, model, options);
+  const requestedOutputTokens = Number(options.max_tokens) || 0;
   const payload = {
     model,
     input: toResponsesInput(options.messages),
-    max_output_tokens: Math.min(4096, Math.max(64, Number(options.max_tokens) || 1200)),
+    max_output_tokens: Math.min(4096, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)),
+    reasoning: { effort: options.deepThink ? "high" : "medium" },
     store: false
   };
   const tools = toResponsesTools(options.tools);
@@ -3335,7 +3337,7 @@ async function handleAgent(request, env, user, options = {}) {
     }
   }
 
-  const useReasoningModel = deepThink || Boolean(imageBase64);
+  const useReasoningModel = deepThink;
   const useOpenAi = Boolean(env.OPENAI_API_KEY);
   const model = useOpenAi
     ? (useReasoningModel
