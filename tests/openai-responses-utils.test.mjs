@@ -179,6 +179,7 @@ test("worker uses the server-side Responses API for main chat when configured", 
   assert.ok(worker.includes("Math.min(8192, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens))"), "code generation may use a larger but bounded output budget");
   assert.ok(worker.includes("const projectModel = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || \"gpt-6.2-sol\") : model;"), "web project generation must use the main GPT agent when configured");
   assert.ok(worker.includes("const result = await runWensAgentTextModel(env, projectModel, runOptions);"), "web project generation must use the Responses adapter");
+  assert.ok(worker.includes('if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." };'), "GPT-powered project generation must not require the Workers AI binding");
   assert.ok(worker.includes("openAIChatConfigured: Boolean(env.OPENAI_API_KEY)"), "health diagnostics must expose server-side API readiness");
   assert.ok(worker.includes("return await env.AI.run("), "Workers AI remains available for image generation and fallback");
   assert.equal(client.includes("OPENAI_API_KEY"), false, "the API key must never be sent to browser code");
