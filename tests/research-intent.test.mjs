@@ -441,3 +441,18 @@ test("matches Arabic question openers when the user omits punctuation", () => {
     assert.equal(isExternalResearchIntent(message), true, message);
   }
 });
+
+
+test("recognizes conversational Arabic questions and question requests without punctuation", () => {
+  for (const message of [
+    "هو الأهلي كسب ولا خسر",
+    "هي عاصمة اليابان طوكيو",
+    "انا عايز اعرف عدد سكان اليابان",
+    "ممكن اعرف مساحة مصر",
+    "نفسي اعرف تاريخ الأهرامات",
+    "سؤال عن الذكاء الاصطناعي",
+    "الأهلي كسب ولا خسر"
+  ]) {
+    assert.equal(isExternalResearchIntent(message), true, message);
+  }
+});
