@@ -1,4 +1,5 @@
 import { scrypt } from "node:crypto";
+import { fromResponsesResponse, toResponsesInput, toResponsesTools } from "./openai-responses-utils.mjs";
 import { extractDocumentText } from "./document-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
@@ -14,6 +15,48 @@ async function runWensTextModel(env, model, options = {}) {
     String(model || env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash").trim(),
     options || {}
   );
+}
+
+
+async function runWensAgentTextModel(env, model, options = {}) {
+  // Use the server-side OpenAI Responses API for the main conversational agent
+  // when its secret is configured. Keep the API key entirely on the Worker.
+  if (!env.OPENAI_API_KEY) return runWensTextModel(env, model, options);
+  const payload = {
+    model,
+    input: toResponsesInput(options.messages),
+    max_output_tokens: Math.min(4096, Math.max(64, Number(options.max_tokens) || 1200)),
+    store: false
+  };
+  const tools = toResponsesTools(options.tools);
+  if (tools.length) {
+    payload.tools = tools;
+    payload.tool_choice = "auto";
+  }
+  if (options.deepThink) payload.reasoning = { effort: "high" };
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + env.OPENAI_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const raw = await response.text();
+  let data;
+  try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+  if (!response.ok) {
+    const apiError = data?.error || {};
+    const code = String(apiError.code || apiError.type || "unknown").slice(0, 80);
+    const detail = String(apiError.message || "OpenAI Responses API request failed").slice(0, 240);
+    throw new Error("OPENAI_API_HTTP_" + response.status + "_" + code + ": " + detail);
+  }
+  if (!data || typeof data !== "object") throw new Error("OPENAI_API_INVALID_RESPONSE");
+  if (data.status === "failed") {
+    throw new Error("OPENAI_API_RESPONSE_FAILED: " + String(data.error?.message || "Response failed").slice(0, 200));
+  }
+  return fromResponsesResponse(data);
 }
 
 const enc = new TextEncoder();
@@ -34,8 +77,23 @@ function json(data, status = 200, headers = {}) {
 // In particular, the daily free Neurons quota is shared across models in the account.
 function classifyWorkersAiFailure(error) {
   const raw = String(error?.message || error || "unknown");
-  
-  
+
+  if (/OPENAI_API_HTTP_401|invalid_api_key|authentication_error/i.test(raw)) {
+    return { code: "OPENAI_API_AUTH_FAILED", status: 503, message: "مفتاح OpenAI المحفوظ على الخادم غير صالح أو لا يملك صلاحية API. راجع السر في Cloudflare." };
+  }
+  if (/OPENAI_API_HTTP_403|permission_denied|model_not_allowed/i.test(raw)) {
+    return { code: "OPENAI_API_PERMISSION_DENIED", status: 503, message: "مشروع OpenAI لا يملك صلاحية استخدام النموذج المحدد. راجع صلاحيات المشروع." };
+  }
+  if (/OPENAI_API_HTTP_429|rate_limit_exceeded|insufficient_quota|billing_hard_limit/i.test(raw)) {
+    return { code: "OPENAI_API_LIMIT_OR_BILLING", status: 429, message: "طلبات OpenAI أو رصيد API وصلوا للحد المتاح. راجع حدود الاستخدام والفوترة في منصة OpenAI؛ اشتراك ChatGPT منفصل عن API." };
+  }
+  if (/model_not_found|does not exist|not have access to model/i.test(raw)) {
+    return { code: "OPENAI_MODEL_UNAVAILABLE", status: 503, message: "نموذج OpenAI المحدد غير متاح لهذا المشروع. راجع اسم النموذج وصلاحياته." };
+  }
+  if (/OPENAI_API_HTTP_5\\d\\d|OPENAI_API_RESPONSE_FAILED|OPENAI_API_INVALID_RESPONSE/i.test(raw)) {
+    return { code: "OPENAI_API_TEMPORARY_FAILURE", status: 503, message: "خدمة OpenAI مش متاحة مؤقتًا. جرّب تاني بعد قليل." };
+  }
+
   const quotaExhausted =
     /daily free allocation/i.test(raw) ||
     /used up.{0,100}(?:10,?000\s+neurons|neurons)/i.test(raw) ||
@@ -2885,7 +2943,7 @@ async function handleAgent(request, env, user, options = {}) {
     });
   }
 
-  if (!env.AI) return json({ error: "خدمة Cloudflare Workers AI غير متاحة حاليًا." }, 503);
+  if (!env.AI && !env.OPENAI_API_KEY) return json({ error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." }, 503);
   let imageBase64 = "";
   let imageMimeType = "";
   let textAttachmentContext = "";
@@ -3186,9 +3244,14 @@ async function handleAgent(request, env, user, options = {}) {
   }
 
   const useReasoningModel = deepThink || Boolean(imageBase64);
-  const model = useReasoningModel
-    ? (env.WENS_REASONING_MODEL || "@cf/qwen/qwen3.8-27b")
-    : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
+  const useOpenAi = Boolean(env.OPENAI_API_KEY);
+  const model = useOpenAi
+    ? (useReasoningModel
+      ? (env.WENS_OPENAI_REASONING_MODEL || "gpt-6.2-astra")
+      : (env.WENS_OPENAI_MODEL || "gpt-6.2-sol"))
+    : (useReasoningModel
+      ? (env.WENS_REASONING_MODEL || "@cf/qwen/qwen3.8-27b")
+      : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
     const maxTurns = deepThink ? 6 : 4;
@@ -3197,7 +3260,8 @@ async function handleAgent(request, env, user, options = {}) {
         messages,
         tools: agentTools(),
         temperature: 0.2,
-        max_tokens: deepThink ? 1500 : 850
+        max_tokens: deepThink ? 1500 : 850,
+        deepThink: useReasoningModel
       };
       if (model === "@cf/zai-org/glm-4.7-flash") {
         runOptions.chat_template_kwargs = { enable_thinking: deepThink };
@@ -3208,7 +3272,7 @@ async function handleAgent(request, env, user, options = {}) {
       if (imageBase64 && turn === 0) {
         steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
       }
-      const result = await runWensTextModel(env, model, runOptions);
+      const result = await runWensAgentTextModel(env, model, runOptions);
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const rawAssistantText = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
@@ -3361,13 +3425,14 @@ async function handleAgent(request, env, user, options = {}) {
       const lastOptions = {
         messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]),
         temperature: 0.2,
-        max_tokens: deepThink ? 1500 : 1100
+        max_tokens: deepThink ? 1500 : 1100,
+        deepThink: useReasoningModel
       };
       if (model === "@cf/zai-org/glm-4.7-flash") {
         lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
       }
       if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
-      const last = await runWensTextModel(env, model, lastOptions);
+      const last = await runWensAgentTextModel(env, model, lastOptions);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
