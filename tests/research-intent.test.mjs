@@ -456,3 +456,9 @@ test("recognizes conversational Arabic questions and question requests without p
     assert.equal(isExternalResearchIntent(message), true, message);
   }
 });
+
+
+test("routes colloquial football win and loss questions to current research", () => {
+  assert.equal(isExternalResearchIntent("الأهلي كسب ولا خسر"), true);
+  assert.equal(isLiveDataRequest("الأهلي كسب ولا خسر"), true);
+});
