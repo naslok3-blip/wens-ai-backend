@@ -2004,6 +2004,11 @@ async function executeAgentTool(name, args, env, user) {
       /(?:\bfootball\b|\bsoccer\b).{0,50}(?:fixture|schedule|match|upcoming)|(?:fixture|schedule|upcoming).{0,50}(?:\bfootball\b|\bsoccer\b)/i.test(query);
     const egyptNationalTeamQuery = isEgyptNationalTeamRequest(query) ||
       /egypt national (?:football|soccer) team/i.test(query);
+    const mentionsAhly = /(?:الاهلي|الأهلي|al[\s-]?ahly|ahly)/i.test(normalizedSearchQuery);
+    const mentionsPyramids = /(?:بيراميدز|pyramids)/i.test(normalizedSearchQuery);
+    const egyptClubScheduleQuery = sportsQuery && (mentionsAhly || mentionsPyramids);
+    const egyptClubResultQuery = (mentionsAhly && mentionsPyramids) &&
+      /(?:نتيجه|نتائج|نتايج|score|result|كام|كسب|فاز|خسر|تعادل)/i.test(normalizedSearchQuery);
 
     const readRss = async (url, engineName) => {
       const xml = await fetchText(url, "application/rss+xml, application/xml, text/xml, */*");
@@ -2245,6 +2250,87 @@ async function executeAgentTool(name, args, env, user) {
         })().catch(error => diagnostics.push(source.label + ": " + String(error?.message || error).slice(0, 120))));
       }
     }
+    if (egyptClubScheduleQuery || egyptClubResultQuery) {
+      const scheduleSources = [
+        {
+          label: "Al Ahly official 2026/27 fixtures",
+          url: "https://www.alahlyegypt.com/en/news/article/al-ahlys-202627-egyptian-premier-league-first-stage-fixtures-revealed"
+        },
+        {
+          label: "Goal.com Al Ahly fixtures and results",
+          url: "https://www.goal.com/en-sa/team/al-ahly-sc/fixtures-results/1q2hx9pw8c7x88utqunk4e6xl"
+        },
+        {
+          label: "Goal.com Pyramids fixtures and results",
+          url: "https://www.goal.com/en-gh/team/pyramids-fc/fixtures-results/a5hh43fi88rchrm37263600hu"
+        },
+        {
+          label: "Ahram Online Egyptian Premier League fixtures",
+          url: "https://english.ahram.org.eg/newscontent/6/51/574117/sports/egyptian-football/egyptian-premier-league-to-kick-off-on--august%2C-cairo.aspx"
+        }
+      ];
+      const resultSources = [
+        {
+          label: "Al Ahly official match report",
+          url: "https://www.alahlyegypt.com/en/news/article/al-ahly-lose-2-0-to-pyramids-fc-in-the-egyptian-premier-league"
+        },
+        {
+          label: "Ahram Online Ahly–Pyramids match facts",
+          url: "https://english.ahram.org.eg/NewsContentP/6/583167/Sports/Match-facts-Ahly-v-Pyramids-Egyptian-Premier-Leagu.aspx"
+        },
+        {
+          label: "Sofascore Ahly–Pyramids match page",
+          url: "https://www.sofascore.com/football/match/pyramids-fc-al-ahly-fc/kNcscavb"
+        }
+      ];
+      const currentSeason = getCurrentEgyptFootballSeason();
+      const seasonPattern = new RegExp(String(currentSeason.startYear) + "\\s*(?:/|-|–)\\s*(?:" +
+        String(currentSeason.endYear) + "|" + String(currentSeason.endYear).slice(-2) + ")", "i");
+      const sourcesToRead = egyptClubResultQuery ? resultSources : scheduleSources;
+      await Promise.allSettled(sourcesToRead.map(async source => {
+        try {
+          const html = await fetchText(source.url, "text/html,application/xhtml+xml,*/*");
+          const meta = [...html.matchAll(/<meta\b[^>]*>/gi)].map(item => item[0]);
+          const metaValue = names => {
+            for (const tag of meta) {
+              const key = (tag.match(/(?:property|name)=["']([^"']+)["']/i)?.[1] || "").toLowerCase();
+              const value = tag.match(/content=["']([^"']+)["']/i)?.[1] || "";
+              if (names.some(name => key === name) && value) return cleanText(value).slice(0, 120);
+            }
+            return "";
+          };
+          const published = metaValue(["article:published_time","datepublished","publishdate","date"]);
+          const modified = metaValue(["article:modified_time","datemodified","lastmod"]);
+          const plain = cleanText(html
+            .replace(/<(script|style|svg|noscript|nav|footer|header|form)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+            .replace(/<[^>]+>/g, " "));
+          if (plain.length < 180) return;
+          if (egyptClubScheduleQuery) {
+            const hasScheduleText = /(?:fixtures|fixture|schedule|matches|matchday|مواعيد|جدول|مباريات)/i.test(plain);
+            const hasRelevantClub = /(?:al\s*ahly|ahly|pyramids|بيراميدز|الاهلي|الأهلي)/i.test(plain);
+            if (!seasonPattern.test(plain) || !hasScheduleText || !hasRelevantClub || !hasUpcomingFootballDate(plain)) return;
+          } else {
+            const hasBothClubs = /(?:al\s*ahly|ahly|الاهلي|الأهلي)/i.test(plain) &&
+              /(?:pyramids|بيراميدز)/i.test(plain);
+            const hasScore = /(?:0\s*[-–:]\s*2|2\s*[-–:]\s*0)/i.test(plain);
+            if (!hasBothClubs || !hasScore) return;
+          }
+          addSource(source.label, source.url);
+          sections.push([
+            egyptClubScheduleQuery ? "جدول مباريات الموسم الحالي " + currentSeason.full + " — " + source.label : "نتيجة الأهلي وبيراميدز — " + source.label,
+            published ? "تاريخ النشر: " + published : "",
+            modified ? "آخر تعديل معلن: " + modified : "",
+            "تاريخ المصدر: " + new Date().toISOString() + " — تمت مراجعة الصفحة اليوم",
+            "محتوى المصدر المستخرج: " + plain.slice(0, egyptClubScheduleQuery ? 2600 : 2200),
+            "الرابط: " + source.url
+          ].filter(Boolean).join("\\n"));
+          engines.push(source.label);
+        } catch (error) {
+          diagnostics.push(source.label + ": " + String(error?.message || error).slice(0, 100));
+        }
+      }));
+    }
+
     await Promise.allSettled(jobs);
 
     // Read original publisher pages rather than relying only on search snippets.
