@@ -3319,7 +3319,7 @@ async function handleAgent(request, env, user, options = {}) {
       }
       return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
     }
-    if ((liveDataRequest || sportsScheduleRequest || explicitSearchRequest) && !searchVerified && env.OPENAI_API_KEY) {
+    if (requiresExternalSearch && !searchVerified && env.OPENAI_API_KEY) {
       messages.splice(1, 0, {
         role: "system",
         content: "محرك البحث الخارجي متعدد المصادر لم يثبت المعلومة في المحاولة الأولى. استخدمي أداة web_search المدمجة في Responses API الآن للبحث المباشر. لا تخمني معلومات متغيرة؛ قارني مصادر مستقلة، واذكري التاريخ/الوقت والمصادر المتاحة. إذا لم تجدي دليلًا كافيًا، قولي بوضوح إن التحقق لم ينجح."
