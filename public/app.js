@@ -28,7 +28,7 @@ function loadLocalSettings() {
     return {
       ...defaults,
       ...Object.fromEntries(Object.entries(saved).filter(([key, value]) =>
-        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || value === "device") && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || value === "device"))
+        key in defaults && typeof value === typeof defaults[key] && ((key !== "voiceEngine" || ["device", "realtime"].includes(value)) && (key !== "voiceLocale" || value === "ar-EG") && (key !== "voiceName" || ["device", "marin", "cedar", "coral"].includes(value)))
       ))
     };
   } catch { return defaults; }
@@ -1929,6 +1929,16 @@ async function speakOnDevice(text, playerTarget, waitForPlayback = false) {
 async function speak(text, voiceOverride, playerTarget, waitForPlayback = false) {
   const message = String(text || "").trim().slice(0, 2000);
   if (!message) return false;
+  if (appSettings.voiceEngine === "realtime") {
+    try {
+      const selectedVoice = voiceOverride || (["marin", "cedar", "coral"].includes(appSettings.voiceName) ? appSettings.voiceName : "marin");
+      await speakRealtime(message, selectedVoice, playerTarget, waitForPlayback);
+      return true;
+    } catch (error) {
+      stopRealtimeVoice();
+      setVoiceStatus("الصوت الطبيعي تعذّر؛ هستخدم صوت الهاتف بدلًا منه. " + String(error?.message || error).slice(0, 140));
+    }
+  }
   setVoiceStatus("بدور على صوت مصري مثبت على الموبايل…");
   try {
     await speakOnDevice(message, playerTarget, waitForPlayback);
