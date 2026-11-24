@@ -159,16 +159,19 @@ test("returns an empty source list when OpenAI search has no citations", async (
 });
 
 
-test("worker routes all runtime text inference through Cloudflare Workers AI only", async () => {
+test("worker uses the server-side Responses API for main chat when configured", async () => {
   const { readFile } = await import("node:fs/promises");
   const worker = await readFile(new URL("../worker.js", import.meta.url), "utf8");
-  const diagnosticsStart = worker.indexOf('path === "/api/admin/diagnostics" && request.method === "GET"');
-  assert.ok(diagnosticsStart >= 0, "owner diagnostics route must exist");
-  const diagnosticsSnippet = worker.slice(diagnosticsStart, diagnosticsStart + 5000);
-  assert.ok(diagnosticsSnippet.includes("openAI: false"));
-  assert.ok(diagnosticsSnippet.includes("workersAI: Boolean(env.AI)"));
-  assert.ok(worker.includes("return await env.AI.run("), "text inference must use the Cloudflare AI binding");
-  assert.equal(worker.includes("OPENAI_API_KEY"), false, "Worker runtime must not read an OpenAI API key");
-  assert.equal(worker.includes("api.openai.com"), false, "Worker runtime must not call OpenAI endpoints");
-  assert.equal(worker.includes('from "./openai-responses-utils.mjs"'), false, "OpenAI adapters must not be imported by the Worker runtime");
+  const client = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.ok(worker.includes('from "./openai-responses-utils.mjs"'), "Responses adapters must be imported by the Worker");
+  assert.ok(worker.includes("async function runWensAgentTextModel"), "main agent provider adapter must exist");
+  assert.ok(worker.includes("https://api.openai.com/v1/responses"), "main chat must call the Responses API server-side");
+  assert.ok(worker.includes('if (!env.OPENAI_API_KEY) return runWensTextModel(env, model, options)'), "Workers AI remains the fallback when no API key is configured");
+  assert.ok(worker.includes('env.WENS_OPENAI_MODEL || "gpt-6.2-sol"'), "default chat model must be a supported GPT-6 Sol model");
+  assert.ok(worker.includes('env.WENS_OPENAI_REASONING_MODEL || "gpt-6.2-astra"'), "deep reasoning must use the GPT-6 Astra model");
+  assert.ok(worker.includes("store: false"), "Responses requests must not be stored by the API");
+  assert.ok(worker.includes("openAIChatConfigured: Boolean(env.OPENAI_API_KEY)"), "health diagnostics must expose server-side API readiness");
+  assert.ok(worker.includes("return await env.AI.run("), "Workers AI remains available for image and project tasks");
+  assert.equal(client.includes("OPENAI_API_KEY"), false, "the API key must never be sent to browser code");
+  assert.equal(client.includes("api.openai.com"), false, "browser code must not call OpenAI directly");
 });
