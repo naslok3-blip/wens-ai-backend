@@ -2473,9 +2473,10 @@ function isEgyptGoldPriceRequest(message) {
 
 function isLiveDataRequest(message) {
   const text = normalizeLiveDataText(message);
-  const dynamicTopic = /(?:سعر|اسعار|ثمن|تكلفه|ذهب|دهب|gold|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|عملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|امطار|مباراه|مباريات|نتيجه|ترتيب|weather|forecast|exchange rate|currency|stock price|bitcoin|crypto|live score)/i.test(text);
+  const dynamicTopic = /(?:سعر|اسعار|ثمن|تكلفه|ذهب|دهب|gold|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|عملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|امطار|مباراه|مباريات|نتيجه|نتائج|نتايج|ترتيب|score|result|weather|forecast|exchange rate|currency|stock price|bitcoin|crypto|live score)/i.test(text);
   const explicitCurrent = /(?:اليوم|النهارده|دلوقتي|حاليا|الان|مباشر|اخر|احدث|القادم|القادمه|الجاي|الجايه|التالي|التاليه|المقبل|المقبله|today|current|now|latest|upcoming|live)/i.test(text);
-  const intrinsicallyLive = /(?:سعر|اسعار|ثمن|تكلفه|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|مباراه|مباريات|weather|forecast|exchange rate|stock price|bitcoin|crypto|live score)/i.test(text);
+  // Scores and results are inherently time-sensitive, even without "today" or "now".
+  const intrinsicallyLive = /(?:سعر|اسعار|ثمن|تكلفه|الدولار|اليورو|الاسترليني|سعر الصرف|صرف العملات|بورصه|اسهم|سهم|بيتكوين|كريبتو|طقس|الجو|درجه الحراره|مباراه|مباريات|نتيجه|نتائج|نتايج|ترتيب|score|result|weather|forecast|exchange rate|stock price|bitcoin|crypto|live score)/i.test(text);
   return dynamicTopic && (explicitCurrent || intrinsicallyLive);
 }
 
@@ -2714,7 +2715,7 @@ function isExternalResearchIntent(message) {
     /^(?:عايزك|عاوزك|عايزة|عاوزة|عايز|عاوز|محتاج|محتاجة|ممكن)\s+(?:انشئ|انشئي|اعمل|اعملي|صمم|صممي|نفذ|نفذي|عدل|عدلي|طور|طوري|ابني|اصنع|اصنعي|احفظ|استعيد|ارشف|جهز|جهزي|create|build|edit|update|modify|deploy|upload)(?:لي|لنا)?(?:\s|[؟?!]|$)/i.test(text) ||
     /(?:عدل|تعديل|حدث|تحدث|تحديث|طور|ارفع|انشر|شغل|تعدل|تحدث|تطور)(?:ي|وا|ت|نا)?\s+(?:ونس|التطبيق|الموقع|الملف|الكود|الخادم|الواجهة|الصورة|الصوره|قاعدة\s+البيانات)/i.test(text);
   const isQuestion = /[؟?]/.test(value) ||
-    /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|ماهي|اشرح|شرح|قارن|معلومات عن|افضل|احدث|اخر|اخر\s+اخبار|اخر\s+تحديث|what|who|when|where|why|how|which|is|are|can|should)(?:\s|[؟?!]|$)/i.test(text);
+    /^(?:ما|ماذا|من|مين|متى|امتى|فين|اين|كيف|ازاي|ليه|لماذا|هل|ايه|ماهي|كام|كم|بكام|قد\\s+ايه|ما\\s+عدد|ما\\s+سبب|ما\\s+معنى|اشرح|شرح|قارن|معلومات عن|افضل|احدث|اخر|اخر\\s+اخبار|اخر\\s+تحديث|what|who|when|where|why|how|which|is|are|can|should|how\\s+many|how\\s+much)(?:\\s|[؟?!]|$)/i.test(text);
   const researchLead = /^(?:ممكن\s+(?:تقولي|تقول|تعرفني|تعرف|تشرحي|تشرح|تدور|تدوري)|عايز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|عاوز(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|محتاج(?:ة)?\s+(?:اعرف|اعرفي|معلومات|تفاصيل)|قولي\s+(?:لي|لنا)?|احكيلي\s+عن|اعرفني\s+على|اتكلم(?:ي)?\s+عن|الفرق\s+بين|مقارنة\s+بين|رشح(?:ي)?\s+لي|رشح(?:ي)?\s+لنا|ما\s+أفضل|افضل\s+اختيار|تاريخ\s+تأسيس|تأسس\s+امتى|اخر\s+اخبار|احدث\s+اخبار|اخر\s+تحديث|احدث\s+تحديث|tell me about|can you tell me|find out|compare|recommend|review|difference between)(?:\s|[؟?!]|$)/i.test(text);
   return (isQuestion || researchLead) && !actionLead;
 }

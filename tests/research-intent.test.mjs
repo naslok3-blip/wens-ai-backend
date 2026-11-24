@@ -393,3 +393,37 @@ test("external research queries Google and Bing web results plus Yahoo News RSS"
   assert.ok(worker.includes("www.bing.com/search"));
   assert.ok(worker.includes("news.search.yahoo.com/rss"));
 });
+
+
+test("routes short Egyptian Arabic score and result questions to live external research", () => {
+  for (const message of [
+    "كام نتيجة الأهلي وبيراميدز",
+    "كام نتيجة الأهلي وبيراميدز؟",
+    "كم نتيجة مباراة الأهلي وبيراميدز",
+    "ايه نتيجة الأهلي وبيراميدز",
+    "نتيجة الأهلي وبيراميدز",
+    "نتايج مباريات الأهلي النهارده",
+    "What is the score of Al Ahly vs Pyramids?"
+  ]) {
+    assert.equal(isExternalResearchIntent(message), true, message);
+    assert.equal(isLiveDataRequest(message), true, message);
+  }
+});
+
+test("recognizes common Egyptian Arabic question openers without punctuation", () => {
+  for (const message of [
+    "كام عدد سكان اليابان",
+    "كم سعر الدولار",
+    "بكام الذهب",
+    "قد ايه المسافة بين القاهرة والاسكندرية",
+    "ما سبب تعاقب الليل والنهار",
+    "ما معنى الذكاء الاصطناعي"
+  ]) {
+    assert.equal(isExternalResearchIntent(message), true, message);
+  }
+});
+
+test("keeps casual greetings and direct app actions out of external research", () => {
+  assert.equal(isExternalResearchIntent("عامل ايه يا ونس"), false);
+  assert.equal(isExternalResearchIntent("اعمللي تطبيق للمحل"), false);
+});
