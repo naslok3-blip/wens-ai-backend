@@ -23,13 +23,16 @@ async function runWensAgentTextModel(env, model, options = {}) {
   // Use the server-side OpenAI Responses API for the main conversational agent
   // when its secret is configured. Keep the API key entirely on the Worker.
   if (!env.OPENAI_API_KEY) return runWensTextModel(env, model, options);
+  const requestedOutputTokens = Number(options.max_tokens) || 0;
   const payload = {
     model,
     input: toResponsesInput(options.messages),
-    max_output_tokens: Math.min(4096, Math.max(64, Number(options.max_tokens) || 1200)),
+    max_output_tokens: Math.min(8192, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)),
+    reasoning: { effort: options.deepThink ? "high" : "medium" },
     store: false
   };
   const tools = toResponsesTools(options.tools);
+  if (options.useWebSearch) tools.push({ type: "web_search" });
   if (tools.length) {
     payload.tools = tools;
     payload.tool_choice = "auto";
@@ -1494,7 +1497,7 @@ async function ensureGeneratedProjects(db) {
 }
 async function createWebProject(env, user, args, options = {}) {
   if (!env.DB || !user) return { error: "سجّل الدخول أولًا لحفظ التطبيقات والألعاب في حسابك." };
-  if (!env.AI) return { error: "خدمة Cloudflare Workers AI غير متاحة حاليًا." };
+  if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." };
   const kind = args.kind === "game" ? "game" : "app";
   const title = String(args.title || (kind === "game" ? "لعبة ونس" : "تطبيق ونس")).replace(/[\\r\\n<>]/g, " ").trim().slice(0, 80);
   const prompt = String(args.prompt || "").trim().slice(0, 3200);
@@ -1523,7 +1526,8 @@ async function createWebProject(env, user, args, options = {}) {
       max_tokens: 4200,
       chat_template_kwargs: { enable_thinking: false }
     };
-    const result = await runWensTextModel(env, model, runOptions);
+    const projectModel = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol") : model;
+    const result = await runWensAgentTextModel(env, projectModel, runOptions);
     const message = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
     let source = typeof message?.content === "string"
       ? message.content.trim()
@@ -3126,6 +3130,13 @@ async function handleAgent(request, env, user, options = {}) {
     for (const item of extractExternalSources(result)) {
       if (!sources.some(source => source.url === item.url)) sources.push(item);
     }
+    for (const item of (Array.isArray(result?.sources) ? result.sources : [])) {
+      const url = String(item?.url || "").trim();
+      if (!url || sources.some(source => source.url === url)) continue;
+      let domain = String(item?.domain || "");
+      try { domain = new URL(url).hostname.replace(/^www\./i, ""); } catch {}
+      sources.push({ title: String(item?.title || domain || "Web source"), url, domain });
+    }
   };
   // Keep one source result per user request so tool-call fallbacks cannot repeat the same search.
   let preSearchResult = null;
@@ -3289,7 +3300,7 @@ async function handleAgent(request, env, user, options = {}) {
         searchQuery
       ].join(" · ")
     });
-    if ((liveDataRequest || sportsScheduleRequest) && !searchVerified) {
+    if ((liveDataRequest || sportsScheduleRequest) && !searchVerified && !env.OPENAI_API_KEY) {
       const reply = goldPriceRequest
         ? "بحثت في المواقع الخارجية، لكن ما لقيتش مصدرين مستقلين واضحين فيهم سعر الذهب بالجنيه ووقت تحديثه. مش هخمن أرقام؛ جرّب تاني بعد شوية."
         : sportsScheduleRequest
@@ -3301,13 +3312,19 @@ async function handleAgent(request, env, user, options = {}) {
       }
       return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
     }
-    if (explicitSearchRequest && !searchVerified) {
+    if (explicitSearchRequest && !searchVerified && !env.OPENAI_API_KEY) {
       const reply = "حاولت أبحث في المواقع الخارجية، لكن ما قدرتش أوصل لنتائج ومصادر قابلة للتحقق دلوقتي. مش هقدّم معلومات على إنها نتيجة بحث ناجح.";
       if (options.persist && env.DB && user) {
         await env.DB.prepare("INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)")
           .bind(crypto.randomUUID(), user.id, conversationId, "assistant", reply, Math.floor(Date.now() / 1000)).run();
       }
       return json({ ok: true, model: env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash", steps, activity, sources, reply, generatedImages, generatedProjects });
+    }
+    if (requiresExternalSearch && !searchVerified && env.OPENAI_API_KEY) {
+      messages.splice(1, 0, {
+        role: "system",
+        content: "محرك البحث الخارجي متعدد المصادر لم يثبت المعلومة في المحاولة الأولى. استخدمي أداة web_search المدمجة في Responses API الآن للبحث المباشر. لا تخمني معلومات متغيرة؛ قارني مصادر مستقلة، واذكري التاريخ/الوقت والمصادر المتاحة. إذا لم تجدي دليلًا كافيًا، قولي بوضوح إن التحقق لم ينجح."
+      });
     }
     if (hasSearchText) {
       const verifiedResults = searchText.slice(0, 12000);
@@ -3335,7 +3352,7 @@ async function handleAgent(request, env, user, options = {}) {
     }
   }
 
-  const useReasoningModel = deepThink || Boolean(imageBase64);
+  const useReasoningModel = deepThink || (!env.OPENAI_API_KEY && Boolean(imageBase64));
   const useOpenAi = Boolean(env.OPENAI_API_KEY);
   const model = useOpenAi
     ? (useReasoningModel
@@ -3353,7 +3370,8 @@ async function handleAgent(request, env, user, options = {}) {
         tools: agentTools(),
         temperature: 0.2,
         max_tokens: deepThink ? 1500 : 850,
-        deepThink: useReasoningModel
+        deepThink: useReasoningModel,
+        useWebSearch: requiresExternalSearch
       };
       if (model === "@cf/zai-org/glm-4.7-flash") {
         runOptions.chat_template_kwargs = { enable_thinking: deepThink };
@@ -3365,6 +3383,14 @@ async function handleAgent(request, env, user, options = {}) {
         steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
       }
       const result = await runWensAgentTextModel(env, model, runOptions);
+      rememberSources(result);
+      if (result?.sources?.length) {
+        const searchActivity = activity.find(item => item.label === "البحث في المواقع الخارجية");
+        if (searchActivity && searchActivity.status === "failed") {
+          searchActivity.status = "completed";
+          searchActivity.detail = (searchActivity.detail || "") + " · تم استخدام بحث الويب المدمج ومراجعة " + result.sources.length + " مصدرًا";
+        }
+      }
       const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const rawAssistantText = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()
@@ -3518,13 +3544,15 @@ async function handleAgent(request, env, user, options = {}) {
         messages: messages.concat([{ role: "user", content: "قدمي النتيجة النهائية الآن اعتمادًا على نتائج الأدوات السابقة، ولا تدّعي أي تنفيذ غير موجود." }]),
         temperature: 0.2,
         max_tokens: deepThink ? 1500 : 1100,
-        deepThink: useReasoningModel
+        deepThink: useReasoningModel,
+        useWebSearch: requiresExternalSearch
       };
       if (model === "@cf/zai-org/glm-4.7-flash") {
         lastOptions.chat_template_kwargs = { enable_thinking: deepThink };
       }
       if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
       const last = await runWensAgentTextModel(env, model, lastOptions);
+      rememberSources(last);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
     }
@@ -3593,7 +3621,7 @@ async function agentTasksRoute(request, env, user) {
 }
 
 async function handleChat(request, env, user) {
-  if (!env.AI) {
+  if (!env.AI && !env.OPENAI_API_KEY) {
     return json({ error: "خدمة Cloudflare Workers AI غير مربوطة على الخادم." }, 503);
   }
   const db = env.DB || null;
@@ -3617,7 +3645,9 @@ async function handleChat(request, env, user) {
   ];
   if (!db || !user) messages.push({ role: "user", content: message });
   try {
-    const model = env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash";
+    const model = env.OPENAI_API_KEY
+      ? (env.WENS_OPENAI_MODEL || "gpt-6.2-sol")
+      : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash");
     const runOptions = {
       messages,
       temperature: 0.7,
@@ -3626,7 +3656,7 @@ async function handleChat(request, env, user) {
     if (model === "@cf/zai-org/glm-4.7-flash") {
       runOptions.chat_template_kwargs = { enable_thinking: false };
     }
-    const result = await runWensTextModel(env, model, runOptions);
+    const result = await runWensAgentTextModel(env, model, runOptions);
     const assistantMessage = result?.choices?.[0]?.message || result?.result?.choices?.[0]?.message || result;
       const reply = typeof assistantMessage?.content === "string"
         ? assistantMessage.content.trim()

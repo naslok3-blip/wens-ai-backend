@@ -170,8 +170,36 @@ test("worker uses the server-side Responses API for main chat when configured", 
   assert.ok(worker.includes('env.WENS_OPENAI_MODEL || "gpt-6.2-sol"'), "default chat model must be a supported GPT-6 Sol model");
   assert.ok(worker.includes('env.WENS_OPENAI_REASONING_MODEL || "gpt-6.2-astra"'), "deep reasoning must use the GPT-6 Astra model");
   assert.ok(worker.includes("store: false"), "Responses requests must not be stored by the API");
+  assert.ok(worker.includes('if (options.useWebSearch) tools.push({ type: "web_search" })'), "hosted web search must be available when external research is required");
+  assert.ok(worker.includes("useWebSearch: requiresExternalSearch"), "external questions must enable hosted web search");
+  assert.ok(worker.includes("محرك البحث الخارجي متعدد المصادر لم يثبت"), "hosted web search must be used before refusing unverified current information");
+  assert.ok(worker.includes('reasoning: { effort: options.deepThink ? "high" : "medium" }'), "standard and deep requests must set supported reasoning effort");
+  assert.ok(worker.includes("const useReasoningModel = deepThink || (!env.OPENAI_API_KEY && Boolean(imageBase64));"), "image understanding alone must not force the more expensive Astra model");
+  assert.ok(worker.includes("Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)"), "Responses output budget must leave room for reasoning and complete answers");
+  assert.ok(worker.includes("Math.min(8192, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens))"), "code generation may use a larger but bounded output budget");
+  assert.ok(worker.includes("const projectModel = env.OPENAI_API_KEY ? (env.WENS_OPENAI_MODEL || \"gpt-6.2-sol\") : model;"), "web project generation must use the main GPT agent when configured");
+  assert.ok(worker.includes("const result = await runWensAgentTextModel(env, projectModel, runOptions);"), "web project generation must use the Responses adapter");
+  assert.ok(worker.includes('if (!env.AI && !env.OPENAI_API_KEY) return { error: "خدمة الذكاء الاصطناعي غير متاحة حاليًا." };'), "GPT-powered project generation must not require the Workers AI binding");
   assert.ok(worker.includes("openAIChatConfigured: Boolean(env.OPENAI_API_KEY)"), "health diagnostics must expose server-side API readiness");
-  assert.ok(worker.includes("return await env.AI.run("), "Workers AI remains available for image and project tasks");
+  assert.ok(worker.includes("return await env.AI.run("), "Workers AI remains available for image generation and fallback");
   assert.equal(client.includes("OPENAI_API_KEY"), false, "the API key must never be sent to browser code");
   assert.equal(client.includes("api.openai.com"), false, "browser code must not call OpenAI directly");
+});
+
+
+test("Responses adapter preserves citations from hosted web search", async () => {
+  const { fromResponsesResponse } = await import("../openai-responses-utils.mjs");
+  const parsed = fromResponsesResponse({
+    id: "resp_search",
+    model: "gpt-6.2-sol",
+    output_text: "موعد المباراة يوم 29 نوفمبر.",
+    output: [{
+      type: "web_search_call",
+      action: { sources: [{ title: "Official fixtures", url: "https://example.com/fixtures" }] }
+    }]
+  });
+  assert.equal(parsed.output_text, "موعد المباراة يوم 29 نوفمبر.");
+  assert.deepEqual(parsed.sources, [
+    { title: "Official fixtures", url: "https://example.com/fixtures", domain: "example.com" }
+  ]);
 });
