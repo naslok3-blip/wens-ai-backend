@@ -462,3 +462,31 @@ test("routes colloquial football win and loss questions to current research", ()
   assert.equal(isExternalResearchIntent("الأهلي كسب ولا خسر"), true);
   assert.equal(isLiveDataRequest("الأهلي كسب ولا خسر"), true);
 });
+
+ 
+test("recognizes Egyptian Arabic question cues anywhere in a natural sentence without punctuation", () => {
+  for (const message of [
+    "مصر فيها كام محافظة",
+    "السودان مساحتها قد ايه",
+    "الذكاء الاصطناعي يعني ايه",
+    "المتحف المصري الكبير فين",
+    "مصر عدد سكانها كام",
+    "الموبايل ده كويس ولا لأ",
+    "انا عايز افهم ازاي الشبكات العصبية بتشتغل",
+    "ممكن تشرحلي ليه السما زرقا"
+  ]) {
+    assert.equal(isExternalResearchIntent(message), true, message);
+  }
+});
+
+test("does not treat ordinary statements, greetings, or app actions as research questions", () => {
+  for (const message of [
+    "صباح الخير يا ونس",
+    "انا مبسوط النهارده",
+    "شغلي التطبيق على طول",
+    "ممكن تساعديني في تعديل الصورة",
+    "انا بذاكر درس الذكاء الاصطناعي"
+  ]) {
+    assert.equal(isExternalResearchIntent(message), false, message);
+  }
+});
