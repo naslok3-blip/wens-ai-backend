@@ -807,7 +807,7 @@ function hideExternalLinksFromDisplay(value) {
 
 function downloadGeneratedImage(item, button) {
   const dataUrl = String(item?.dataUrl || "");
-  const match = dataUrl.match(/^data:(image\\/[a-z0-9.+-]+);base64,([a-z0-9+/=]+)$/i);
+  const match = dataUrl.match(/^data:(image[/][a-z0-9.+-]+);base64,([a-z0-9+/=]+)$/i);
   if (!match) {
     if (dataUrl.startsWith("data:image/")) window.open(dataUrl, "_blank", "noopener");
     else if (button) button.textContent = "الصورة غير متاحة";
