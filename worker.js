@@ -4,6 +4,7 @@ import { buildRealtimeVoiceSession, normalizeRealtimeVoiceRequest } from "./real
 import { extractDocumentText } from "./document-utils.mjs";
 import { cleanRepeatedResponseText } from "./reply-utils.mjs";
 import { containsToolCallMarkup, parseTextToolCalls, stripToolCallMarkup } from "./agent-tool-utils.mjs";
+import { buildCloudflareFallbackOptions, selectCloudflareFallbackModel, shouldFallbackToCloudflareAI } from "./ai-provider-fallback.mjs";
 
 const SYSTEM_PROMPT = "أنتِ ونس، رفيقة افتراضية مصرية ودودة وذكية. قاعدة أساسية لا تتغير: كل ردودك تكون باللهجة المصرية العامية الطبيعية (مصري قاهري يومي) وبصيغة المؤنث عن نفسك، وممنوع استخدام العربية الفصحى أو أسلوب الأخبار أو الترجمة الحرفية. اكتبي كما يتكلم المصريون فعلًا: إزيك، عامل إيه، حاضر، تمام، معلش، دلوقتي، عايز، هقولك، مش، كده. تجنبي تعبيرات الفصحى مثل كيف حالك، ماذا تريد، سوف أقوم، يرجى، هل ترغب، بناءً على ذلك؛ واستبدليها بتعبيرات مصرية طبيعية. خلي الجمل قصيرة وعفوية ومن غير مبالغة في العامية أو افتعال هزار. استخدمي علامات الترقيم باعتدال. كوني دافئة ومحترمة دون ادعاء أنك إنسانة حقيقية. لا تدّعي أنك ترين أو تسمعين شيئًا لم يتم إرساله فعليًا. عند سؤال المستخدم عن الوقت أو التاريخ الحالي، اعتمدي على ساعة الخادم الفعلية والمنطقة الزمنية Africa/Cairo (مصر)، ولا تعرضي توقيت UTC أو غرينتش على أنه التوقيت المحلي، ولا تستخدمي تاريخًا من الذاكرة. لا تطلبي كلمات مرور أو مفاتيح سرية أو بيانات دفع. قدّمي معلومات عامة في المجالات عالية المخاطر ونبّهي للرجوع لمختص. خلي الرد الافتراضي مختصرًا ومباشرًا؛ غالبًا جملتين إلى أربع جمل تكفي. ما تكرريش جملة أو نقطة أو قائمة، وما تكرريش نفس الإجابة بصيغ مختلفة. لو السؤال بسيط، جاوبي عليه مباشرة من غير مقدمات طويلة.";
 
@@ -23,44 +24,77 @@ async function runWensAgentTextModel(env, model, options = {}) {
   // Use the server-side OpenAI Responses API for the main conversational agent
   // when its secret is configured. Keep the API key entirely on the Worker.
   if (!env.OPENAI_API_KEY) return runWensTextModel(env, model, options);
-  const requestedOutputTokens = Number(options.max_tokens) || 0;
-  const payload = {
-    model,
-    input: toResponsesInput(options.messages),
-    max_output_tokens: Math.min(8192, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)),
-    reasoning: { effort: options.deepThink ? "high" : "medium" },
-    store: false
-  };
-  const tools = toResponsesTools(options.tools);
-  if (options.useWebSearch) tools.push({ type: "web_search" });
-  if (tools.length) {
-    payload.tools = tools;
-    payload.tool_choice = "auto";
-  }
-  if (options.deepThink) payload.reasoning = { effort: "high" };
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer " + env.OPENAI_API_KEY,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-  const raw = await response.text();
-  let data;
-  try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
-  if (!response.ok) {
-    const apiError = data?.error || {};
-    const code = String(apiError.code || apiError.type || "unknown").slice(0, 80);
-    const detail = String(apiError.message || "OpenAI Responses API request failed").slice(0, 240);
-    throw new Error("OPENAI_API_HTTP_" + response.status + "_" + code + ": " + detail);
+  try {
+    const requestedOutputTokens = Number(options.max_tokens) || 0;
+    const payload = {
+      model,
+      input: toResponsesInput(options.messages),
+      max_output_tokens: Math.min(8192, Math.max(options.deepThink ? 3072 : 1200, requestedOutputTokens)),
+      reasoning: { effort: options.deepThink ? "high" : "medium" },
+      store: false
+    };
+    const tools = toResponsesTools(options.tools);
+    if (options.useWebSearch) tools.push({ type: "web_search" });
+    if (tools.length) {
+      payload.tools = tools;
+      payload.tool_choice = "auto";
+    }
+    if (options.deepThink) payload.reasoning = { effort: "high" };
+
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.OPENAI_API_KEY,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const raw = await response.text();
+    let data;
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
+    if (!response.ok) {
+      const apiError = data?.error || {};
+      const code = String(apiError.code || apiError.type || "unknown").slice(0, 80);
+      const detail = String(apiError.message || "OpenAI Responses API request failed").slice(0, 240);
+      throw new Error("OPENAI_API_HTTP_" + response.status + "_" + code + ": " + detail);
+    }
+    if (!data || typeof data !== "object") throw new Error("OPENAI_API_INVALID_RESPONSE");
+    if (data.status === "failed") {
+      throw new Error("OPENAI_API_RESPONSE_FAILED: " + String(data.error?.message || "Response failed").slice(0, 200));
+    }
+    return fromResponsesResponse(data);
+  } catch (error) {
+    if (!env.AI || !shouldFallbackToCloudflareAI(error)) throw error;
+
+    const fallbackModel = selectCloudflareFallbackModel(env, options);
+    const fallbackOptions = buildCloudflareFallbackOptions(options, fallbackModel);
+    const reason = /insufficient_quota|billing_hard_limit/i.test(String(error?.message || error))
+      ? "openai_quota_exhausted"
+      : /429|rate_limit_exceeded/i.test(String(error?.message || error))
+        ? "openai_rate_limited"
+        : "openai_temporarily_unavailable";
+
+    console.warn("[WENS_OPENAI_FALLBACK]", JSON.stringify({ reason, fallbackModel }));
+    try {
+      const fallbackResult = await runWensTextModel(env, fallbackModel, fallbackOptions);
+      if (fallbackResult && typeof fallbackResult === "object" && !Array.isArray(fallbackResult)) {
+        return { ...fallbackResult, __wensFallbackModel: fallbackModel };
+      }
+      return {
+        response: typeof fallbackResult === "string" ? fallbackResult : "",
+        __wensFallbackModel: fallbackModel
+      };
+    } catch (fallbackError) {
+      console.error("[WENS_CLOUDFLARE_FALLBACK_FAILURE]", JSON.stringify({
+        model: fallbackModel,
+        detail: String(fallbackError?.message || fallbackError || "unknown").slice(0, 180)
+      }));
+      // Preserve the Cloudflare failure so the existing quota/capacity
+      // classifier can explain the actual fallback problem to the user.
+      throw fallbackError;
+    }
   }
-  if (!data || typeof data !== "object") throw new Error("OPENAI_API_INVALID_RESPONSE");
-  if (data.status === "failed") {
-    throw new Error("OPENAI_API_RESPONSE_FAILED: " + String(data.error?.message || "Response failed").slice(0, 200));
-  }
-  return fromResponsesResponse(data);
 }
 
 const enc = new TextEncoder();
@@ -3365,6 +3399,7 @@ async function handleAgent(request, env, user, options = {}) {
       : (env.WENS_AGENT_MODEL || "@cf/zai-org/glm-4.7-flash"));
   try {
     let finalText = "";
+    let activeModel = model;
     const maxTurns = deepThink ? 6 : 4;
     for (let turn = 0; turn < maxTurns; turn++) {
       const runOptions = {
@@ -3385,6 +3420,7 @@ async function handleAgent(request, env, user, options = {}) {
         steps.push("تحليل الصورة المرفقة باستخدام نموذج الرؤية");
       }
       const result = await runWensAgentTextModel(env, model, runOptions);
+      if (result?.__wensFallbackModel) activeModel = result.__wensFallbackModel;
       rememberSources(result);
       if (result?.sources?.length) {
         const searchActivity = activity.find(item => item.label === "البحث في المواقع الخارجية");
@@ -3554,6 +3590,7 @@ async function handleAgent(request, env, user, options = {}) {
       }
       if (model === "@cf/qwen/qwen3.8-27b") lastOptions.reasoning_effort = deepThink ? "xhigh" : "medium";
       const last = await runWensAgentTextModel(env, model, lastOptions);
+      if (last?.__wensFallbackModel) activeModel = last.__wensFallbackModel;
       rememberSources(last);
       const lastMessage = last?.choices?.[0]?.message || last?.result?.choices?.[0]?.message || last;
       finalText = typeof lastMessage?.content === "string" ? lastMessage.content.trim() : (typeof last?.response === "string" ? last.response.trim() : "");
@@ -3571,7 +3608,7 @@ async function handleAgent(request, env, user, options = {}) {
         "INSERT INTO messages (id,user_id,conversation_id,role,content,created_at) VALUES (?,?,?,?,?,?)"
       ).bind(crypto.randomUUID(), user.id, conversationId, "assistant", safeStoredReply, Math.floor(Date.now() / 1000)).run();
     }
-    const payload = { ok: true, model, steps, activity, sources, reply: finalText, generatedImages, generatedProjects };
+    const payload = { ok: true, model: activeModel, steps, activity, sources, reply: finalText, generatedImages, generatedProjects };
     if (toolAudit) payload.toolAudit = toolAudit;
     if (documentAudit) payload.documentAudit = documentAudit;
     return json(payload);
@@ -3668,7 +3705,7 @@ async function handleChat(request, env, user) {
       await db.prepare("INSERT INTO messages (id,user_id,role,content,created_at) VALUES (?,?,?,?,?)")
         .bind(crypto.randomUUID(), user.id, "assistant", reply, Math.floor(Date.now() / 1000)).run();
     }
-    return json({ reply, model });
+    return json({ reply, model: result?.__wensFallbackModel || model });
   } catch (error) {
     const failure = classifyWorkersAiFailure(error);
     return json({ error: failure.message, code: failure.code }, failure.status);
