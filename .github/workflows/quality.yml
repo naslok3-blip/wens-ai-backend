@@ -1,4 +1,4 @@
-name: Wens Quality Checks
+name: Wens Quality Checks # Includes mobile generated-image download regression validation
 on:
   push:
     branches: [ main ]

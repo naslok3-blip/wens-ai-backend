@@ -805,6 +805,43 @@ function hideExternalLinksFromDisplay(value) {
   return text.trim();
 }
 
+function downloadGeneratedImage(item, button) {
+  const dataUrl = String(item?.dataUrl || "");
+  const match = dataUrl.match(/^data:(image[/][a-z0-9.+-]+);base64,([a-z0-9+/=]+)$/i);
+  if (!match) {
+    if (dataUrl.startsWith("data:image/")) window.open(dataUrl, "_blank", "noopener");
+    else if (button) button.textContent = "الصورة غير متاحة";
+    return;
+  }
+  try {
+    const mime = match[1].toLowerCase();
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: mime });
+    const objectUrl = URL.createObjectURL(blob);
+    const extension = mime.split("/")[1].replace("jpeg", "jpg").replace("svg+xml", "svg");
+    const fileName = String(item.name || "wens-ai-image").replace(/[^a-z0-9_-]/gi, "-").slice(0, 60) || "wens-ai-image";
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = fileName + "." + extension;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    if (button) {
+      const original = button.textContent;
+      button.textContent = "تم تجهيز الصورة للحفظ";
+      window.setTimeout(() => { if (button.isConnected) button.textContent = original; }, 3500);
+    }
+  } catch (error) {
+    console.error("Wens image download failed", error);
+    if (button) button.textContent = "اضغط لفتح الصورة وحفظها";
+    window.open(dataUrl, "_blank", "noopener");
+  }
+}
+
 function addMessage(text, who = "assistant", steps = [], attachments = [], generatedImages = [], generatedProjects = [], activity = [], sources = []) {
   const displayText = who === "assistant" ? hideExternalLinksFromDisplay(cleanRepeatedReplyText(text)) : String(text ?? "");
   const replyKey = displayText.replace(/\s+/g, " ").trim();
@@ -861,11 +898,11 @@ function addMessage(text, who = "assistant", steps = [], attachments = [], gener
       image.alt = item.name || "صورة من ونس";
       image.loading = "lazy";
       media.appendChild(image);
-      const save = document.createElement("a");
+      const save = document.createElement("button");
+      save.type = "button";
       save.className = "message-attachment-name";
-      save.href = item.dataUrl;
-      save.download = String(item.name || "wens-ai-image") + ".jpg";
       save.textContent = "حفظ الصورة";
+      save.addEventListener("click", () => downloadGeneratedImage(item, save));
       media.appendChild(save);
     }
     if (media.childNodes.length) bubble.appendChild(media);
