@@ -5,7 +5,7 @@ export function shouldFallbackToCloudflareAI(error) {
     return false;
   }
   // Fall back for exhausted quota / rate limits and temporary OpenAI outages.
-  return /OPENAI_API_HTTP_429|OPENAI_API_HTTP_5\\d\\d|rate_limit_exceeded|insufficient_quota|billing_hard_limit|fetch failed|network error|connection error|timed? ?out/i.test(raw);
+  return /OPENAI_API_HTTP_429|OPENAI_API_HTTP_5\d\d|rate_limit_exceeded|insufficient_quota|billing_hard_limit|fetch failed|network error|connection error|timed? ?out/i.test(raw);
 }
 
 export function selectCloudflareFallbackModel(env = {}, options = {}) {
